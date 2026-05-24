@@ -1,8 +1,12 @@
+import { RouterProvider } from 'react-router-dom'
+import { router } from './app.routes.jsx'
+import { AuthContext, AuthProvider } from './features/Auth/auth.context.jsx';
 function App() {
   return (
-    <div className="App">
-      <h1>Welcome to the Frontend!</h1>
-    </div>
+    <AuthProvider>
+      <RouterProvider router={router} />
+    </AuthProvider>
+
   );
 }
 
