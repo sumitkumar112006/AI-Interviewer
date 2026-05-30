@@ -1,0 +1,130 @@
+{
+    "_id": {
+        "$oid": "6a197ca430609dba7acb226e"
+    },
+    "matchScore": 88,
+    "technicalQuestions": [
+        {
+            "question": "Explain how you implemented state management in your ChatGPT Clone project, specifically mentioning the Context API.",
+            "intention": "To assess understanding of React's Context API and its practical application for global state.",
+            "answer": "I used React's Context API to manage the chat history globally. This allowed me to avoid prop drilling and easily share the conversation state across different components, such as the input area and the message display, ensuring persistent chat history without complex external libraries."
+        },
+        {
+            "question": "Describe your approach to handling asynchronous API calls and potential errors when integrating the OpenAI API in your ChatGPT clone.",
+            "intention": "To evaluate knowledge of asynchronous JavaScript, error handling, and API integration best practices.",
+            "answer": "I primarily used async/await with the `fetch` API for making requests to the OpenAI API. I wrapped the API calls in try-catch blocks to gracefully handle network errors or API response issues, displaying user-friendly messages for failures and appropriate loading states during data fetching."
+        },
+        {
+            "question": "Your portfolio mentions 'mobile-first design' and 'pixel-perfect responsiveness'. How do you achieve this using CSS Flexbox and Grid?",
+            "intention": "To gauge practical experience with modern CSS layout techniques for responsive web design.",
+            "answer": "I adopt a mobile-first approach by starting with styles for smaller screens and then using media queries for larger breakpoints. Flexbox is great for one-dimensional layouts like navigation bars and item lists, while Grid is ideal for complex two-dimensional layouts, allowing precise control over rows and columns to achieve pixel-perfect designs across devices."
+        },
+        {
+            "question": "In React, what are the key differences between `useState` and `useEffect` hooks, and when would you typically use each?",
+            "intention": "To test foundational understanding of core React hooks for state and side effects.",
+            "answer": "`useState` is used for managing component-specific state, allowing functional components to hold and update data that affects their rendering. `useEffect` is for handling side effects like data fetching, subscriptions, or manually changing the DOM, which occur after render. I use `useState` for UI elements and data, and `useEffect` for API calls or setting up event listeners."
+        },
+        {
+            "question": "You've built several UI clones. How do you ensure cross-browser compatibility and debug layout issues across different browsers?",
+            "intention": "To assess awareness of browser compatibility issues and debugging techniques.",
+            "answer": "I use modern CSS practices and polyfills where necessary. For debugging, I rely heavily on browser developer tools (inspecting elements, checking console for errors, network tab for requests). I also test on multiple browsers (Chrome, Firefox, Edge) and use tools like BrowserStack for wider compatibility checks to identify and fix rendering inconsistencies."
+        }
+    ],
+    "behavioralQuestion": [
+        {
+            "question": "Tell me about a time you faced a significant technical challenge in one of your projects and how you overcame it.",
+            "intention": "To evaluate problem-solving skills, persistence, and ability to learn from difficulties.",
+            "answer": "In the ChatGPT clone, ensuring efficient and persistent local state management for chat history was challenging. I initially struggled with how to update and retrieve the history without performance bottlenecks. I researched various React state patterns, eventually settling on the Context API combined with local storage for persistence, which significantly improved performance and maintainability."
+        },
+        {
+            "question": "Given your hackathon experience, describe a situation where you had to collaborate closely with others. What was your role, and how did you contribute to the team's success?",
+            "intention": "To assess teamwork, communication, and collaboration skills in a fast-paced environment.",
+            "answer": "During Smart India Hackathon, I was the primary front-end developer. My role involved translating design mockups into functional UI components using React and integrating with the backend APIs developed by my teammates. I actively communicated progress, shared code snippets, and participated in daily stand-ups to ensure our front-end aligned perfectly with the backend functionality and overall project goal."
+        },
+        {
+            "question": "How do you keep your skills updated with the rapidly evolving front-end landscape? Can you give an example of a new technology or concept you've recently learned and applied?",
+            "intention": "To assess proactiveness, adaptability, and commitment to continuous learning.",
+            "answer": "I constantly follow industry blogs, participate in online communities like Stack Overflow and GitHub, and take online courses. Recently, I deep-dived into performance optimization techniques for React, specifically code splitting and lazy loading. I applied these to my portfolio website to reduce initial load times, which was a practical demonstration of my learning."
+        },
+        {
+            "question": "Describe a time when you received constructive feedback on your code or project. How did you react, and what did you learn from it?",
+            "intention": "To evaluate openness to feedback, humility, and professional growth.",
+            "answer": "In a code review for my To-Do List application, a peer suggested a more efficient way to handle DOM manipulation for task filtering, recommending event delegation over individual event listeners. Initially, I felt my approach was fine, but I listened, understood the performance benefits, refactored my code, and learned a valuable lesson about optimizing event handling in vanilla JS."
+        },
+        {
+            "question": "Imagine you're working on a feature with a tight deadline, and you discover a critical bug that requires significant refactoring. How would you prioritize your work and communicate the situation?",
+            "intention": "To assess decision-making, prioritization, and communication under pressure.",
+            "answer": "I would immediately assess the bug's impact and severity. If critical, I'd prioritize fixing it over new features. I would communicate clearly with my team lead or stakeholders, explaining the bug's nature, its potential impact on the deadline, and my proposed solution, including an updated timeline. Transparency and clear communication are key to managing expectations."
+        }
+    ],
+    "skillGaps": [
+        {
+            "skill": "TypeScript",
+            "severity": "high"
+        },
+        {
+            "skill": "Front-End Testing (Unit/Integration)",
+            "severity": "medium"
+        },
+        {
+            "skill": "Advanced State Management Libraries (e.g., Redux, Zustand)",
+            "severity": "medium"
+        },
+        {
+            "skill": "Build Tool Configuration (Webpack/Vite optimization)",
+            "severity": "low"
+        }
+    ],
+    "preparationPlan": [
+        {
+            "day": "Day 1",
+            "focus": "TypeScript Fundamentals",
+            "tasks": [
+                "Complete an online course on TypeScript basics (types, interfaces, generics)",
+                "Refactor a small React component to use TypeScript"
+            ]
+        },
+        {
+            "day": "Day 2",
+            "focus": "Front-End Testing with Jest/React Testing Library",
+            "tasks": [
+                "Study Jest and React Testing Library documentation",
+                "Write unit tests for existing React components in a personal project"
+            ]
+        },
+        {
+            "day": "Day 3",
+            "focus": "Advanced React State Management",
+            "tasks": [
+                "Explore concepts of Redux or Zustand",
+                "Implement a simple feature using a new state management library in a mini-project"
+            ]
+        },
+        {
+            "day": "Day 4",
+            "focus": "Performance Optimization & Webpack/Vite",
+            "tasks": [
+                "Research advanced performance techniques (e.g., bundle analysis, tree-shaking)",
+                "Understand basic configuration for Webpack or Vite for optimization"
+            ]
+        },
+        {
+            "day": "Day 5",
+            "focus": "Portfolio Enhancement & Review",
+            "tasks": [
+                "Apply newly acquired skills to a current project or create a new small feature",
+                "Review and solidify understanding of all learned topics"
+            ]
+        }
+    ],
+    "user": {
+        "$oid": "6a1049cd83664b678d9bfa63"
+    },
+    "createdAt": {
+        "$date": "2026-05-29T11:46:44.276Z"
+    },
+    "updatedAt": {
+        "$date": "2026-05-29T11:46:44.276Z"
+    },
+    "__v": 0
+}

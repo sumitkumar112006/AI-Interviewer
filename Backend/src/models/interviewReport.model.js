@@ -116,6 +116,11 @@ const interviewReportSchema = new mongoose.Schema({
     selfDescription: {
         type: String,
     },
+    Title: {
+        type: String,
+        required: [true, "Developer title is required"],
+        trim: true
+    },
     matchScore: {
         type: Number,
         min: 0,

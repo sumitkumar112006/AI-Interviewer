@@ -1,7 +1,6 @@
 const { GoogleGenAI } = require("@google/genai")
 const { z } = require('zod')
 const { zodToJsonSchema } = require('zod-to-json-schema')
-const { resume, selfDescribe, jobDescribe } = require('./temp')
 
 
 const ai = new GoogleGenAI({
@@ -19,7 +18,46 @@ async function invokeGeminiAI() {
 }
 
 
-const interviewReportSchema = z.object({
+const questionSchema = z.object({
+    question: z
+        .string()
+        .describe(
+            "The exact interview question asked to the candidate."
+        ),
+
+    intention: z
+        .string()
+        .describe(
+            "The real reason the interviewer is asking this question and what they want to evaluate."
+        ),
+
+    answer: z
+        .string()
+        .describe(
+            "A concise, interview-ready answer that is natural to speak and focused on high-value information."
+        ),
+})
+
+const skillGapSchema = z.object({
+    skill: z
+        .string()
+        .describe(
+            "The specific missing or weak skill identified during the interview."
+        ),
+
+    severity: z
+        .enum(["low", "medium", "high"])
+        .describe(
+            "How strongly this skill gap affects the candidate's interview performance or job readiness."
+        ),
+})
+
+const aiInterviewReportSchema = z.object({
+    Title: z
+        .string()
+        .describe(
+            "A concise best-fit developer role title inferred from the candidate profile and target job, such as Front-End Developer, React Developer, or Full-Stack Developer."
+        ),
 
     matchScore: z
         .number()
@@ -29,71 +67,21 @@ const interviewReportSchema = z.object({
             "Overall interview match score from 0 to 100 based on technical skills, behavioral performance, communication, problem-solving ability, confidence, and job readiness."
         ),
 
-    technicalQuestion: z.array(
-        z.object({
-            question: z
-                .string()
-                .describe(
-                    "The exact interview question asked to the candidate."
-                ),
-
-            intention: z
-                .string()
-                .describe(
-                    "Analyze the real intent behind the question and identify what skill, knowledge, or thinking ability the interviewer wants to evaluate."
-                ),
-
-            answer: z
-                .string()
-                .describe(
-                    "Generate the best concise interview-ready answer. Keep it confident, technically accurate, natural to speak, and focused only on high-value information with minimal words."
-                ),
-        })
-    ).describe(
+    technicalQuestions: z.array(questionSchema)
+        .length(5)
+        .describe(
         "An array of technical interview question objects. Each object must include question, intention, and answer. Focus on technical depth, practical knowledge, problem-solving, tools, architecture, debugging, performance, and implementation ability."
     ),
 
 
-    behaviouralQuestion: z.array(
-        z.object({
-            question: z
-                .string()
-                .describe(
-                    "The exact behavioural interview question asked to the candidate."
-                ),
-
-            intention: z
-                .string()
-                .describe(
-                    "Analyze the psychological and professional intent behind the question. Identify what the interviewer wants to evaluate such as leadership, ownership, teamwork, conflict handling, adaptability, communication, emotional intelligence, decision-making, accountability, growth mindset, or performance under pressure."
-                ),
-
-            answer: z
-                .string()
-                .describe(
-                    "Generate a strong interview-ready behavioural answer that sounds authentic, confident, emotionally intelligent, and professionally mature. Keep it concise, natural to speak, results-oriented, and focused on actions, decisions, and impact using minimal words."
-                ),
-        })
-    ).describe(
+    behavioralQuestion: z.array(questionSchema)
+        .length(5)
+        .describe(
         "An object for each question including question , intention and  of behavioural interview questions with deep intent analysis and concise interview-ready answers focused on communication, leadership, teamwork, problem-solving, emotional intelligence, and professional decision-making."
     ),
 
 
-    skillGaps: z.array(
-        z.object({
-            skill: z
-                .string()
-                .describe(
-                    "The specific missing or weak skill identified during the interview."
-                ),
-
-            severity: z
-                .enum(["low", "medium", "high"])
-                .describe(
-                    "How strongly this skill gap affects the candidate's interview performance or job readiness."
-                ),
-        })
-    ).describe(
+    skillGaps: z.array(skillGapSchema).describe(
         "List of the most important skill gaps detected during the interview across technical ability, communication, behavioral traits, confidence, problem-solving, and practical experience."
     ),
 
@@ -101,9 +89,9 @@ const interviewReportSchema = z.object({
     preparationPlan: z.array(
         z.object({
             day: z
-                .number()
+                .union([z.number(), z.string()])
                 .describe(
-                    "The day number in the interview preparation roadmap."
+                    "The day number or label in the interview preparation roadmap."
                 ),
 
             focus: z
@@ -124,34 +112,135 @@ const interviewReportSchema = z.object({
 
 });
 
+const mongooseInterviewReportSchema = z.object({
+    developerTitle: z.string().min(1),
+    matchScore: z.coerce.number().min(0).max(100),
+    technicalQuestions: z.array(questionSchema).length(5),
+    behavioralQuestion: z.array(questionSchema).length(5),
+    skillGaps: z.array(skillGapSchema),
+    preparationPlan: z.array(
+        z.object({
+            day: z.string(),
+            focus: z.string(),
+            tasks: z.array(z.string()),
+        })
+    ),
+})
 
-async function generateInterviewReport({ resume, selfDescribe, jobDescribe }) {
+function parseJsonLikeValue(value) {
+    if (typeof value !== "string") {
+        return value
+    }
+
+    const trimmedValue = value.trim()
+
+    if (!trimmedValue) {
+        return value
+    }
+
+    if (
+        (trimmedValue.startsWith("{") && trimmedValue.endsWith("}")) ||
+        (trimmedValue.startsWith("[") && trimmedValue.endsWith("]"))
+    ) {
+        try {
+            return JSON.parse(trimmedValue)
+        } catch (error) {
+            return value
+        }
+    }
+
+    return value
+}
+
+function normalizeObjectArray(value) {
+    const parsedValue = parseJsonLikeValue(value)
+
+    if (Array.isArray(parsedValue)) {
+        return parsedValue.map((item) => parseJsonLikeValue(item))
+    }
+
+    if (parsedValue && typeof parsedValue === "object") {
+        return [parsedValue]
+    }
+
+    return []
+}
+
+function normalizeStringArray(value) {
+    const parsedValue = parseJsonLikeValue(value)
+
+    if (Array.isArray(parsedValue)) {
+        return parsedValue.map((item) => String(parseJsonLikeValue(item)).trim()).filter(Boolean)
+    }
+
+    if (parsedValue === undefined || parsedValue === null) {
+        return []
+    }
+
+    return [String(parsedValue).trim()].filter(Boolean)
+}
+
+function normalizeInterviewReport(rawReport) {
+    const normalizedPreparationPlan = normalizeObjectArray(rawReport.preparationPlan).map((item) => ({
+        day: typeof item?.day === "number" ? `Day ${item.day}` : String(item?.day ?? "").trim(),
+        focus: String(item?.focus ?? "").trim(),
+        tasks: normalizeStringArray(item?.tasks),
+    }))
+
+    return {
+        developerTitle: String(rawReport.developerTitle ?? rawReport.title ?? "").trim(),
+        matchScore: rawReport.matchScore,
+        technicalQuestions: normalizeObjectArray(
+            rawReport.technicalQuestions ?? rawReport.technicalQuestion
+        ),
+        behavioralQuestion: normalizeObjectArray(
+            rawReport.behavioralQuestion ?? rawReport.behaviouralQuestion
+        ),
+        skillGaps: normalizeObjectArray(rawReport.skillGaps),
+        preparationPlan: normalizedPreparationPlan,
+    }
+}
+
+
+async function generateInterviewReport({
+    resume,
+    selfDescription,
+    jobDescription,
+    selfDescribe,
+    jobDescribe
+}) {
+    const candidateSummary = selfDescription ?? selfDescribe
+    const roleDescription = jobDescription ?? jobDescribe
 
     const prompt = `
 Generate an interview report in valid JSON only.
 
 Rules:
+- Return only valid JSON.
 - Provide a matchScore from 0 to 100 as a number.
-- Return only JSON.
-- Follow these exact top-level keys to match the database schema:
-- matchScore
-- technicalQuestion
-- behavioralQuestion
-- skillGaps
-- preparationPlan
+- Use these exact top-level keys:
+  - developerTitle
+  - matchScore
+  - technicalQuestions
+  - behavioralQuestion
+  - skillGaps
+  - preparationPlan
 - Provide exactly 5 technicalQuestions.
 - Provide exactly 5 behavioralQuestion items.
-- technicalQuestions should focus on technical evaluation.
-- behavioralQuestion should focus on communication, leadership, teamwork, problem-solving, emotional intelligence, and professional decision-making.
-- technicalQuestions must be an array of objects, not strings.
-- behavioralQuestion must be an array of objects, not strings.
-- skillGaps must be an array of objects, not strings.
-- preparationPlan must be an array of objects, not strings.
+- technicalQuestions must focus on technical evaluation.
+- behavioralQuestion must focus on communication, leadership, teamwork, problem-solving, emotional intelligence, and professional decision-making.
+- technicalQuestions must be an array of objects.
+- behavioralQuestion must be an array of objects.
+- skillGaps must be an array of objects.
+- preparationPlan must be an array of objects.
+- Do not wrap objects inside strings.
+- Keep every field practical and concise.
 
 Expected format:
 {
+  "developerTitle": "Front-End Developer",
   "matchScore": 85,
-  "technicalQuestion": [
+  "technicalQuestions": [
     {
       "question": "...",
       "intention": "...",
@@ -173,47 +262,47 @@ Expected format:
   ],
   "preparationPlan": [
     {
-      "day": 1,
+      "day": "Day 1",
       "focus": "...",
       "tasks": ["...", "..."]
     }
   ]
 }
 
-- skillGaps: each item must contain skill, severity.
-- Use this format for each skill gap item:
-{
-    "skill": "...",
-    "severity": "low" | "medium" | "high"
-}
+- skillGaps: each item must contain:
+  - skill
+  - severity: "low" | "medium" | "high"
 
-- preparationPlan: each item must contain day, focus, and tasks.
-- Use this format for each preparationPlan item:
-{
-  "day": 1,
-  "focus": "...",
-  "tasks": ["...", "..."]
-}
-- Do not wrap objects inside strings.
-- Do not return partial JSON fragments like "question": "..." or "skill": "...".
-- Keep every field practical, concise.  
-  
+- preparationPlan: each item must contain:
+  - day
+  - focus
+  - tasks
+
+- developerTitle:
+  - must be a short, professional developer role title
+  - should reflect both the job description and the candidate background
+  - examples: "Front-End Developer", "React Developer", "Full-Stack Developer"
+
 Resume: ${resume}
-Self Description: ${selfDescribe}    
-Job Description: ${jobDescribe} 
+Self Description: ${candidateSummary}
+Job Description: ${roleDescription}
 `;
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: prompt,
         config: {
             responseMimeType: "application/json",
-            responseJsonSchema: zodToJsonSchema(interviewReportSchema)
+            responseJsonSchema: zodToJsonSchema(aiInterviewReportSchema)
         }
     })
 
-    console.log(JSON.parse(response.text));
+    const parsedResponse = JSON.parse(response.text)
+    const normalizedResponse = normalizeInterviewReport(parsedResponse)
+    const interviewReport = mongooseInterviewReportSchema.parse(normalizedResponse)
 
-    return JSON.parse(response.text);
+    console.log(interviewReport);
+
+    return interviewReport;
 
 
 }

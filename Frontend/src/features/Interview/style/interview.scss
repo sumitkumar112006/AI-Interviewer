@@ -1,0 +1,412 @@
+.interview-page {
+    --bg-1: #07111f;
+    --bg-2: #0d1a2f;
+    --panel: rgba(18, 29, 48, 0.72);
+    --panel-strong: rgba(10, 18, 32, 0.9);
+    --border: rgba(129, 173, 255, 0.14);
+    --border-strong: rgba(129, 173, 255, 0.22);
+    --text: #edf4ff;
+    --muted: #95a5c6;
+    --accent: #57d0ff;
+    --accent-soft: #7d7cff;
+    --danger: #ff7a9a;
+    --button-start: #ff2d6f;
+    --button-end: #ff4d7f;
+    --field-bg: rgba(5, 13, 24, 0.92);
+    --high: #ff7a9a;
+    --medium: #ffb366;
+    --low: #87d7a1;
+
+    min-height: 100vh;
+    padding: 2.2rem 1.2rem;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    background:
+        radial-gradient(circle at top left, rgba(87, 208, 255, 0.16), transparent 24%),
+        radial-gradient(circle at top right, rgba(125, 124, 255, 0.12), transparent 20%),
+        linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%);
+    color: var(--text);
+    font-family: "Bahnschrift", "Segoe UI", "Trebuchet MS", sans-serif;
+}
+
+.interview-shell {
+    width: min(1160px, 100%);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.interview-overview {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+
+    .eyebrow {
+        font-size: 0.66rem;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #7ddfff;
+    }
+
+    h1 {
+        font-size: clamp(1.9rem, 3vw, 2.45rem);
+        line-height: 1.05;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        background: linear-gradient(90deg, #f4f8ff 0%, #7ddfff 45%, #8f84ff 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
+
+    .intro {
+        max-width: 720px;
+        color: var(--muted);
+        font-size: 0.92rem;
+        line-height: 1.55;
+    }
+}
+
+.feedback-card,
+.summary-card,
+.panel,
+.content-card,
+.side-block,
+.side-note {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    backdrop-filter: blur(14px);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
+}
+
+.feedback-card {
+    padding: 1rem 1.05rem;
+    color: var(--muted);
+    font-size: 0.92rem;
+
+    &.error {
+        color: var(--danger);
+    }
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.9rem;
+}
+
+.summary-card {
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+
+.accent-card {
+    background: linear-gradient(180deg, rgba(255, 45, 111, 0.12) 0%, rgba(18, 29, 48, 0.82) 55%);
+    border-color: rgba(255, 45, 111, 0.18);
+}
+
+.summary-label,
+.panel-label,
+.card-index,
+.info-label {
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.summary-label,
+.panel-label,
+.card-index,
+.info-label {
+    color: #7ddfff;
+}
+
+.summary-copy,
+.main-head p,
+.side-copy,
+.side-note p,
+.info-block p,
+.empty-card p {
+    color: var(--muted);
+    line-height: 1.6;
+    font-size: 0.9rem;
+}
+
+.score-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+
+    strong {
+        font-size: 2.35rem;
+        line-height: 1;
+        color: var(--text);
+    }
+
+    span {
+        font-size: 0.95rem;
+        color: var(--muted);
+    }
+}
+
+.interview-layout {
+    min-height: 680px;
+    display: grid;
+    grid-template-columns: 230px minmax(0, 1fr) 300px;
+    gap: 0.9rem;
+}
+
+.panel {
+    min-width: 0;
+}
+
+.interview-nav,
+.interview-main,
+.interview-side {
+    padding: 1rem;
+}
+
+.interview-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.nav-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+
+.nav-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.9rem 0.95rem;
+    border-radius: 0.9rem;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    transition: transform 0.25s ease, background 0.25s ease, border-color 0.25s ease;
+
+    span {
+        font-size: 0.94rem;
+        font-weight: 700;
+    }
+
+    small {
+        color: var(--muted);
+        font-size: 0.78rem;
+        font-weight: 700;
+    }
+
+    &:hover {
+        transform: translateY(-1px);
+        background: rgba(22, 33, 53, 0.58);
+        border-color: var(--border-strong);
+    }
+
+    &.active {
+        background: linear-gradient(90deg, rgba(87, 208, 255, 0.18), rgba(125, 124, 255, 0.18));
+        border-color: rgba(87, 208, 255, 0.18);
+    }
+}
+
+.interview-main {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.main-head {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+
+    h2 {
+        font-size: 1.3rem;
+        line-height: 1.15;
+        font-weight: 700;
+        color: var(--text);
+    }
+}
+
+.content-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem;
+    align-content: start;
+}
+
+.content-card {
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+
+    h3 {
+        font-size: 0.98rem;
+        line-height: 1.5;
+        color: var(--text);
+    }
+
+    ul {
+        display: flex;
+        flex-direction: column;
+        gap: 0.7rem;
+        list-style: none;
+    }
+
+    li {
+        position: relative;
+        padding-left: 0.95rem;
+        color: var(--muted);
+        line-height: 1.6;
+        font-size: 0.9rem;
+
+        &::before {
+            content: "";
+            width: 0.38rem;
+            height: 0.38rem;
+            border-radius: 999px;
+            position: absolute;
+            left: 0;
+            top: 0.52rem;
+            background: linear-gradient(180deg, var(--accent), var(--accent-soft));
+        }
+    }
+}
+
+.roadmap-card ul {
+    margin-top: 0.1rem;
+}
+
+.info-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 0.75rem 0.8rem;
+    border-radius: 0.9rem;
+    background: var(--field-bg);
+    border: 1px solid var(--border);
+}
+
+.empty-card {
+    grid-column: 1 / -1;
+}
+
+.interview-side {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.side-block,
+.side-note {
+    padding: 0.95rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+
+.side-head {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+
+    h3 {
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--text);
+    }
+}
+
+.chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+
+.skill-chip {
+    padding: 0.48rem 0.8rem;
+    border-radius: 999px;
+    background: rgba(22, 33, 53, 0.58);
+    border: 1px solid var(--border-strong);
+    color: #d9e5ff;
+    font-size: 0.82rem;
+    font-weight: 700;
+
+    &.high {
+        color: var(--danger);
+        border-color: rgba(255, 122, 154, 0.22);
+        background: rgba(255, 122, 154, 0.1);
+    }
+
+    &.medium {
+        color: var(--medium);
+        border-color: rgba(255, 179, 102, 0.2);
+        background: rgba(255, 179, 102, 0.08);
+    }
+
+    &.low {
+        color: var(--low);
+        border-color: rgba(135, 215, 161, 0.2);
+        background: rgba(135, 215, 161, 0.08);
+    }
+}
+
+@media (max-width: 1080px) {
+    .summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .interview-layout {
+        grid-template-columns: 220px minmax(0, 1fr);
+    }
+
+    .interview-side {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 860px) {
+    .interview-page {
+        padding: 1.4rem 0.95rem;
+    }
+
+    .interview-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .nav-list {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    .nav-item {
+        flex: 1 1 180px;
+    }
+
+    .content-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 520px) {
+    .interview-overview h1 {
+        font-size: 1.65rem;
+    }
+
+    .nav-item {
+        flex-basis: 100%;
+    }
+}

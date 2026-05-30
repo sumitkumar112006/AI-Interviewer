@@ -1,4 +1,5 @@
 const pdfParse = require('pdf-parse')
+const mongoose = require('mongoose')
 const {generateInterviewReport} = require('../services/ai.service')
 const interviewReportModle = require('../models/interviewReport.model')
 
@@ -30,4 +31,44 @@ async function generateInterviewReportController(req, res) {
     })
 }
 
-module.exports = { generateInterviewReportController }
+async function getInterviewReportByIdController(req, res) {
+    const { interviewId } = req.params
+
+    if (!mongoose.isValidObjectId(interviewId)) {
+        return res.status(400).json({
+            message: "Invalid interview report id"
+        })
+    }
+
+    const interviewReport = await interviewReportModle.findOne({
+        _id: interviewId,
+        user: req.user.id
+    })
+
+    if (!interviewReport) {
+        return res.status(404).json({
+            message: "Interview report not found"
+        })
+    }
+
+    res.status(200).json({
+        interviewReport
+    })
+}
+
+
+async function getAllInterviewReportController(req, res) {
+    const interviewReports = await interviewReportModle
+        .find({ user: req.user.id })
+        .sort({ createdAt: -1 }).select("-resume -selfDescription -jobDescription -__v -tecnicalQuestion -behaviooralQuestion -skillGaps -preparationPlan")
+
+    res.status(200).json({
+        totalInterviews: interviewReports.length,
+        interviewReports
+    })
+}
+module.exports = {
+    generateInterviewReportController,
+    getInterviewReportByIdController,
+    getAllInterviewReportController
+}
