@@ -53,7 +53,7 @@ const skillGapSchema = z.object({
 })
 
 const aiInterviewReportSchema = z.object({
-    Title: z
+    developerTitle: z
         .string()
         .describe(
             "A concise best-fit developer role title inferred from the candidate profile and target job, such as Front-End Developer, React Developer, or Full-Stack Developer."
@@ -166,6 +166,88 @@ function normalizeObjectArray(value) {
     return []
 }
 
+function normalizeQuestionItem(item, fallbackIntention, fallbackAnswer) {
+    const parsedItem = parseJsonLikeValue(item)
+
+    if (parsedItem && typeof parsedItem === "object" && !Array.isArray(parsedItem)) {
+        const question = String(parsedItem.question ?? parsedItem.title ?? parsedItem.prompt ?? "").trim()
+        const intention = String(
+            parsedItem.intention ?? parsedItem.reason ?? parsedItem.purpose ?? fallbackIntention
+        ).trim()
+        const answer = String(
+            parsedItem.answer ?? parsedItem.sampleAnswer ?? parsedItem.guidance ?? fallbackAnswer
+        ).trim()
+
+        if (!question) {
+            return null
+        }
+
+        return { question, intention, answer }
+    }
+
+    const question = String(parsedItem ?? "").trim()
+
+    if (!question) {
+        return null
+    }
+
+    return {
+        question,
+        intention: fallbackIntention,
+        answer: fallbackAnswer,
+    }
+}
+
+function normalizeQuestionArray(value, options = {}) {
+    const {
+        limit = 5,
+        fallbackIntention = "Assesses the candidate's fit for the target role.",
+        fallbackAnswer = "Answer with a concise, role-specific example that shows clear reasoning and results.",
+    } = options
+
+    return normalizeObjectArray(value)
+        .map((item) => normalizeQuestionItem(item, fallbackIntention, fallbackAnswer))
+        .filter(Boolean)
+        .slice(0, limit)
+}
+
+function normalizeSkillGapItem(item) {
+    const parsedItem = parseJsonLikeValue(item)
+
+    if (parsedItem && typeof parsedItem === "object" && !Array.isArray(parsedItem)) {
+        const skill = String(parsedItem.skill ?? parsedItem.name ?? parsedItem.gap ?? "").trim()
+        const normalizedSeverity = String(parsedItem.severity ?? "medium").toLowerCase().trim()
+
+        if (!skill) {
+            return null
+        }
+
+        return {
+            skill,
+            severity: ["low", "medium", "high"].includes(normalizedSeverity)
+                ? normalizedSeverity
+                : "medium",
+        }
+    }
+
+    const skill = String(parsedItem ?? "").trim()
+
+    if (!skill) {
+        return null
+    }
+
+    return {
+        skill,
+        severity: "medium",
+    }
+}
+
+function normalizeSkillGapArray(value) {
+    return normalizeObjectArray(value)
+        .map(normalizeSkillGapItem)
+        .filter(Boolean)
+}
+
 function normalizeStringArray(value) {
     const parsedValue = parseJsonLikeValue(value)
 
@@ -188,15 +270,23 @@ function normalizeInterviewReport(rawReport) {
     }))
 
     return {
-        developerTitle: String(rawReport.developerTitle ?? rawReport.title ?? "").trim(),
+        developerTitle: String(rawReport.developerTitle ?? rawReport.title ?? rawReport.Title ?? "").trim(),
         matchScore: rawReport.matchScore,
-        technicalQuestions: normalizeObjectArray(
-            rawReport.technicalQuestions ?? rawReport.technicalQuestion
+        technicalQuestions: normalizeQuestionArray(
+            rawReport.technicalQuestions ?? rawReport.technicalQuestion,
+            {
+                fallbackIntention: "Evaluates technical depth, implementation ability, and practical problem-solving for the role.",
+                fallbackAnswer: "Answer with concrete implementation details, tradeoffs, and an example from your past work.",
+            }
         ),
-        behavioralQuestion: normalizeObjectArray(
-            rawReport.behavioralQuestion ?? rawReport.behaviouralQuestion
+        behavioralQuestion: normalizeQuestionArray(
+            rawReport.behavioralQuestion ?? rawReport.behaviouralQuestion,
+            {
+                fallbackIntention: "Evaluates communication, ownership, teamwork, and professional judgment in real situations.",
+                fallbackAnswer: "Use a concise STAR-style example that shows your actions, reasoning, and outcome.",
+            }
         ),
-        skillGaps: normalizeObjectArray(rawReport.skillGaps),
+        skillGaps: normalizeSkillGapArray(rawReport.skillGaps),
         preparationPlan: normalizedPreparationPlan,
     }
 }
@@ -308,4 +398,3 @@ Job Description: ${roleDescription}
 }
 
 module.exports = { generateInterviewReport }
-

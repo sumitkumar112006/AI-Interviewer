@@ -1,6 +1,4 @@
 const mongoose = require('mongoose');
-const { string } = require('zod');
-
 /**
  * -job description schema - string
  * -resume text - string
@@ -116,7 +114,7 @@ const interviewReportSchema = new mongoose.Schema({
     selfDescription: {
         type: String,
     },
-    Title: {
+    developerTitle: {
         type: String,
         required: [true, "Developer title is required"],
         trim: true

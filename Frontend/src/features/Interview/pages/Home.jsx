@@ -1,7 +1,83 @@
-import React from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import '../style/home.scss'
+import { useInterview } from '../hooks/useInterview'
+import { useNavigate } from 'react-router-dom'
+
+function extractObjectId(value) {
+    if (!value) {
+        return ''
+    }
+
+    if (typeof value === 'string') {
+        return value
+    }
+
+    if (typeof value === 'object' && '$oid' in value) {
+        return String(value.$oid ?? '').trim()
+    }
+
+    return String(value).trim()
+}
 
 const Home = () => {
+    const { loading, report, generateReport } = useInterview()
+    const [formData, setFormData] = useState({
+        jobDescription: '',
+        selfDescription: ''
+    })
+    const resumeInputRef = useRef()
+
+    const navigate = useNavigate()
+
+    useEffect(() => {
+        if (!report) {
+            return
+        }
+
+        setFormData({
+            jobDescription: report.jobDescription ?? '',
+            selfDescription: report.selfDescription ?? ''
+        })
+    }, [report])
+
+    const handleInputChange = (e) => {
+        const { name, value } = e.target
+
+        setFormData((currentFormData) => ({
+            ...currentFormData,
+            [name]: value
+        }))
+    }
+
+    const handleGenerateReport = async () => {
+        const resumeFile = resumeInputRef.current.files[0]
+        const data = await generateReport({
+            jobDescription: formData.jobDescription,
+            selfDescription: formData.selfDescription,
+            resumeFile
+        })
+
+        const interviewId = extractObjectId(data?._id)
+
+        if (interviewId) {
+            navigate(`/interview/${interviewId}`, {
+                state: {
+                    interviewReport: data
+                }
+            })
+        }
+
+    }
+
+    if (loading) {
+        return (
+            <main>
+                <h1>Interview Plan is Generating...</h1>
+            </main>
+        )
+    }
+
+
     return (
         <div className='home'>
             <div className="workspace">
@@ -27,12 +103,12 @@ const Home = () => {
                             Paste the responsibilities, qualifications, and key expectations for the role.
                         </p>
                         <textarea
-                            name="jobDescripton"
+                            value={formData.jobDescription}
+                            onChange={handleInputChange}
+                            name="jobDescription"
                             id="jobDescription"
                             placeholder='Paste the detailed job description here. Include responsibilities, qualifications, tools, and company expectations...'
-                        >
-
-                        </textarea>
+                        />
                         <div className="field-footer">
                             <span>Minimum 200 words recommended</span>
                             <span>Ready for processing</span>
@@ -47,7 +123,7 @@ const Home = () => {
                             </div>
                             <p className='highlight'>Use resume and self description together for better results.</p>
                             <label className='file-label' htmlFor="resume">Upload Resume</label>
-                            <input hidden type="file" name='resume' id='resume' accept='.pdf' />
+                            <input ref={resumeInputRef} hidden type="file" name='resume' id='resume' accept='.pdf' />
                         </div>
 
                         <div className="panel input-group textarea-group">
@@ -58,15 +134,21 @@ const Home = () => {
                                 Add a few lines about your strengths, experience, and career direction.
                             </p>
                             <textarea
+                                value={formData.selfDescription}
+                                onChange={handleInputChange}
                                 name="selfDescription"
                                 id="selfDescription"
                                 placeholder='Enter your self description in a few sentences. Highlight your strengths and career goals...'
-                            >
-
-                            </textarea>
+                            />
                         </div>
 
-                        <button className='button primary-btn'>Generate Interview Report</button>
+                        <button
+                            onClick={handleGenerateReport}
+                            className='button primary-btn'
+                            disabled={loading}
+                        >
+                            {loading ? 'Generating...' : 'Generate Interview Report'}
+                        </button>
                     </div>
                 </div>
             </div>

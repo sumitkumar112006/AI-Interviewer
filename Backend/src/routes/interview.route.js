@@ -19,6 +19,13 @@ interviewRouter.post('/', authMidleware.authUser, upload.single("resume"), inter
  * @description get interview report by interview id.
  * @access private
  */
+interviewRouter.get('/report/:interviewId', authMidleware.authUser, interviewController.getInterviewReportByIdController)
+
+/**
+ * @route GET /api/interview/:interviewId
+ * @description backward-compatible interview report lookup by interview id.
+ * @access private
+ */
 interviewRouter.get('/:interviewId', authMidleware.authUser, interviewController.getInterviewReportByIdController)
 
 /**
