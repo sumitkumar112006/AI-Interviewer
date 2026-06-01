@@ -19,15 +19,52 @@ function extractObjectId(value) {
     return String(value).trim()
 }
 
+function extractDateValue(value) {
+    if (!value) {
+        return ''
+    }
+
+    if (typeof value === 'string' || value instanceof Date) {
+        return value
+    }
+
+    if (typeof value === 'object' && '$date' in value) {
+        return value.$date
+    }
+
+    return value
+}
+
+function formatDate(value) {
+    if (!value) {
+        return 'Not available'
+    }
+
+    const normalizedValue = extractDateValue(value)
+    const date = new Date(normalizedValue)
+
+    if (Number.isNaN(date.getTime())) {
+        return 'Not available'
+    }
+
+    return new Intl.DateTimeFormat('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+    }).format(date)
+}
+
 const Home = () => {
-    const { loading, report, generateReport } = useInterview()
+    const { loading, report, generateReport, reports, getReports } = useInterview()
     const [formData, setFormData] = useState({
         jobDescription: '',
         selfDescription: ''
     })
     const resumeInputRef = useRef()
+    const hasRequestedReportsRef = useRef(false)
 
     const navigate = useNavigate()
+    const recentReports = Array.isArray(reports) ? reports : []
 
     useEffect(() => {
         if (!report) {
@@ -39,6 +76,15 @@ const Home = () => {
             selfDescription: report.selfDescription ?? ''
         })
     }, [report])
+
+    useEffect(() => {
+        if (reports !== null || hasRequestedReportsRef.current) {
+            return
+        }
+
+        hasRequestedReportsRef.current = true
+        void getReports()
+    }, [getReports, reports])
 
     const handleInputChange = (e) => {
         const { name, value } = e.target
@@ -72,7 +118,7 @@ const Home = () => {
     if (loading) {
         return (
             <main>
-                <h1>Interview Plan is Generating...</h1>
+                <h1>Interview Plan Generator is Loading...</h1>
             </main>
         )
     }
@@ -151,6 +197,33 @@ const Home = () => {
                         </button>
                     </div>
                 </div>
+
+                {/*Recent Reports are.... */}
+
+                {recentReports.length > 0 && (
+                    <section className='recent-reports'>
+                        <h2>My Recent Interview Plans</h2>
+                        <ul className='reports-list'>
+                            {recentReports.map((reportItem, index) => (
+                                <div className="report-item">
+                                    <li key={extractObjectId(reportItem?._id) || `${reportItem?.title || reportItem?.developerTitle || 'report'}-${index}`}>
+                                        <h3>{reportItem?.developerTitle || reportItem?.Title || reportItem?.title || 'Untitled Report'}</h3>
+                                        <p className='report-meta'>
+                                            Generated on {formatDate(reportItem?.createdAt ?? reportItem?.updatedAt)}
+                                        </p>
+                                    </li>
+                                </div>
+                            ))}
+                        </ul>
+                    </section>
+                )}
+
+                <div className="footer">
+                    <p>Privacy</p>
+                    <p>Contact</p>
+                    <p>About</p>
+                </div>
+
             </div>
         </div>
     )

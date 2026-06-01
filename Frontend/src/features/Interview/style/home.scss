@@ -32,6 +32,9 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
+
+
+    
 }
 
 .workspace-header {
@@ -156,6 +159,8 @@
             transform: scale(0.99);
         }
     }
+
+        
 }
 
 .section-heading {
@@ -235,6 +240,41 @@
     font-size: 0.63rem;
     letter-spacing: 0.12em;
     text-transform: uppercase;
+}
+
+
+.recent-reports {
+
+
+    .reports-list {
+        display: flex;
+        justify-content: center;
+        text-align: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        
+        
+
+        .report-item{
+            padding: 1rem;
+            background:
+                    radial-gradient(circle at top left, rgba(87, 208, 255, 0.16), transparent 24%),
+                    radial-gradient(circle at top right, rgba(125, 124, 255, 0.12), transparent 20%),
+                    linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%);
+                color: var(--text);
+                color: #8fe5ff;
+                border-radius: 1rem;
+                text-wrap: wrap;
+        }
+    }
+}
+
+.footer{
+    position: relative;
+    display: flex;
+    justify-content: space-around;
+    opacity: 0.4;
+    font-weight: 100;
 }
 
 @media (max-width: 860px) {
