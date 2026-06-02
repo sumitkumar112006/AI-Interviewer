@@ -208,6 +208,7 @@ const Home = () => {
                                 <div className="report-item">
                                     <li key={extractObjectId(reportItem?._id) || `${reportItem?.title || reportItem?.developerTitle || 'report'}-${index}`}>
                                         <h3>{reportItem?.developerTitle || reportItem?.Title || reportItem?.title || 'Untitled Report'}</h3>
+                                        <h3 className='match-score'>Match Score : {reportItem?.matchScore || 'N/A'}</h3>
                                         <p className='report-meta'>
                                             Generated on {formatDate(reportItem?.createdAt ?? reportItem?.updatedAt)}
                                         </p>
