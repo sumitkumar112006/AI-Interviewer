@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import LoadingPage from '../../Interview/Loading'
 
 const Register = () => {
 
@@ -19,7 +20,7 @@ const Register = () => {
     }
     if (loading) {
         return (<main>
-            <h1>Loading....</h1>
+            <LoadingPage />
         </main>)
     }
 

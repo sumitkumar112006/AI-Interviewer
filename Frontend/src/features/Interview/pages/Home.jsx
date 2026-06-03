@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import '../style/home.scss'
 import { useInterview } from '../hooks/useInterview'
 import { useNavigate } from 'react-router-dom'
+import LoadingPage from '../Loading'
 
 function extractObjectId(value) {
     if (!value) {
@@ -115,10 +116,24 @@ const Home = () => {
 
     }
 
+    const handleViewReport = (reportItem) => {
+        const interviewId = extractObjectId(reportItem?._id)
+
+        if (!interviewId) {
+            return
+        }
+
+        navigate(`/interview/${interviewId}`, {
+            state: {
+                interviewReport: reportItem
+            }
+        })
+    }
+
     if (loading) {
         return (
             <main>
-                <h1>Interview Plan Generator is Loading...</h1>
+                <LoadingPage />
             </main>
         )
     }
@@ -204,17 +219,30 @@ const Home = () => {
                     <section className='recent-reports'>
                         <h2>My Recent Interview Plans</h2>
                         <ul className='reports-list'>
-                            {recentReports.map((reportItem, index) => (
-                                <div className="report-item">
-                                    <li key={extractObjectId(reportItem?._id) || `${reportItem?.title || reportItem?.developerTitle || 'report'}-${index}`}>
+                            {recentReports.map((reportItem, index) => {
+                                const interviewId = extractObjectId(reportItem?._id)
+
+                                return (
+                                    <li
+                                        key={interviewId || `${reportItem?.title || reportItem?.developerTitle || 'report'}-${index}`}
+                                        className="report-item"
+                                    >
                                         <h3>{reportItem?.developerTitle || reportItem?.Title || reportItem?.title || 'Untitled Report'}</h3>
                                         <h3 className='match-score'>Match Score : {reportItem?.matchScore || 'N/A'}</h3>
                                         <p className='report-meta'>
                                             Generated on {formatDate(reportItem?.createdAt ?? reportItem?.updatedAt)}
                                         </p>
+                                        <button
+                                            type="button"
+                                            className='view button'
+                                            onClick={() => handleViewReport(reportItem)}
+                                            disabled={!interviewId}
+                                        >
+                                            View Report
+                                        </button>
                                     </li>
-                                </div>
-                            ))}
+                                )
+                            })}
                         </ul>
                     </section>
                 )}

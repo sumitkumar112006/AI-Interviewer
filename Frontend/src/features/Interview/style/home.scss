@@ -247,6 +247,9 @@
 
 
     .reports-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
         display: flex;
         justify-content: center;
         text-align: center;
@@ -256,6 +259,10 @@
         
 
         .report-item{
+            display: flex;
+            flex-direction: column;
+            align-items: start;
+            gap: 0.75rem;
             padding: 1rem;
             background:
                     radial-gradient(circle at top left, rgba(87, 208, 255, 0.16), transparent 24%),
@@ -269,6 +276,19 @@
 
                 .match-score {
                     color: #ca003d;
+                }
+
+                .view {
+                    align-self: center;
+                    padding-inline: 1rem;
+                    padding-block: 0.25rem;
+                    background-color: #ca003d;
+                    color: whitesmoke;
+                    transition: 0.25s ease-out ;
+
+                    &:hover{
+                        transform: scale(1.1);
+                    }
                 }
         }
     }

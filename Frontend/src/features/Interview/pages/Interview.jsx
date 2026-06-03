@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { useLocation, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { getInterviewReportById } from '../services/interview.api'
 import { useInterview } from '../hooks/useInterview'
+import LoadingPage from '../Loading'
 import '../style/interview.scss'
 
 const sectionConfig = [
@@ -248,6 +249,7 @@ function ChevronIcon({ isOpen }) {
 const Interview = () => {
     const { interviewId } = useParams()
     const location = useLocation()
+    const navigate = useNavigate()
     const { report: sharedReport } = useInterview()
     const [activeSection, setActiveSection] = useState(sectionConfig[0].id)
     const [report, setReport] = useState(null)
@@ -268,6 +270,18 @@ const Interview = () => {
             ...currentItemsState,
             [itemKey]: !currentItemsState[itemKey]
         }))
+    }
+
+    const handleGenerateResume = () => {
+        if (!interviewId) {
+            return
+        }
+
+        navigate(`/resume/${interviewId}`, {
+            state: {
+                interviewReport: normalizedReport ?? report ?? null
+            }
+        })
     }
 
     useEffect(() => {
@@ -442,20 +456,36 @@ const Interview = () => {
                 </div>
 
                 <div className="interview-layout">
-                    <aside className="interview-nav panel">
+                    <aside className="panel">
                         <p className="panel-label">Sections</p>
-                        <div className="nav-list">
-                            {sectionConfig.map((section) => (
-                                <button
-                                    key={section.id}
-                                    type="button"
-                                    className={activeSection === section.id ? 'nav-item active' : 'nav-item'}
-                                    onClick={() => setActiveSection(section.id)}
-                                >
-                                    <span>{section.label}</span>
-                                    <small>{sectionData[section.id]?.length ?? 0}</small>
-                                </button>
-                            ))}
+                        <div className="interview-nav">
+                            <div className="nav-list">
+                                {sectionConfig.map((section) => (
+                                    <button
+                                        key={section.id}
+                                        type="button"
+                                        className={activeSection === section.id ? 'nav-item active' : 'nav-item'}
+                                        onClick={() => setActiveSection(section.id)}
+                                    >
+                                        <span>{section.label}</span>
+                                        <small>{sectionData[section.id]?.length ?? 0}</small>
+                                    </button>
+                                ))}
+                            </div>
+
+                            <button
+                                type="button"
+                                className="generate-resume"
+                                onClick={handleGenerateResume}
+                            >
+                                <span className="generate-resume-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 20 20" focusable="false">
+                                        <path d="M10 2.5L11.6 6.4L15.5 8L11.6 9.6L10 13.5L8.4 9.6L4.5 8L8.4 6.4L10 2.5Z" />
+                                        <path d="M15 11.5L15.9 13.6L18 14.5L15.9 15.4L15 17.5L14.1 15.4L12 14.5L14.1 13.6L15 11.5Z" />
+                                    </svg>
+                                </span>
+                                <span>Generate Resume</span>
+                            </button>
                         </div>
                     </aside>
 

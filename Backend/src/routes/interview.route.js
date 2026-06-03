@@ -36,4 +36,11 @@ interviewRouter.get('/:interviewId', authMidleware.authUser, interviewController
 
 interviewRouter.get("/", authMidleware.authUser, interviewController.getAllInterviewReportController)
 
+/**
+ * @description This route is for generating resume pdf from the interview report.
+ * @access private
+ */
+
+interviewRouter.post('/resume/pdf/:interviewReportId', authMidleware.authUser, interviewController.generateResumePdfController)
+
 module.exports = interviewRouter

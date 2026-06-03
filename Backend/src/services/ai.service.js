@@ -1,6 +1,7 @@
 const { GoogleGenAI } = require("@google/genai")
 const { z } = require('zod')
 const { zodToJsonSchema } = require('zod-to-json-schema')
+const puppet = require('puppeteer')
 
 
 const ai = new GoogleGenAI({
@@ -262,6 +263,60 @@ function normalizeStringArray(value) {
     return [String(parsedValue).trim()].filter(Boolean)
 }
 
+function extractResumeHtmlContent(value) {
+    const parsedValue = parseJsonLikeValue(value)
+
+    if (typeof parsedValue === "string") {
+        return parsedValue.trim()
+    }
+
+    if (parsedValue && typeof parsedValue === "object" && !Array.isArray(parsedValue)) {
+        const htmlCandidate = [
+            parsedValue.html,
+            parsedValue.HTML,
+            parsedValue.resumeHtml,
+            parsedValue.content,
+            parsedValue.markup,
+        ].find((candidate) => typeof candidate === "string" && candidate.trim())
+
+        return htmlCandidate ? htmlCandidate.trim() : ""
+    }
+
+    return ""
+}
+
+function normalizeResumeHtmlDocument(htmlContent) {
+    const normalizedHtml = String(htmlContent ?? "").trim()
+
+    if (!normalizedHtml) {
+        throw new Error("Resume PDF generation returned empty HTML content.")
+    }
+
+    if (/<html[\s>]/i.test(normalizedHtml)) {
+        return normalizedHtml
+    }
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        body {
+            margin: 0;
+            padding: 32px;
+            font-family: Arial, sans-serif;
+            color: #111827;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+${normalizedHtml}
+</body>
+</html>`
+}
+
 function normalizeInterviewReport(rawReport) {
     const normalizedPreparationPlan = normalizeObjectArray(rawReport.preparationPlan).map((item) => ({
         day: typeof item?.day === "number" ? `Day ${item.day}` : String(item?.day ?? "").trim(),
@@ -397,4 +452,70 @@ Job Description: ${roleDescription}
 
 }
 
-module.exports = { generateInterviewReport }
+
+async function generatePfdFromHtml(htmlContent) {
+    const browser = await puppet.launch()
+    const page = await browser.newPage()
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' })
+    const pdfBuffer = await page.pdf({
+        format: 'A4',
+        margin: {
+            top: "20mm",
+            bottom: "20mm",
+            left: "15mm",
+            right:"15mm"
+        }
+     })
+    await browser.close()
+    return pdfBuffer
+}
+
+
+
+async function generateResumePfd({resume, selfDescription, jobDescription}) {
+    const resumePdfSchema = z.object({
+        html:z.string().describe("The HTML content of resume which can be converted to PDF using any library like puppeteer")
+    })
+
+    const prompt = `
+Generate a professional one-page resume in valid JSON only.
+
+Rules:
+- Return only valid JSON.
+- Use exactly one top-level key: "html".
+- The "html" value must be a string.
+- The string must contain complete printable HTML for an A4 resume.
+- Do not return markdown fences.
+- Do not return undefined or null.
+- Do not feel like AI generated content. Write like a human creating a resume.
+- Focus on clarity, professionalism, and relevance to the job description.
+- Use the candidate details to create a tailored resume that highlights strengths and fits the target role.
+- Resume should be ATS friendly it should rank in ATS systems and also visually appealing for human recruiters.
+- Resume should be concise and ideally fit in one-two page when converted to PDF.
+
+Candidate details:
+Resume: ${resume}
+Self Description: ${selfDescription}
+Job Description: ${jobDescription}
+`
+    
+    
+    const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseJsonSchema: zodToJsonSchema(resumePdfSchema)
+        }
+    })
+
+    const jsonContent = JSON.parse(response.text)
+    const htmlContent = extractResumeHtmlContent(jsonContent)
+    const normalizedHtmlDocument = normalizeResumeHtmlDocument(htmlContent)
+
+    const pdfBuffer = await generatePfdFromHtml(normalizedHtmlDocument)
+
+    return pdfBuffer
+}
+
+module.exports = { generateInterviewReport, generateResumePfd }

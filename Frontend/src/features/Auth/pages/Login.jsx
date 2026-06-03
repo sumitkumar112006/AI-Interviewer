@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useNavigate } from 'react-router-dom'
 import Home from './Home'
+import LoadingPage from '../../Interview/Loading'
 
 const Login = () => {
 
@@ -23,7 +24,7 @@ const Login = () => {
 
     if (loading) {
         return (<main>
-            <h1>Loading....</h1>
+            <LoadingPage />
         </main>)
     }
 
