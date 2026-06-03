@@ -4,10 +4,22 @@ const cors = require('cors');
 
 const app = express();
 
+const allowedOrigins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://ai-interviewer-kzwc.onrender.com",
+    ...(process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",").map(origin => origin.trim()) : [])
+].filter(Boolean);
+
 app.use(express.json());
 app.use(cookieParser());
 app.use(cors({
-    origin: process.env.CORS_ORIGIN || "http://localhost:5173",
+    origin: function (origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
     credentials: true
 }))
 
