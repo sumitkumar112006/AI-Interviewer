@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: ai-interviewer-backend
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: MONGO_URI
+        description: "MongoDB connection string (mongodb+srv://...)"
+      - key: JWT_SECRET
+        description: "JWT secret key (generate: openssl rand -hex 32)"
+      - key: GOOGLE_GENAI_API_KEY
+        description: "Google Generative AI API key from makersuite.google.com"
+      - key: CORS_ORIGIN
+        description: "Frontend URL (e.g., https://your-frontend.vercel.app)"
