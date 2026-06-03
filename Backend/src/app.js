@@ -8,7 +8,8 @@ const allowedOrigins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://ai-interviewer-kzwc.onrender.com",
-    "https://ai-interviewer-silk.vercel.app/",
+    "https://ai-interviewer-silk.vercel.app",
+    "https://ai-interviewer-git-main-amitk839170-gmailcoms-projects.vercel.app",
     ...(process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",").map(origin => origin.trim()) : [])
 ].filter(Boolean);
 
