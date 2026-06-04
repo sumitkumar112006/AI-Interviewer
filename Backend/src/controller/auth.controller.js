@@ -10,6 +10,26 @@ const cookieOptions = {
     maxAge: 24 * 60 * 60 * 1000
 }
 
+function handleAuthControllerError(res, err) {
+    if (err?.code === 11000) {
+        const duplicateField = Object.keys(err.keyPattern || {})[0];
+
+        return res.status(409).json({
+            message: `${duplicateField || "User"} already exists`
+        });
+    }
+
+    if (err?.name === "ValidationError") {
+        return res.status(400).json({
+            message: err.message
+        });
+    }
+
+    return res.status(500).json({
+        message: err?.message || "Internal server error"
+    });
+}
+
 /**
  * @name resgisterUserController
  * @description expects {username email password} req 
@@ -17,53 +37,57 @@ const cookieOptions = {
  * @access public
  */
 async function registerUserController(req, res) {
-    const { username, email, password } = req.body;
-    if (!username || !email || !password) {
-        return res.status(400).json({
-            message: "Provide all details carefully"
+    try {
+        const { username, email, password } = req.body;
+        if (!username || !email || !password) {
+            return res.status(400).json({
+                message: "Provide all details carefully"
+            })
+        }
+
+        const isUserAlreadyExists = await userModel.findOne({
+            $or: [{ username }, { email }]
         })
-    }
 
-    const isUserAlreadyExists = await userModel.findOne({
-        $or: [{ username }, { email }]
-    })
+        if (isUserAlreadyExists) {
+            if (isUserAlreadyExists.username === username) {
+                return res.status(409).json({
+                    message: "Username already exists"
+                });
+            } else {
+                return res.status(409).json({
+                    message: "Email already exists"
+                });
+            }
 
-    if (isUserAlreadyExists) {
-        if (isUserAlreadyExists.username === username) {
-            return res.status(409).json({
-                message: "Username already exists"
-            });
-        } else {
-            return res.status(409).json({
-                message: "Email already exists"
-            });
         }
 
+        const hash = await bcrypt.hash(password, 10);
+        const user = await userModel.create({
+            username,
+            email,
+            password: hash,
+        })
+
+        const token = JWT.sign(
+            { id: user._id, username: user.username },
+            process.env.JWT_SECRET,
+            { expiresIn: "1d" }
+        )
+
+        res.cookie("token", token, cookieOptions);
+
+        return res.status(201).json({
+            message: "User registered successfully",
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+            }
+        })
+    } catch (err) {
+        return handleAuthControllerError(res, err);
     }
-
-    const hash = await bcrypt.hash(password, 10);
-    const user = await userModel.create({
-        username,
-        email,
-        password: hash,
-    })
-
-    const token = JWT.sign(
-        { id: user._id, username: user.username },
-        process.env.JWT_SECRET,
-        { expiresIn: "1d" }
-    )
-
-    res.cookie("token", token, cookieOptions);
-
-    res.status(201).json({
-        message: "User registered successfully",
-        user: {
-            id: user._id,
-            username: user.username,
-            email: user.email,
-        }
-    })
 }
 
 
