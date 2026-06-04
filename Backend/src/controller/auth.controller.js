@@ -147,18 +147,55 @@ async function logoutController(req, res) {
  * @access private
 */
 async function getMeController(req, res) {
+    const token = req.cookies.token;
 
-    const user = await userModel.findById(req.user.id)
+    if (!token) {
+        return res.status(200).json({
+            message: "No active session",
+            user: null
+        });
+    }
 
-    res.status(200).json({
-        message: "User details fetched successfully",
-        user: {
-            id: user._id,
-            username: user.username,
-            email: user.email
+    const isTokenBlacklisted = await blacklistModel.findOne({ token });
+
+    if (isTokenBlacklisted) {
+        res.clearCookie("token", cookieOptions);
+
+        return res.status(200).json({
+            message: "Session expired",
+            user: null
+        });
+    }
+
+    try {
+        const decoded = JWT.verify(token, process.env.JWT_SECRET);
+        const user = await userModel.findById(decoded.id);
+
+        if (!user) {
+            res.clearCookie("token", cookieOptions);
+
+            return res.status(200).json({
+                message: "User not found",
+                user: null
+            });
         }
 
-    })
+        return res.status(200).json({
+            message: "User details fetched successfully",
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email
+            }
+        });
+    } catch (err) {
+        res.clearCookie("token", cookieOptions);
+
+        return res.status(200).json({
+            message: "Invalid session",
+            user: null
+        });
+    }
 }
 
 module.exports = {

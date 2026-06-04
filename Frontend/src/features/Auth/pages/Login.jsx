@@ -4,7 +4,6 @@ import '../auth.form.scss'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useNavigate } from 'react-router-dom'
-import Home from './Home'
 import LoadingPage from '../../Interview/Loading'
 
 const Login = () => {

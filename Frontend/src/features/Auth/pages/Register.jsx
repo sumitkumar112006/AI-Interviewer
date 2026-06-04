@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate, Link, useSearchParams } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import LoadingPage from '../../Interview/Loading'
 
@@ -11,11 +11,11 @@ const Register = () => {
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
 
-    const {loading, handleRegister} = useAuth()
+    const { loading, handleRegister } = useAuth()
 
     const handelSubmit = async (e) => {
         e.preventDefault()
-        await handleRegister(username, email, password)
+        await handleRegister({ username, email, password })
         navigate("/")
     }
     if (loading) {
@@ -29,13 +29,11 @@ const Register = () => {
             <div className="form-container">
                 <h1>Register</h1>
                 <form className="auth-form"
-                    
-                    onSubmit={() => { handelSubmit }}>
-                    
+                    onSubmit={handelSubmit}>
                     <div className="input-group">
                         <label htmlFor="username">Username</label>
                         <input type="text"
-                            onchange={(e) => setUsername(e.target.value)}
+                            onChange={(e) => setUsername(e.target.value)}
                             id="username" name="username" placeholder="Enter your username..." />
                     </div>
 
