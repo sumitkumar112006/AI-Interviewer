@@ -23,9 +23,21 @@ export async function getAllInterviewReport() {
 
 
 export const generateInterviewReport = async ({ jobDescription, selfDescription, resumeFile }) => {
+    if (!resumeFile) {
+        throw new Error('Resume file is required.')
+    }
+
+    if (!jobDescription || !jobDescription.trim()) {
+        throw new Error('Job description is required.')
+    }
+
+    if (!selfDescription || !selfDescription.trim()) {
+        throw new Error('Self description is required.')
+    }
+
     const formData = new FormData()
-    formData.append("jobDescription", jobDescription)
-    formData.append("selfDescription", selfDescription)
+    formData.append("jobDescription", jobDescription.trim())
+    formData.append("selfDescription", selfDescription.trim())
     formData.append("resume", resumeFile)
 
     const response = await api.post("/api/interview", formData, {

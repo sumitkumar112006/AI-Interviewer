@@ -21,7 +21,8 @@ export const useInterview = () => {
             setReport(response.interviewReport)
             return response.interviewReport
         } catch (err) {
-            console.log(err)
+            console.error('Generate report error:', err)
+            throw err
         } finally {
             setLoading(false)
         }

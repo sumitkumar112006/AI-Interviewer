@@ -62,6 +62,7 @@ const Home = () => {
         jobDescription: '',
         selfDescription: ''
     })
+    const [selectedFileName, setSelectedFileName] = useState('')
     const resumeInputRef = useRef()
     const hasRequestedReportsRef = useRef(false)
 
@@ -97,24 +98,53 @@ const Home = () => {
         }))
     }
 
-    const handleGenerateReport = async () => {
-        const resumeFile = resumeInputRef.current.files[0]
-        const data = await generateReport({
-            jobDescription: formData.jobDescription,
-            selfDescription: formData.selfDescription,
-            resumeFile
-        })
-
-        const interviewId = extractObjectId(data?._id)
-
-        if (interviewId) {
-            navigate(`/interview/${interviewId}`, {
-                state: {
-                    interviewReport: data
-                }
-            })
+    const handleFileChange = (e) => {
+        const file = e.target.files[0]
+        if (file) {
+            setSelectedFileName(file.name)
+        } else {
+            setSelectedFileName('')
         }
+    }
 
+    const handleGenerateReport = async () => {
+        try {
+            const resumeFile = resumeInputRef.current.files[0]
+
+            if (!resumeFile) {
+                alert('Please upload a resume PDF file.')
+                return
+            }
+
+            if (!formData.jobDescription?.trim()) {
+                alert('Please enter a job description.')
+                return
+            }
+
+            if (!formData.selfDescription?.trim()) {
+                alert('Please enter a self description.')
+                return
+            }
+
+            const data = await generateReport({
+                jobDescription: formData.jobDescription,
+                selfDescription: formData.selfDescription,
+                resumeFile
+            })
+
+            const interviewId = extractObjectId(data?._id)
+
+            if (interviewId) {
+                navigate(`/interview/${interviewId}`, {
+                    state: {
+                        interviewReport: data
+                    }
+                })
+            }
+        } catch (error) {
+            console.error('Generate report error:', error)
+            alert(`Error generating report: ${error?.response?.data?.message || error?.message || 'Unknown error'}`)
+        }
     }
 
     const handleViewReport = (reportItem) => {
@@ -135,10 +165,10 @@ const Home = () => {
         try {
             await handleLogout()
             navigate('/login')
-        }catch (error) {
+        } catch (error) {
             console.log(error)
         }
-        
+
     }
 
     if (loading) {
@@ -195,8 +225,18 @@ const Home = () => {
                                 <h3>Resume</h3>
                             </div>
                             <p className='highlight'>Use resume and self description together for better results.</p>
-                            <label className='file-label' htmlFor="resume">Upload Resume</label>
-                            <input ref={resumeInputRef} hidden type="file" name='resume' id='resume' accept='.pdf' />
+                            <label className='file-label' htmlFor="resume">
+                                {selectedFileName ? `✓ ${selectedFileName}` : 'Upload Resume'}
+                            </label>
+                            <input
+                                ref={resumeInputRef}
+                                hidden
+                                type="file"
+                                name='resume'
+                                id='resume'
+                                accept='.pdf'
+                                onChange={handleFileChange}
+                            />
                         </div>
 
                         <div className="panel input-group textarea-group">
