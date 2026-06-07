@@ -454,20 +454,38 @@ Job Description: ${roleDescription}
 
 
 async function generatePfdFromHtml(htmlContent) {
-    const browser = await puppet.launch()
-    const page = await browser.newPage()
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' })
-    const pdfBuffer = await page.pdf({
-        format: 'A4',
-        margin: {
-            top: "20mm",
-            bottom: "20mm",
-            left: "15mm",
-            right:"15mm"
+    let browser
+
+    try {
+        browser = await puppet.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        })
+    } catch (error) {
+        throw new Error(
+            `Unable to launch the PDF browser. ${error?.message || 'Chrome/Chromium may be missing in the deployment environment.'}`
+        )
+    }
+
+    try {
+        const page = await browser.newPage()
+        await page.setContent(htmlContent, { waitUntil: 'networkidle0' })
+        const pdfBytes = await page.pdf({
+            format: 'A4',
+            margin: {
+                top: "20mm",
+                bottom: "20mm",
+                left: "15mm",
+                right:"15mm"
+            }
+         })
+
+        return Buffer.from(pdfBytes)
+    } finally {
+        if (browser) {
+            await browser.close()
         }
-     })
-    await browser.close()
-    return pdfBuffer
+    }
 }
 
 
@@ -476,6 +494,10 @@ async function generateResumePfd({resume, selfDescription, jobDescription}) {
     const resumePdfSchema = z.object({
         html:z.string().describe("The HTML content of resume which can be converted to PDF using any library like puppeteer")
     })
+    const resumeGenerationModels = [
+        "gemini-3-flash-preview",
+        "gemini-2.5-flash"
+    ]
 
     const prompt = `
 Generate a professional one-page resume in valid JSON only.
@@ -498,16 +520,31 @@ Resume: ${resume}
 Self Description: ${selfDescription}
 Job Description: ${jobDescription}
 `
-    
-    
-    const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
-            responseMimeType: "application/json",
-            responseJsonSchema: zodToJsonSchema(resumePdfSchema)
+
+    let response
+    let lastError
+
+    for (const model of resumeGenerationModels) {
+        try {
+            response = await ai.models.generateContent({
+                model,
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseJsonSchema: zodToJsonSchema(resumePdfSchema)
+                }
+            })
+            break
+        } catch (error) {
+            lastError = error
         }
-    })
+    }
+
+    if (!response) {
+        throw new Error(
+            `Resume HTML generation failed for all configured models. ${lastError?.message || 'Unknown AI generation error.'}`
+        )
+    }
 
     const jsonContent = JSON.parse(response.text)
     const htmlContent = extractResumeHtmlContent(jsonContent)

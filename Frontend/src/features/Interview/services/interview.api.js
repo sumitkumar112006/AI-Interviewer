@@ -54,9 +54,27 @@ export const generateInterviewReport = async ({ jobDescription, selfDescription,
  */
 
 export const generateResumePdf = async (interviewReportId) => {
-    const response = await api.post(`/api/interview/resume/pdf/${interviewReportId}`, null, {
-        responseType: 'arraybuffer'
-    })
+    let response
+
+    try {
+        response = await api.post(`/api/interview/resume/pdf/${interviewReportId}`, null, {
+            responseType: 'arraybuffer'
+        })
+    } catch (error) {
+        const responseData = error?.response?.data
+
+        if (responseData instanceof ArrayBuffer) {
+            try {
+                const decodedText = new TextDecoder().decode(new Uint8Array(responseData))
+                const parsedError = JSON.parse(decodedText)
+                throw new Error(parsedError?.message || 'Failed to generate resume PDF.')
+            } catch (parseError) {
+                throw new Error('Failed to generate resume PDF.')
+            }
+        }
+
+        throw error
+    }
 
     const blob = new Blob([response.data], { type: 'application/pdf' })
 

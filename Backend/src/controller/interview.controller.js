@@ -84,39 +84,46 @@ async function getAllInterviewReportController(req, res) {
  */
 
 async function generateResumePdfController(req, res) {
-    const { interviewReportId } = req.params
+    try {
+        const { interviewReportId } = req.params
 
-    if (!mongoose.isValidObjectId(interviewReportId)) {
-        return res.status(400).json({
-            message: "Invalid interview report id"
+        if (!mongoose.isValidObjectId(interviewReportId)) {
+            return res.status(400).json({
+                message: "Invalid interview report id"
+            })
+        }
+
+        const interviewReport = await interviewReportModle.findOne({
+            _id: interviewReportId,
+            user: req.user.id
+        })
+        
+        if (!interviewReport) {
+            return res.status(404).json({
+                message:"Interview report not found"
+            })
+        }
+
+        const { resume, selfDescription, jobDescription } = interviewReport
+        
+        const pdfBuffer = await generateResumePfd({ resume, selfDescription , jobDescription})
+
+        if (!pdfBuffer || pdfBuffer.length === 0) {
+            return res.status(500).json({ message: 'Failed to generate resume PDF.' })
+        }
+        
+        res.set({
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `attachment; filename=resume_${interviewReportId}.pdf`
+        })
+
+        res.send(pdfBuffer)
+    } catch (error) {
+        console.error("generateResumePdfController error:", error)
+        return res.status(500).json({
+            message: error?.message || "Failed to generate resume PDF."
         })
     }
-
-    const interviewReport = await interviewReportModle.findOne({
-        _id: interviewReportId,
-        user: req.user.id
-    })
-    
-    if (!interviewReport) {
-        return res.status(404).json({
-            message:"Interview report not found"
-        })
-    }
-
-    const { resume, selfDescription, jobDescription } = interviewReport
-    
-    const pdfBuffer = await generateResumePfd({ resume, selfDescription , jobDescription})
-
-    if (!pdfBuffer || !Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) {
-        return res.status(500).json({ message: 'Failed to generate resume PDF.' })
-    }
-    
-    res.set({
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename = resume_${interviewReportId}.pdf`
-    })
-
-    res.send(pdfBuffer)
 }
 
 module.exports = {
