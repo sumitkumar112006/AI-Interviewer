@@ -57,6 +57,7 @@ const Resume = () => {
                     return
                 }
 
+                console.debug('Resume preview blob', { size: pdfBlob.size, type: pdfBlob.type, url: objectUrl })
                 setPreviewUrl(objectUrl)
                 setReport(reportResponse?.interviewReport ?? null)
             } catch (err) {
@@ -153,12 +154,16 @@ const Resume = () => {
                         <div className="resume-feedback">Generating resume preview...</div>
                     ) : error ? (
                         <div className="resume-feedback error">{error}</div>
-                    ) : (
-                        <iframe
-                            title="Resume PDF Preview"
-                            src={previewUrl}
+                    ) : previewUrl ? (
+                        <object
+                            data={previewUrl}
+                            type="application/pdf"
                             className="resume-frame"
-                        />
+                        >
+                            <p>Your browser does not support embedded PDF preview. <a href={previewUrl} target="_blank" rel="noreferrer">Open in a new tab</a>.</p>
+                        </object>
+                    ) : (
+                        <div className="resume-feedback">Nothing to preview yet.</div>
                     )}
                 </div>
             </div>
