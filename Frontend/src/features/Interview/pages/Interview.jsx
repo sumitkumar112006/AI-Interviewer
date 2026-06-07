@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { getInterviewReportById } from '../services/interview.api'
 import { useInterview } from '../hooks/useInterview'
+import { useAuth } from '../../Auth/hooks/useAuth'
 import LoadingPage from '../Loading'
 import '../style/interview.scss'
 
@@ -251,6 +252,7 @@ const Interview = () => {
     const location = useLocation()
     const navigate = useNavigate()
     const { report: sharedReport } = useInterview()
+    const { handleLogout } = useAuth()
     const [activeSection, setActiveSection] = useState(sectionConfig[0].id)
     const [report, setReport] = useState(null)
     const [loading, setLoading] = useState(true)
@@ -363,9 +365,19 @@ const Interview = () => {
     const isJobDescriptionOpen = Boolean(expandedItems.jobDescription)
     const isSelfDescriptionOpen = Boolean(expandedItems.selfDescription)
 
+    const onlogout = async () => {
+        try {
+            await handleLogout()
+            navigate('/login')
+        } catch (error) {
+            console.log(error)
+        }
+    }
+
     if (!report) {
         return (
             <div className="interview-page">
+                <button onClick={onlogout} className='button logout-btn'>Logout</button>
                 <div className="interview-shell">
                     <div className="interview-overview">
                         <p className="eyebrow">Interview Services</p>
@@ -392,6 +404,7 @@ const Interview = () => {
 
     return (
         <div className="interview-page">
+            <button onClick={onlogout} className='button logout-btn'>Logout</button>
             <div className="interview-shell">
                 <div className="interview-overview">
                     <p className="eyebrow">Interview Services</p>

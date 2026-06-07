@@ -3,6 +3,7 @@ import '../style/home.scss'
 import { useInterview } from '../hooks/useInterview'
 import { useNavigate } from 'react-router-dom'
 import LoadingPage from '../Loading'
+import { useAuth } from '../../Auth/hooks/useAuth'
 
 function extractObjectId(value) {
     if (!value) {
@@ -130,6 +131,16 @@ const Home = () => {
         })
     }
 
+    const onlogout = async () => {
+        try {
+            await handleLogout()
+            navigate('/login')
+        }catch (error) {
+            console.log(error)
+        }
+        
+    }
+
     if (loading) {
         return (
             <main>
@@ -141,6 +152,7 @@ const Home = () => {
 
     return (
         <div className='home'>
+            <button onClick={onlogout} className='button logout-btn'>Logout</button>
             <div className="workspace">
                 <div className="workspace-header">
                     <p className="eyebrow">Assessment Workspace</p>

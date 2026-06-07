@@ -21,6 +21,9 @@ export const router = createBrowserRouter([
     {
         path: '/resume/:interviewId',
         element: <Protected><Resume /></Protected>
+    },
+    {
+        path: '/logout', element: <Login />
     }
 
 ])

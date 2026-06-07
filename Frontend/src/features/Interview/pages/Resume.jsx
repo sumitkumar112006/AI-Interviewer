@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { generateResumePdf, getInterviewReportById } from '../services/interview.api'
 import { useInterview } from '../hooks/useInterview'
+import { useAuth } from '../../Auth/hooks/useAuth'
 import LoadingPage from '../Loading'
 import '../style/resume.scss'
 
@@ -25,6 +26,7 @@ const Resume = () => {
     const { interviewId } = useParams()
     const location = useLocation()
     const navigate = useNavigate()
+    const { handleLogout } = useAuth()
     const [previewUrl, setPreviewUrl] = useState('')
     const [report, setReport] = useState(location.state?.interviewReport ?? null)
     const { loading, setLoading } = useInterview()
@@ -37,6 +39,7 @@ const Resume = () => {
         async function loadResumePreview() {
             setLoading(true)
             setError('')
+            setPreviewUrl('')
 
             try {
                 const [pdfBlob, reportResponse] = await Promise.all([
@@ -44,7 +47,11 @@ const Resume = () => {
                     getInterviewReportById(interviewId),
                 ])
 
-                objectUrl = window.URL.createObjectURL(pdfBlob)
+                if (!pdfBlob || !(pdfBlob instanceof Blob) || pdfBlob.size === 0) {
+                    throw new Error('Generated resume PDF is empty or invalid.')
+                }
+
+                objectUrl = window.URL.createObjectURL(new Blob([pdfBlob], { type: 'application/pdf' }))
 
                 if (!isMounted) {
                     return
@@ -57,7 +64,7 @@ const Resume = () => {
                     return
                 }
 
-                setError(err?.response?.data?.message || 'Unable to generate the resume preview right now.')
+                setError(err?.response?.data?.message || err?.message || 'Unable to generate the resume preview right now.')
             } finally {
                 if (isMounted) {
                     setLoading(false)
@@ -93,7 +100,16 @@ const Resume = () => {
         document.body.removeChild(link)
     }
 
-    if(loading) {
+    const onlogout = async () => {
+        try {
+            await handleLogout()
+            navigate('/login')
+        } catch (error) {
+            console.log(error)
+        }
+    }
+
+    if (loading) {
         return (
             <main>
                 <LoadingPage />
@@ -103,6 +119,7 @@ const Resume = () => {
 
     return (
         <div className="resume-page">
+            <button onClick={onlogout} className='button logout-btn'>Logout</button>
             <div className="resume-shell">
                 <div className="resume-header panel">
                     <div className="resume-heading">
