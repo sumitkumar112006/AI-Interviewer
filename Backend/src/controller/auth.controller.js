@@ -13,9 +13,10 @@ const cookieOptions = {
 function handleAuthControllerError(res, err) {
     if (err?.code === 11000) {
         const duplicateField = Object.keys(err.keyPattern || {})[0];
+        const normalizedField = duplicateField === "emain" ? "email" : duplicateField;
 
         return res.status(409).json({
-            message: `${duplicateField || "User"} already exists`
+            message: `${normalizedField || "User"} already exists`
         });
     }
 
