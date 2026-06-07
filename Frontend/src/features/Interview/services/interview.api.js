@@ -27,6 +27,10 @@ export const generateInterviewReport = async ({ jobDescription, selfDescription,
         throw new Error('Resume file is required.')
     }
 
+    if (resumeFile.type && resumeFile.type !== 'application/pdf') {
+        throw new Error('Only PDF resume files are supported.')
+    }
+
     if (!jobDescription || !jobDescription.trim()) {
         throw new Error('Job description is required.')
     }
@@ -40,11 +44,7 @@ export const generateInterviewReport = async ({ jobDescription, selfDescription,
     formData.append("selfDescription", selfDescription.trim())
     formData.append("resume", resumeFile)
 
-    const response = await api.post("/api/interview", formData, {
-        headers: {
-            "Content-Type": "multipart/form-data"
-        }
-    })
+    const response = await api.post("/api/interview", formData)
 
     return response.data
 }

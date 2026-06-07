@@ -67,5 +67,5 @@ export const useInterview = () => {
         }
     }
 
-    return { loading, report, reports, getReoprtById, getReports, generateReport, getResumePdf }
+    return { loading, setLoading, report, reports, getReoprtById, getReports, generateReport, getResumePdf }
 }   

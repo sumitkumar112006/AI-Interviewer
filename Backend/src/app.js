@@ -1,6 +1,7 @@
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
+const multer = require('multer');
 
 const app = express();
 
@@ -52,6 +53,18 @@ app.use((err, req, res, next) => {
         return res.status(err.status || 403).json({
             message: err.message
         });
+    }
+
+    if (err instanceof multer.MulterError) {
+        const message = err.code === "LIMIT_FILE_SIZE"
+            ? "Resume PDF must be smaller than 3MB."
+            : err.message;
+
+        return res.status(400).json({ message });
+    }
+
+    if (err?.message === "Only PDF files are allowed.") {
+        return res.status(400).json({ message: err.message });
     }
 
     console.error(err);
