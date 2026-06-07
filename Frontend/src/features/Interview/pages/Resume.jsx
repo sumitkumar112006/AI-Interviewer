@@ -51,7 +51,7 @@ const Resume = () => {
                     throw new Error('Generated resume PDF is empty or invalid.')
                 }
 
-                objectUrl = window.URL.createObjectURL(new Blob([pdfBlob], { type: 'application/pdf' }))
+                objectUrl = window.URL.createObjectURL(pdfBlob)
 
                 if (!isMounted) {
                     return
@@ -64,6 +64,7 @@ const Resume = () => {
                     return
                 }
 
+                console.error('Resume preview error:', err)
                 setError(err?.response?.data?.message || err?.message || 'Unable to generate the resume preview right now.')
             } finally {
                 if (isMounted) {

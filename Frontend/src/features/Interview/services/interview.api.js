@@ -43,8 +43,20 @@ export const generateInterviewReport = async ({ jobDescription, selfDescription,
 
 export const generateResumePdf = async (interviewReportId) => {
     const response = await api.post(`/api/interview/resume/pdf/${interviewReportId}`, null, {
-        responseType: 'arraybuffer'
+        responseType: 'blob'
     })
 
-    return new Blob([response.data], { type: 'application/pdf' })
+    const blob = response.data
+
+    if (!(blob instanceof Blob)) {
+        throw new Error('Resume preview response is not a PDF blob.')
+    }
+
+    const contentType = response.headers['content-type'] || blob.type
+    if (!contentType || !contentType.includes('application/pdf')) {
+        const text = await blob.text().catch(() => '')
+        throw new Error(`Resume preview failed: invalid PDF response. ${text}`)
+    }
+
+    return blob
 }
