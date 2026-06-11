@@ -3,6 +3,13 @@ const { z } = require('zod')
 const { zodToJsonSchema } = require('zod-to-json-schema')
 const puppet = require('puppeteer')
 
+// Initialize Google GenAI client
+const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_GENAI_API_KEY })
+
+if (!process.env.GOOGLE_GENAI_API_KEY) {
+    console.warn('GOOGLE_GENAI_API_KEY is not set. AI calls will likely fail.')
+}
+
 
 
 
@@ -58,15 +65,15 @@ const aiInterviewReportSchema = z.object({
     technicalQuestions: z.array(questionSchema)
         .length(5)
         .describe(
-        "An array of technical interview question objects. Each object must include question, intention, and answer. Focus on technical depth, practical knowledge, problem-solving, tools, architecture, debugging, performance, and implementation ability."
-    ),
+            "An array of technical interview question objects. Each object must include question, intention, and answer. Focus on technical depth, practical knowledge, problem-solving, tools, architecture, debugging, performance, and implementation ability."
+        ),
 
 
     behavioralQuestion: z.array(questionSchema)
         .length(5)
         .describe(
-        "An object for each question including question , intention and  of behavioural interview questions with deep intent analysis and concise interview-ready answers focused on communication, leadership, teamwork, problem-solving, emotional intelligence, and professional decision-making."
-    ),
+            "An object for each question including question , intention and  of behavioural interview questions with deep intent analysis and concise interview-ready answers focused on communication, leadership, teamwork, problem-solving, emotional intelligence, and professional decision-making."
+        ),
 
 
     skillGaps: z.array(skillGapSchema).describe(
@@ -463,9 +470,9 @@ async function generatePfdFromHtml(htmlContent) {
                 top: "20mm",
                 bottom: "20mm",
                 left: "15mm",
-                right:"15mm"
+                right: "15mm"
             }
-         })
+        })
 
         return Buffer.from(pdfBytes)
     } finally {
@@ -477,9 +484,9 @@ async function generatePfdFromHtml(htmlContent) {
 
 
 
-async function generateResumePfd({resume, selfDescription, jobDescription}) {
+async function generateResumePfd({ resume, selfDescription, jobDescription }) {
     const resumePdfSchema = z.object({
-        html:z.string().describe("The HTML content of resume which can be converted to PDF using any library like puppeteer")
+        html: z.string().describe("The HTML content of resume which can be converted to PDF using any library like puppeteer")
     })
     const resumeGenerationModels = [
         "gemini-3-flash-preview",
