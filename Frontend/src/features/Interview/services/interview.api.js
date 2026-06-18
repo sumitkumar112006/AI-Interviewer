@@ -58,28 +58,39 @@ export const generateResumePdf = async (interviewReportId) => {
 
     try {
         response = await api.post(`/api/interview/resume/pdf/${interviewReportId}`, null, {
-            responseType: 'arraybuffer'
+            responseType: 'blob'
         })
     } catch (error) {
         const responseData = error?.response?.data
 
-        if (responseData instanceof ArrayBuffer) {
+        // When responseType is 'blob', error data is also a Blob — read it as text
+        if (responseData instanceof Blob) {
+            const text = await responseData.text()
+
+            let message = 'Failed to generate resume PDF.'
+
             try {
-                const decodedText = new TextDecoder().decode(new Uint8Array(responseData))
-                const parsedError = JSON.parse(decodedText)
-                throw new Error(parsedError?.message || 'Failed to generate resume PDF.')
-            } catch (parseError) {
-                throw new Error('Failed to generate resume PDF.')
+                const parsedError = JSON.parse(text)
+                message = parsedError?.message || message
+            } catch {
+                message = text || message
             }
+
+            throw new Error(message)
         }
 
         throw error
     }
 
-    const blob = new Blob([response.data], { type: 'application/pdf' })
+    const blob = response.data
 
     if (!(blob instanceof Blob) || blob.size === 0) {
         throw new Error('Resume preview response is not a valid PDF blob.')
+    }
+
+    // Ensure the blob has the correct PDF MIME type
+    if (blob.type !== 'application/pdf') {
+        return new Blob([blob], { type: 'application/pdf' })
     }
 
     return blob

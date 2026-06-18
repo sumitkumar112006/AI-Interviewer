@@ -4,6 +4,7 @@ import { useInterview } from '../hooks/useInterview'
 import { useNavigate } from 'react-router-dom'
 import LoadingPage from '../Loading'
 import { useAuth } from '../../Auth/hooks/useAuth'
+import {logout} from '../../Auth/services/auth.api'
 
 function extractObjectId(value) {
     if (!value) {
@@ -161,9 +162,10 @@ const Home = () => {
         })
     }
 
+    const { handleLogout } = useAuth()
     const onlogout = async () => {
         try {
-            await handleLogout()
+            await logout()
             navigate('/login')
         } catch (error) {
             console.log(error)

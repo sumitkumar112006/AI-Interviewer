@@ -160,11 +160,8 @@ const Resume = () => {
                                 src={previewUrl}
                                 title="Resume Preview"
                                 className="resume-frame"
-                                onError={() => setError('Unable to display PDF preview in this browser. Use the download button or open in a new tab.')}
+                                width="100%"
                             />
-                            <div className="resume-frame-fallback">
-                                <p>Your browser may not render embedded PDFs. <a href={previewUrl} target="_blank" rel="noreferrer">Open in a new tab</a> or use the Download PDF button.</p>
-                            </div>
                         </div>
                     ) : (
                         <div className="resume-feedback">Nothing to preview yet.</div>

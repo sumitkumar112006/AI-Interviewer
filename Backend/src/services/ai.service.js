@@ -1,7 +1,12 @@
 const { GoogleGenAI } = require("@google/genai")
 const { z } = require('zod')
 const { zodToJsonSchema } = require('zod-to-json-schema')
-const puppet = require('puppeteer')
+
+const request = require('request');
+const fs = require('fs')
+const axios = require('axios');
+const { mark } = require("framer-motion/client");
+
 
 // Initialize Google GenAI client
 const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_GENAI_API_KEY })
@@ -441,52 +446,19 @@ Job Description: ${roleDescription}
 
     console.log(interviewReport);
 
-    return interviewReport;
+    return interviewReport
 
 
 }
 
 
-async function generatePfdFromHtml(htmlContent) {
-    let browser
 
-    try {
-        browser = await puppet.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        })
-    } catch (error) {
-        throw new Error(
-            `Unable to launch the PDF browser. ${error?.message || 'Chrome/Chromium may be missing in the deployment environment.'}`
-        )
-    }
-
-    try {
-        const page = await browser.newPage()
-        await page.setContent(htmlContent, { waitUntil: 'networkidle0' })
-        const pdfBytes = await page.pdf({
-            format: 'A4',
-            margin: {
-                top: "20mm",
-                bottom: "20mm",
-                left: "15mm",
-                right: "15mm"
-            }
-        })
-
-        return Buffer.from(pdfBytes)
-    } finally {
-        if (browser) {
-            await browser.close()
-        }
-    }
-}
 
 
 
 async function generateResumePfd({ resume, selfDescription, jobDescription }) {
     const resumePdfSchema = z.object({
-        html: z.string().describe("The HTML content of resume which can be converted to PDF using any library like puppeteer")
+        html: z.string().describe("The HTML content of the resume")
     })
     const resumeGenerationModels = [
         "gemini-3-flash-preview",
@@ -542,11 +514,33 @@ Job Description: ${jobDescription}
 
     const jsonContent = JSON.parse(response.text)
     const htmlContent = extractResumeHtmlContent(jsonContent)
+    console.log(htmlContent);
     const normalizedHtmlDocument = normalizeResumeHtmlDocument(htmlContent)
 
-    const pdfBuffer = await generatePfdFromHtml(normalizedHtmlDocument)
+    const pdfBuffer = await axios.post('https://api.docraptor.com/docs', {
+        test: true,
+        document_content: normalizedHtmlDocument,
+        document_type: "pdf",
+        prince_options: {
+            media: "print"
+        }
+    }, {
+        auth: {
+            username: process.env.DOCRAPTOR_API_KEY
+        },
+        responseType: 'arraybuffer'
+    }).then(res => Buffer.from(res.data))
+        .catch(err => {
+            const errorMsg = err.response?.data ? err.response.data.toString() : err.message;
+            throw new Error(`DocRaptor PDF generation failed: ${errorMsg}`)
+        })
 
     return pdfBuffer
+
+    // const pdfBuffer = await generatePfdFromHtml(normalizedHtmlDocument)
+    // return pdfBuffer
+
+    // return confirm
 
 }
 

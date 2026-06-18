@@ -601,7 +601,7 @@ const Interview = () => {
                                         </span>
                                     ))
                                 ) : (
-                                    <p className="side-copy">No skill gaps available yet.</p>
+                                    <p className="side-copy">No skill gaps available yet. </p>
                                 )}
                             </div>
                         </div>

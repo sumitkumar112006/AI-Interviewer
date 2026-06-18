@@ -137,6 +137,6 @@ const interviewReportSchema = new mongoose.Schema({
     timestamps: true
 })
 
-const interviewReportModel = mongoose.model("InterviewReports", interviewReportSchema)
+const interviewReportModel = mongoose.model("InterviewReports", interviewReportSchema);
 
 module.exports = interviewReportModel
