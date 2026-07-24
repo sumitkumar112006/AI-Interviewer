@@ -467,9 +467,22 @@ Job Description: ${roleDescription}
 
 
 async function generatePfdFromHtml(htmlContent) {
-    const browser = await puppeteer.launch({ headless: "new" });
+    // 1. Regex to automatically insert target="_blank" and rel="noopener noreferrer" into all <a> tags
+    const processedHtml = htmlContent.replace(/<a\s+(?![^>]*target=)/gi, '<a target="_blank" rel="noopener noreferrer" ');
+
+    const browser = await puppeteer.launch({
+        headless: "new",
+        args: [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage"
+        ]
+    });
     const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+
+    // 2. Pass the processed HTML instead of raw HTML
+    await page.setContent(processedHtml, { waitUntil: 'networkidle0' });
+
     const pdfBuffer = await page.pdf({
         format: 'A4',
         margin: {
@@ -482,6 +495,7 @@ async function generatePfdFromHtml(htmlContent) {
     await browser.close();
     return pdfBuffer;
 }
+
 
 
 
@@ -501,6 +515,7 @@ async function generateResumePfd({ resume, selfDescription, jobDescription }) {
     Rules:
     - Use exactly one top-level key: "html".
     - The "html" value must be a string.
+    - All hyperlinks/anchor tags (<a>) in the HTML must have target="_blank" and rel="noopener noreferrer" attributes.
     - The string must contain complete printable HTML for an A4 resume.
     - Do not return markdown fences.
     - Do not return undefined or null.

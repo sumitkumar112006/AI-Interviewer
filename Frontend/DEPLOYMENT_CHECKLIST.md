@@ -11,7 +11,7 @@
 
 ## Backend URL
 
-✅ **Backend Live:** https://ai-interviewer-kzwc.onrender.com
+✅ **Backend Live:** https://resume-generator-production-2eae.up.railway.app
 
 This URL is already configured in `vercel.json` and `.env.example`
 

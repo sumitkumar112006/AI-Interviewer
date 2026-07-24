@@ -10,7 +10,7 @@ function normalizeOrigin(origin) {
 }
 
 const allowedOrigins = [
-    "https://ai-interviewer-kzwc.onrender.com",
+    "https://resume-generator-production-2eae.up.railway.app",
     "https://ai-interviewer-silk.vercel.app",
     "http://localhost:5173",
     "https://ai-interviewer-git-main-amitk839170-gmailcoms-projects.vercel.app",

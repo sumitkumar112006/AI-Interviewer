@@ -8,3 +8,5 @@ Frontend/node_modules/
 .cache/
 Backend/.cache/
 Frontend/.cache/
+
+.vercel
