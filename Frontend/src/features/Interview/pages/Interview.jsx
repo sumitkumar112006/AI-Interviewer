@@ -404,7 +404,6 @@ const Interview = () => {
 
     return (
         <div className="interview-page">
-            <button onClick={onlogout} className='button logout-btn'>Logout</button>
             <div className="interview-shell">
                 <div className="interview-overview">
                     <p className="eyebrow">Interview Services</p>

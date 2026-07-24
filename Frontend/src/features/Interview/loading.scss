@@ -4,10 +4,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    background: radial-gradient(circle at top,
-            #1e3a8a 0%,
-            #0f172a 45%,
-            #020617 100%);
+    background: radial-gradient(circle at top, #1e3a8a 0%, #0f172a 45%, #020617 100%);
     overflow: hidden;
     position: relative;
     color: white;
@@ -42,10 +39,7 @@ h1 {
     margin: 0;
     font-size: 3rem;
     font-weight: 800;
-    background: linear-gradient(90deg,
-            #60a5fa,
-            #93c5fd,
-            #dbeafe);
+    background: linear-gradient(90deg, #60a5fa, #93c5fd, #dbeafe);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
@@ -69,10 +63,7 @@ p {
     width: 35%;
     height: 100%;
     border-radius: 999px;
-    background: linear-gradient(90deg,
-            #2563eb,
-            #60a5fa,
-            #93c5fd);
+    background: linear-gradient(90deg, #2563eb, #60a5fa, #93c5fd);
     animation: loading 1.8s ease-in-out infinite;
 }
 
@@ -80,7 +71,6 @@ p {
     display: flex;
     justify-content: center;
     gap: 12px;
-
     span {
         padding: 8px 14px;
         border-radius: 999px;
@@ -90,11 +80,9 @@ p {
         color: #cbd5e1;
         animation: float 2s ease-in-out infinite;
     }
-
     span:nth-child(2) {
         animation-delay: 0.2s;
     }
-
     span:nth-child(3) {
         animation-delay: 0.4s;
     }
@@ -110,20 +98,40 @@ p {
     0% {
         transform: translateX(-150%);
     }
-
     100% {
         transform: translateX(350%);
     }
 }
 
 @keyframes float {
-
     0%,
     100% {
         transform: translateY(0);
     }
-
     50% {
         transform: translateY(-6px);
     }
+}
+
+.logout-btn {
+    z-index: 20;
+    min-width: 4.8rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(20, 122, 240, 0.08);
+    color: #ffffff;
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    backdrop-filter: blur(12px);
+    transition: transform 0.22s ease, background 0.22s ease, border-color 0.22s ease;
+}
+
+.logout-btn:hover {
+    background: rgba(20, 122, 240, 0.14);
+}
+
+.logout-btn:active {
+    transform: scale(0.98);
 }

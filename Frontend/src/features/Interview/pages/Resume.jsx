@@ -121,7 +121,7 @@ const Resume = () => {
 
     return (
         <div className="resume-page">
-            <button onClick={onlogout} className='button logout-btn'>Logout</button>
+            
             <div className="resume-shell">
                 <div className="resume-header panel">
                     <div className="resume-heading">

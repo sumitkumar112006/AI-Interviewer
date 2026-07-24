@@ -1,4 +1,4 @@
-import { getAllInterviewReport, generateInterviewReport, getInterviewReportById, generateResumePdf } from '../services/interview.api';
+import { getAllInterviewReport, generateInterviewReport, getInterviewReportById, generateResumePdf, deleteReportById } from '../services/interview.api';
 import { useContext } from 'react';
 import { interviewContext } from '../interview.context';
 
@@ -67,5 +67,25 @@ export const useInterview = () => {
         }
     }
 
-    return { loading, setLoading, report, reports, getReoprtById, getReports, generateReport, getResumePdf }
+    const deleteReport = async (interviewReportId) => {
+        setLoading(true)
+        try {
+            const response = await deleteReportById(interviewReportId)
+            setReports((prevReports) =>
+                prevReports
+                    ? prevReports.filter((r) => {
+                        const id = r._id?.$oid || r._id
+                        return id !== interviewReportId
+                    })
+                    : []
+            )
+            return response
+        } catch (error) {
+            console.log(error)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    return { loading, setLoading, report, reports, getReoprtById, getReports, generateReport, getResumePdf, deleteReport }
 }   

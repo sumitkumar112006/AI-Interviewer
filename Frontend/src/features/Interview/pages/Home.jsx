@@ -4,7 +4,7 @@ import { useInterview } from '../hooks/useInterview'
 import { useNavigate } from 'react-router-dom'
 import LoadingPage from '../Loading'
 import { useAuth } from '../../Auth/hooks/useAuth'
-import {logout} from '../../Auth/services/auth.api'
+import { logout } from '../../Auth/services/auth.api'
 
 function extractObjectId(value) {
     if (!value) {
@@ -57,8 +57,10 @@ function formatDate(value) {
     }).format(date)
 }
 
+
+
 const Home = () => {
-    const { loading, report, generateReport, reports, getReports } = useInterview()
+    const { loading, report, generateReport, reports, getReports, deleteReport } = useInterview()
     const [formData, setFormData] = useState({
         jobDescription: '',
         selfDescription: ''
@@ -148,6 +150,19 @@ const Home = () => {
         }
     }
 
+    const handleDeleteReport = async (interviewId, e) => {
+        e.stopPropagation(); // Stops parent card clicks
+        if (!window.confirm("Are you sure you want to delete this report?")) {
+            return;
+        }
+        try {
+            await deleteReport(interviewId);
+            alert("Report deleted successfully!");
+        } catch (error) {
+            alert(error?.message || "Failed to delete report.");
+        }
+    }
+
     const handleViewReport = (reportItem) => {
         const interviewId = extractObjectId(reportItem?._id)
 
@@ -162,6 +177,10 @@ const Home = () => {
         })
     }
 
+    const Title = ({ reportItem }) => {
+        const title = (reportItem?.developerTitle || reportItem?.Title || reportItem?.title || 'Untitled Report').trim()
+        return title.length > 15 ? `${title.slice(0, 15)}...` : title
+    }
     const { handleLogout } = useAuth()
     const onlogout = async () => {
         try {
@@ -184,7 +203,6 @@ const Home = () => {
 
     return (
         <div className='home'>
-            <button onClick={onlogout} className='button logout-btn'>Logout</button>
             <div className="workspace">
                 <div className="workspace-header">
                     <p className="eyebrow">Assessment Workspace</p>
@@ -281,7 +299,18 @@ const Home = () => {
                                         key={interviewId || `${reportItem?.title || reportItem?.developerTitle || 'report'}-${index}`}
                                         className="report-item"
                                     >
-                                        <h3>{reportItem?.developerTitle || reportItem?.Title || reportItem?.title || 'Untitled Report'}</h3>
+                                        <div className="report-item-header">
+                                            <h3>{Title({ reportItem, index })}</h3>
+                                            <button
+                                                type="button"
+                                                className="delete-btn"
+                                                onClick={(e) => handleDeleteReport(interviewId, e)}
+                                                disabled={!interviewId}
+                                                title="Delete Report"
+                                            >
+                                                <img src="/bin.png" alt="Delete" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
+                                            </button>
+                                        </div>
                                         <h3 className='match-score'>Match Score : {reportItem?.matchScore || 'N/A'}</h3>
                                         <p className='report-meta'>
                                             Generated on {formatDate(reportItem?.createdAt ?? reportItem?.updatedAt)}

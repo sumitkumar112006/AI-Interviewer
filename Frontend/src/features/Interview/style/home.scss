@@ -300,6 +300,40 @@
             border-radius: 1rem;
             text-wrap: wrap;
 
+            .report-item-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                width: 100%;
+                gap: 1.5rem;
+
+                h3 {
+                    margin: 0;
+                }
+
+                .delete-btn {
+                    background: none;
+                    border: none;
+                    color: #ca003d;
+                    cursor: pointer;
+                    padding: 0.25rem;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border-radius: 4px;
+                    transition: background-color 0.2s, transform 0.2s;
+
+                    &:hover {
+                        background-color: rgba(202, 0, 61, 0.1);
+                        transform: scale(1.1);
+                    }
+
+                    &:disabled {
+                        opacity: 0.5;
+                        cursor: not-allowed;
+                    }
+                }
+            }
 
             .match-score {
                 color: #ca003d;

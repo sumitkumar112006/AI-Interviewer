@@ -1,11 +1,11 @@
 const { GoogleGenAI } = require("@google/genai")
 const { z } = require('zod')
 const { zodToJsonSchema } = require('zod-to-json-schema')
+const puppeteer = require('puppeteer');
 
 const request = require('request');
 const fs = require('fs')
 const axios = require('axios');
-const { mark } = require("framer-motion/client");
 
 
 // Initialize Google GenAI client
@@ -38,6 +38,7 @@ const questionSchema = z.object({
         ),
 })
 
+
 const skillGapSchema = z.object({
     skill: z
         .string()
@@ -51,6 +52,7 @@ const skillGapSchema = z.object({
             "How strongly this skill gap affects the candidate's interview performance or job readiness."
         ),
 })
+
 
 const aiInterviewReportSchema = z.object({
     developerTitle: z
@@ -112,6 +114,7 @@ const aiInterviewReportSchema = z.object({
 
 });
 
+
 const mongooseInterviewReportSchema = z.object({
     developerTitle: z.string().min(1),
     matchScore: z.coerce.number().min(0).max(100),
@@ -166,6 +169,7 @@ function normalizeObjectArray(value) {
     return []
 }
 
+
 function normalizeQuestionItem(item, fallbackIntention, fallbackAnswer) {
     const parsedItem = parseJsonLikeValue(item)
 
@@ -198,11 +202,12 @@ function normalizeQuestionItem(item, fallbackIntention, fallbackAnswer) {
     }
 }
 
+
 function normalizeQuestionArray(value, options = {}) {
     const {
         limit = 5,
-        fallbackIntention = "Assesses the candidate's fit for the target role.",
-        fallbackAnswer = "Answer with a concise, role-specific example that shows clear reasoning and results.",
+            fallbackIntention = "Assesses the candidate's fit for the target role.",
+            fallbackAnswer = "Answer with a concise, role-specific example that shows clear reasoning and results.",
     } = options
 
     return normalizeObjectArray(value)
@@ -210,6 +215,7 @@ function normalizeQuestionArray(value, options = {}) {
         .filter(Boolean)
         .slice(0, limit)
 }
+
 
 function normalizeSkillGapItem(item) {
     const parsedItem = parseJsonLikeValue(item)
@@ -224,9 +230,8 @@ function normalizeSkillGapItem(item) {
 
         return {
             skill,
-            severity: ["low", "medium", "high"].includes(normalizedSeverity)
-                ? normalizedSeverity
-                : "medium",
+            severity: ["low", "medium", "high"].includes(normalizedSeverity) ?
+                normalizedSeverity : "medium",
         }
     }
 
@@ -241,6 +246,16 @@ function normalizeSkillGapItem(item) {
         severity: "medium",
     }
 }
+
+
+
+
+
+
+
+
+
+
 
 function normalizeSkillGapArray(value) {
     return normalizeObjectArray(value)
@@ -327,15 +342,13 @@ function normalizeInterviewReport(rawReport) {
         developerTitle: String(rawReport.developerTitle ?? rawReport.title ?? rawReport.Title ?? "").trim(),
         matchScore: rawReport.matchScore,
         technicalQuestions: normalizeQuestionArray(
-            rawReport.technicalQuestions ?? rawReport.technicalQuestion,
-            {
+            rawReport.technicalQuestions ?? rawReport.technicalQuestion, {
                 fallbackIntention: "Evaluates technical depth, implementation ability, and practical problem-solving for the role.",
                 fallbackAnswer: "Answer with concrete implementation details, tradeoffs, and an example from your past work.",
             }
         ),
         behavioralQuestion: normalizeQuestionArray(
-            rawReport.behavioralQuestion ?? rawReport.behaviouralQuestion,
-            {
+            rawReport.behavioralQuestion ?? rawReport.behaviouralQuestion, {
                 fallbackIntention: "Evaluates communication, ownership, teamwork, and professional judgment in real situations.",
                 fallbackAnswer: "Use a concise STAR-style example that shows your actions, reasoning, and outcome.",
             }
@@ -430,7 +443,7 @@ Expected format:
 Resume: ${resume}
 Self Description: ${candidateSummary}
 Job Description: ${roleDescription}
-`;
+`
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: prompt,
@@ -453,12 +466,29 @@ Job Description: ${roleDescription}
 
 
 
+async function generatePfdFromHtml(htmlContent) {
+    const browser = await puppeteer.launch({ headless: "new" });
+    const page = await browser.newPage();
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    const pdfBuffer = await page.pdf({
+        format: 'A4',
+        margin: {
+            top: '60px',
+            right: '20px',
+            bottom: '40px',
+            left: '20px'
+        }
+    });
+    await browser.close();
+    return pdfBuffer;
+}
+
 
 
 
 async function generateResumePfd({ resume, selfDescription, jobDescription }) {
     const resumePdfSchema = z.object({
-        html: z.string().describe("The HTML content of the resume")
+        html: z.string().describe("The HTML content of the resume including all the hyperlinks, styles, and formatting necessary for a professional 1-2 page resume. And this resume should have all those updated details which are mentioned in the resume, self description and job description. It should be ATS friendly based on the Job Description and visually appealing for human recruiters.")
     })
     const resumeGenerationModels = [
         "gemini-3-flash-preview",
@@ -466,26 +496,26 @@ async function generateResumePfd({ resume, selfDescription, jobDescription }) {
     ]
 
     const prompt = `
-Generate a professional one-page resume in valid JSON only.
+    Generate a professional one-two page resume in valid JSON only.
 
-Rules:
-- Return only valid JSON.
-- Use exactly one top-level key: "html".
-- The "html" value must be a string.
-- The string must contain complete printable HTML for an A4 resume.
-- Do not return markdown fences.
-- Do not return undefined or null.
-- Do not feel like AI generated content. Write like a human creating a resume.
-- Focus on clarity, professionalism, and relevance to the job description.
-- Use the candidate details to create a tailored resume that highlights strengths and fits the target role.
-- Resume should be ATS friendly it should rank in ATS systems and also visually appealing for human recruiters.
-- Resume should be concise and ideally fit in one-two page when converted to PDF.
-
-Candidate details:
-Resume: ${resume}
-Self Description: ${selfDescription}
-Job Description: ${jobDescription}
-`
+    Rules:
+    - Use exactly one top-level key: "html".
+    - The "html" value must be a string.
+    - The string must contain complete printable HTML for an A4 resume.
+    - Do not return markdown fences.
+    - Do not return undefined or null.
+    - Do not feel like AI generated content. Write like a human creating a resume.
+    - Focus on clarity, professionalism, and relevance to the job description.
+    - Use the candidate details to create a tailored resume that highlights strengths and fits the target role.
+    - Resume should be ATS friendly it should rank in ATS systems and also visually appealing for human recruiters.
+    - Resume should be concise and ideally fit in one-two page when converted to PDF.
+    
+    Candidate details:
+    Resume: ${resume}
+    Self Description: ${selfDescription}
+    Job Description: ${jobDescription}
+    - Return only valid JSON.
+    `
 
     let response
     let lastError
@@ -517,28 +547,10 @@ Job Description: ${jobDescription}
     console.log(htmlContent);
     const normalizedHtmlDocument = normalizeResumeHtmlDocument(htmlContent)
 
-    const pdfBuffer = await axios.post('https://api.docraptor.com/docs', {
-        test: true,
-        document_content: normalizedHtmlDocument,
-        document_type: "pdf",
-        prince_options: {
-            media: "print"
-        }
-    }, {
-        auth: {
-            username: process.env.DOCRAPTOR_API_KEY
-        },
-        responseType: 'arraybuffer'
-    }).then(res => Buffer.from(res.data))
-        .catch(err => {
-            const errorMsg = err.response?.data ? err.response.data.toString() : err.message;
-            throw new Error(`DocRaptor PDF generation failed: ${errorMsg}`)
-        })
 
+
+    const pdfBuffer = await generatePfdFromHtml(normalizedHtmlDocument)
     return pdfBuffer
-
-    // const pdfBuffer = await generatePfdFromHtml(normalizedHtmlDocument)
-    // return pdfBuffer
 
     // return confirm
 

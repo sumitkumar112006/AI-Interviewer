@@ -2,6 +2,7 @@ const pdfParse = require('pdf-parse')
 const mongoose = require('mongoose')
 const { generateInterviewReport, generateResumePfd } = require('../services/ai.service')
 const interviewReportModle = require('../models/interviewReport.model')
+const interviewReportModel = require('../models/interviewReport.model')
 
 async function generateInterviewReportController(req, res) {
     if (!req.file) {
@@ -10,7 +11,7 @@ async function generateInterviewReportController(req, res) {
         })
     }
 
-    if (!req.body?.selfDescription?.trim() || !req.body?.jobDescription?.trim()) {
+    if (!req.body ?.selfDescription ?.trim() || !req.body ?.jobDescription ?.trim()) {
         return res.status(400).json({
             message: "Job description and self description are required"
         })
@@ -121,8 +122,48 @@ async function generateResumePdfController(req, res) {
     } catch (error) {
         console.error("generateResumePdfController error:", error)
         return res.status(500).json({
-            message: error?.message || "Failed to generate resume PDF."
+            message: error ?.message || "Failed to generate resume PDF."
         })
+    }
+}
+
+/**
+ * It will require only interview report and authanticated user.
+ */
+async function deleteReportById(req, res) {
+    try {
+        const { interviewReportId } = req.params;
+
+        //Checking Report ID is vailid or not.
+        if (!mongoose.isValidObjectId(interviewReportId)) {
+            return res.status(400).json({
+                message: "Invalid interview report id"
+            })
+        }
+
+        // 2. Find and delete the report owned by the authenticated user
+
+        const deleteReport = await interviewReportModle.findOneAndDelete({
+            _id: interviewReportId, 
+            user: req.user.id
+        })
+
+        if (!deleteReport) {
+            return res.status(404).json({
+                message: "Report not Found!",
+            })
+        }
+
+        return res.status(200).json({
+            message: "Report deleted successfully!",
+            deletedReportId: interviewReportId
+        });
+
+    } catch (err) {
+        console.error("deleteReportById error: ", err)
+        return res.status(500).json({
+            message: err?.message || "Failed to delete the interview report."
+        });
     }
 }
 
@@ -130,5 +171,6 @@ module.exports = {
     generateInterviewReportController,
     getInterviewReportByIdController,
     getAllInterviewReportController,
-    generateResumePdfController
+    generateResumePdfController,
+    deleteReportById
 }

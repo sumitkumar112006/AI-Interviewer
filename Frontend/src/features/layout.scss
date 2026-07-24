@@ -1,0 +1,86 @@
+.app-shell {
+    min-height: 100vh;
+    background: #07111f;
+}
+
+.app-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    width: 100%;
+    padding: 1rem 1.2rem 0;
+    background: transparent;
+}
+
+.app-header__bar {
+    width: min(1160px, 100%);
+    margin: 0 auto;
+    padding: 0.95rem 1.1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    border: 1px solid rgba(129, 173, 255, 0.14);
+    border-radius: 1rem;
+    background: radial-gradient(circle at top left, rgba(87, 208, 255, 0.12), transparent 28%), linear-gradient(180deg, rgba(13, 26, 47, 0.94) 0%, rgba(7, 17, 31, 0.94) 100%);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(14px);
+}
+
+.app-header__profile,
+.app-header__link {
+    color: #edf4ff;
+    text-decoration: none;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    transition: color 0.22s ease, opacity 0.22s ease;
+}
+
+.app-header__profile {
+    font-size: 1rem;
+    color: #7ddfff;
+    text-transform: lowercase;
+}
+
+.app-header__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.app-header__link:hover,
+.app-header__profile:hover {
+    color: #ffffff;
+}
+
+.app-header__logout.logout-btn {
+    min-width: 5.5rem;
+    padding: 0.7rem 1rem;
+    border: 1px solid rgba(255, 77, 127, 0.24);
+    background: linear-gradient(90deg, rgba(255, 45, 111, 0.92) 0%, rgba(255, 77, 127, 0.92) 100%);
+    color: #ffffff;
+    box-shadow: 0 10px 24px rgba(255, 45, 111, 0.22);
+}
+
+.app-header__logout.logout-btn:hover {
+    background: linear-gradient(90deg, #ff2d6f 0%, #ff4d7f 100%);
+    transform: translateY(-1px);
+}
+
+.app-header__logout.logout-btn:active {
+    transform: scale(0.98);
+}
+
+@media (max-width: 640px) {
+    .app-header {
+        padding: 0.85rem 0.85rem 0;
+    }
+    .app-header__bar {
+        padding: 0.85rem 0.9rem;
+        flex-wrap: wrap;
+    }
+    .app-header__actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+}

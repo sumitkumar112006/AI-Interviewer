@@ -141,7 +141,7 @@ Job Role: Software Engineer
 Employment Type: Full-Time
 Experience Required: 1–3 Years
 Location: Bangalore / Noida / Remote
-Industry: Information Technology & Services
+Industry: Information Technology & Service
 `
 
 module.exports = {
