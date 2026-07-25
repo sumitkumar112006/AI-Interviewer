@@ -22,25 +22,45 @@ function extractObjectId(value) {
     return String(value).trim()
 }
 
+/**
+ * Module-level cache: interviewId → { blobUrl, report }
+ * This survives React component unmount/remount so navigating away
+ * and back does NOT trigger a redundant PDF regeneration.
+ */
+const pdfCache = new Map()
+
 const Resume = () => {
     const { interviewId } = useParams()
     const location = useLocation()
     const navigate = useNavigate()
     const { handleLogout } = useAuth()
-    const [previewUrl, setPreviewUrl] = useState('')
-    const [report, setReport] = useState(location.state?.interviewReport ?? null)
     const { loading, setLoading } = useInterview()
+
+    // ── Initialise state directly from cache to avoid blank flash on remount ──
+    const _cached = pdfCache.get(interviewId)
+    const [previewUrl, setPreviewUrl] = useState(_cached?.blobUrl ?? '')
+    const [report, setReport] = useState(
+        _cached?.report ?? location.state?.interviewReport ?? null
+    )
     const [error, setError] = useState('')
 
     useEffect(() => {
         let isMounted = true
-        let objectUrl = ''
 
         async function loadResumePreview() {
+            // ── Cache hit: reuse previously generated PDF ──────────────
+            const cached = pdfCache.get(interviewId)
+            if (cached) {
+                // State already initialised from cache above — nothing to do
+                return
+            }
+
+            // ── Cache miss: generate PDF from server ───────────────────
             setLoading(true)
             setError('')
             setPreviewUrl('')
 
+            let objectUrl = ''
             try {
                 const [pdfBlob, reportResponse] = await Promise.all([
                     generateResumePdf(interviewId),
@@ -53,18 +73,20 @@ const Resume = () => {
 
                 objectUrl = window.URL.createObjectURL(pdfBlob)
 
-                if (!isMounted) {
-                    return
-                }
+                if (!isMounted) return
+
+                const fetchedReport = reportResponse?.interviewReport ?? null
+
+                // Store in cache for future visits
+                pdfCache.set(interviewId, { blobUrl: objectUrl, report: fetchedReport })
 
                 console.debug('Resume preview blob', { size: pdfBlob.size, type: pdfBlob.type, url: objectUrl })
                 setPreviewUrl(objectUrl)
-                setReport(reportResponse?.interviewReport ?? null)
+                setReport(fetchedReport)
             } catch (err) {
-                if (!isMounted) {
-                    return
-                }
-
+                if (!isMounted) return
+                // On error, clean up any partial blob url
+                if (objectUrl) window.URL.revokeObjectURL(objectUrl)
                 console.error('Resume preview error:', err)
                 setError(err?.response?.data?.message || err?.message || 'Unable to generate the resume preview right now.')
             } finally {
@@ -78,10 +100,8 @@ const Resume = () => {
 
         return () => {
             isMounted = false
-
-            if (objectUrl) {
-                window.URL.revokeObjectURL(objectUrl)
-            }
+            // NOTE: We intentionally do NOT revoke the blob URL on unmount
+            // so the cached URL remains valid when the user navigates back.
         }
     }, [interviewId])
 
@@ -90,9 +110,7 @@ const Resume = () => {
     }, [report])
 
     const handleDownload = () => {
-        if (!previewUrl) {
-            return
-        }
+        if (!previewUrl) return
 
         const link = document.createElement('a')
         link.href = previewUrl
@@ -100,6 +118,24 @@ const Resume = () => {
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
+    }
+
+    /**
+     * Force a fresh PDF regeneration for this interview (clears cache entry).
+     * Useful if the user explicitly wants to refresh the resume.
+     */
+    const handleRefresh = () => {
+        const cached = pdfCache.get(interviewId)
+        if (cached?.blobUrl) {
+            window.URL.revokeObjectURL(cached.blobUrl)
+        }
+        pdfCache.delete(interviewId)
+        setPreviewUrl('')
+        setReport(location.state?.interviewReport ?? null)
+        setError('')
+        // The useEffect won't re-run because interviewId didn't change,
+        // so we trigger a manual reload by changing a key signal via a small trick:
+        window.location.reload()
     }
 
     const onlogout = async () => {
@@ -137,6 +173,14 @@ const Resume = () => {
                             onClick={() => navigate(`/interview/${interviewId}`, { state: { interviewReport: report } })}
                         >
                             Back To Report
+                        </button>
+                        <button
+                            type="button"
+                            className="ghost-btn"
+                            onClick={handleRefresh}
+                            title="Re-generate resume from scratch"
+                        >
+                            ↺ Refresh
                         </button>
                         <button
                             type="button"

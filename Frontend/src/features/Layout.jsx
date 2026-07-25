@@ -1,41 +1,294 @@
-import { User } from "lucide-react";
-import {useAuth} from "./Auth/hooks/useAuth";
-import Home from "./Interview/pages/Home";
-import { Outlet, useNavigate, Link } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useAuth } from "./Auth/hooks/useAuth";
+import { useInterview } from "./Interview/hooks/useInterview";
+import { Outlet, useNavigate, Link, useLocation } from "react-router-dom";
 import "./layout.scss";
 
 const Layout = () => {
-
   const { user, handleLogout } = useAuth();
+  const { reports, getReports } = useInterview();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    if (reports === null) {
+      void getReports();
+    }
+  }, [reports, getReports]);
 
   const onlogout = async () => {
-      await handleLogout();
-      navigate("/login");
-};  
+    await handleLogout();
+    navigate("/login");
+  };
 
+  const recentReportId = reports && reports.length > 0 ? (reports[0]._id?.$oid || reports[0]._id) : null;
 
+  // Determine active item and breadcrumb based on current pathname
+  const path = location.pathname;
+  let activeMenu = "dashboard";
+  let breadcrumb = "Dashboard";
 
+  const showSubTabs = path.startsWith("/interview/") || path.startsWith("/resume/") || 
+    (path.startsWith("/coming-soon") && new URLSearchParams(location.search).get("feature") === "cover-letter-builder");
+
+  // Extract active report ID from path or query parameters, fallback to recentReportId
+  let activeReportId = recentReportId;
+  const match = path.match(/\/(interview|resume)\/([^/]+)/);
+  if (match && match[2]) {
+    activeReportId = match[2];
+  } else {
+    const params = new URLSearchParams(location.search);
+    const reportIdParam = params.get("reportId");
+    if (reportIdParam) {
+      activeReportId = reportIdParam;
+    }
+  }
+
+  const showInterviewPrep = path.startsWith("/interview/") || path.startsWith("/resume/") || 
+    (path.startsWith("/coming-soon") && new URLSearchParams(location.search).get("feature") === "cover-letter-builder");
+
+  const showResumeAndCoverLetter = path.startsWith("/resume/") || 
+    (path.startsWith("/coming-soon") && new URLSearchParams(location.search).get("feature") === "cover-letter-builder");
+
+  if (path === "/" || path === "") {
+    activeMenu = "dashboard";
+    breadcrumb = "Dashboard";
+  } else if (path.startsWith("/interview/")) {
+    activeMenu = "interview-prep";
+    breadcrumb = "Interview Prep > Technical Questions";
+  } else if (path.startsWith("/resume/")) {
+    activeMenu = "cv-generator";
+    breadcrumb = "CV Generator > Resume Studio";
+  } else if (path === "/profile") {
+    activeMenu = "profile";
+    breadcrumb = "Settings > Profile";
+  } else if (path.startsWith("/coming-soon")) {
+    const params = new URLSearchParams(location.search);
+    const feature = params.get("feature") || "feature";
+    activeMenu = feature;
+    if (feature === "cover-letter-builder") {
+      breadcrumb = "CV Generator > Cover Letter Builder";
+    } else {
+      breadcrumb = `Feature > ${feature.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}`;
+    }
+  }
 
   return (
-    
-    <div className="app-shell pb-5">
-      <header className="app-header"> 
-        <div className="app-header__bar" >
-          <Link className="app-header__profile" to="/profile">{user?.username || "Profile"}</Link>
-          <div className="app-header__actions">
-            <Link className="app-header__link" to="/">Home</Link>
-            <button onClick={onlogout} className='button logout-btn app-header__logout'>Logout</button>
+    <div className="app-shell dark-theme">
+      {/* LEFT SIDEBAR */}
+      <aside className="app-sidebar">
+        <Link to="/" className="sidebar-brand">
+          <img src="/Logo.png" alt="KIVI-AI Logo" className="sidebar-logo" />
+          <div className="sidebar-brand-text">
+            <span className="sidebar-brand-name">KIVI-AI</span>
+            <span className="sidebar-brand-sub">Interview Intelligence</span>
           </div>
+        </Link>
+
+        <div className="sidebar-section">
+          <p className="sidebar-section-title">MAIN MENU</p>
+          <nav className="sidebar-nav">
+            <Link to="/" className={`sidebar-link ${activeMenu === "dashboard" ? "active" : ""}`}>
+              <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="7" height="9" />
+                <rect x="14" y="3" width="7" height="5" />
+                <rect x="14" y="12" width="7" height="9" />
+                <rect x="3" y="16" width="7" height="5" />
+              </svg>
+              <span>Dashboard</span>
+            </Link>
+
+            <Link to="/coming-soon?feature=find-jobs" className={`sidebar-link ${activeMenu === "find-jobs" ? "active" : ""}`}>
+              <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <span>Find Jobs</span>
+            </Link>
+
+            <Link to="/coming-soon?feature=my-activity" className={`sidebar-link ${activeMenu === "my-activity" ? "active" : ""}`}>
+              <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+              </svg>
+              <span>My Activity</span>
+            </Link>
+
+            <Link to="/coming-soon?feature=saved-items" className={`sidebar-link ${activeMenu === "saved-items" ? "active" : ""}`}>
+              <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+              </svg>
+              <span>Saved Items</span>
+            </Link>
+          </nav>
         </div>
-      </header>
 
+        <div className="sidebar-section">
+          <p className="sidebar-section-title">SETTINGS</p>
+          <nav className="sidebar-nav">
+            <Link to="/profile" className={`sidebar-link ${activeMenu === "profile" ? "active" : ""}`}>
+              <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              <span>Profile</span>
+            </Link>
 
-      <main >
-        <Outlet />
-      </main>
+            <Link to="/coming-soon?feature=preferences" className={`sidebar-link ${activeMenu === "preferences" ? "active" : ""}`}>
+              <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+              <span>Preferences</span>
+            </Link>
+
+            <Link to="/coming-soon?feature=help-support" className={`sidebar-link ${activeMenu === "help-support" ? "active" : ""}`}>
+              <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              <span>Help & Support</span>
+            </Link>
+
+            <button onClick={onlogout} className="sidebar-link logout-btn">
+              <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              <span>Logout</span>
+            </button>
+          </nav>
+        </div>
+
+        <div className="upgrade-card">
+          <div className="upgrade-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+            </svg>
+          </div>
+          <h3>Upgrade to Pro</h3>
+          <p>Unlock advanced features and boost your interview prep.</p>
+          <button className="upgrade-btn">Upgrade Now</button>
+        </div>
+      </aside>
+
+      {/* RIGHT CONTENT WRAPPER */}
+      <div className="app-content-wrapper">
+        <header className="app-header">
+          <div className="header-top-row">
+            <div className="header-breadcrumb">{breadcrumb}</div>
+            
+            <div className="header-actions">
+              {/* Search Input */}
+              <div className="header-search">
+                <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" placeholder="Search anything..." />
+                <span className="search-badge">Ctrl + K</span>
+              </div>
+
+              {/* AI Connected Pill */}
+              <div className="ai-engine-pill" title="AI Model currently connected to power your queries">
+                <span className="pulse-dot"></span>
+                <span className="ai-engine-name">Gemini 2.5 Flash</span>
+              </div>
+
+              {/* Dark Mode Icon */}
+              <button className="header-icon-btn" title="Toggle theme">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                </svg>
+              </button>
+
+              {/* Notifications Bell */}
+              <button className="header-icon-btn notifications-btn" title="Notifications">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+                <span className="notifications-badge">3</span>
+              </button>
+
+              {/* User Profile Dropdown */}
+              <div className="user-profile-dropdown" onClick={() => setDropdownOpen(!dropdownOpen)}>
+                <div className="user-avatar">
+                  {(user?.username || "U")[0].toUpperCase()}
+                </div>
+                <span className="user-name">{user?.username || "Profile"}</span>
+                <svg className="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+
+                {dropdownOpen && (
+                  <div className="profile-dropdown-menu">
+                    <Link to="/profile" className="dropdown-item">View Profile</Link>
+                    <button onClick={onlogout} className="dropdown-item logout">Logout</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Sub-tabs — visible only when in interview/resume/cover-letter context */}
+          {showSubTabs && (
+            <div className="layout-sub-tabs">
+              <Link
+                to={activeReportId ? `/interview/${activeReportId}` : "/"}
+                className={`sub-tab-link ${path.startsWith("/interview/") ? "active" : ""}`}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 11l3 3L22 4"/>
+                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                </svg>
+                Preparation Plan
+              </Link>
+
+              <Link
+                to={activeReportId ? `/resume/${activeReportId}` : "/"}
+                className={`sub-tab-link ${path.startsWith("/resume/") ? "active" : ""}`}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+                Generate Resume
+              </Link>
+
+              <Link
+                to={activeReportId ? `/coming-soon?feature=cover-letter-builder&reportId=${activeReportId}` : "/coming-soon?feature=cover-letter-builder"}
+                className={`sub-tab-link ${path.startsWith("/coming-soon") && new URLSearchParams(location.search).get("feature") === "cover-letter-builder" ? "active" : ""}`}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                  <polyline points="22,6 12,13 2,6"/>
+                </svg>
+                Cover Letter Builder
+              </Link>
+            </div>
+          )}
+        </header>
+
+        <main className="app-main-content">
+          <Outlet />
+        </main>
+
+        {/* Global Footer */}
+        <footer className="app-footer">
+          <div className="app-footer__links">
+            <a href="#">Privacy Policy</a>
+            <a href="#">Terms of Service</a>
+            <a href="#">Contact Us</a>
+            <a href="#">About KIVI-AI</a>
+          </div>
+          <p className="app-footer__copy">© 2026 KIVI-AI. All rights reserved.</p>
+        </footer>
+      </div>
     </div>
-  )
-}
+  );
+};
 
-export default Layout
+export default Layout;

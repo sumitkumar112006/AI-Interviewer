@@ -365,19 +365,9 @@ const Interview = () => {
     const isJobDescriptionOpen = Boolean(expandedItems.jobDescription)
     const isSelfDescriptionOpen = Boolean(expandedItems.selfDescription)
 
-    const onlogout = async () => {
-        try {
-            await handleLogout()
-            navigate('/login')
-        } catch (error) {
-            console.log(error)
-        }
-    }
-
     if (!report) {
         return (
             <div className="interview-page">
-                <button onClick={onlogout} className='button logout-btn'>Logout</button>
                 <div className="interview-shell">
                     <div className="interview-overview">
                         <p className="eyebrow">Interview Services</p>

@@ -6,6 +6,7 @@ import Home from "./features/Interview/pages/Home";
 import Interview from "./features/Interview/pages/Interview";
 import Profile from "./features/Profile/Pages/Profile";
 import Resume from "./features/Interview/pages/Resume";
+import ComingSoon from "./features/Interview/pages/ComingSoon";
 import Layout from "./features/Layout";
 
 
@@ -24,7 +25,8 @@ export const router = createBrowserRouter([
             { index: true, element: <Home /> },
             { path: "profile", element: <Profile /> },
             { path: "interview/:interviewId", element: <Interview /> },
-            { path: "resume/:interviewId", element: <Resume /> }
+            { path: "resume/:interviewId", element: <Resume /> },
+            { path: "coming-soon", element: <ComingSoon /> }
         ] 
     },
     

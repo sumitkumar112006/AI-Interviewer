@@ -1,5 +1,6 @@
 const pdfParse = require('pdf-parse')
 const mongoose = require('mongoose')
+const crypto = require('crypto')
 const { generateInterviewReport, generateResumePfd } = require('../services/ai.service')
 const interviewReportModle = require('../models/interviewReport.model')
 const interviewReportModel = require('../models/interviewReport.model')
@@ -70,11 +71,33 @@ async function getInterviewReportByIdController(req, res) {
 async function getAllInterviewReportController(req, res) {
     const interviewReports = await interviewReportModle
         .find({ user: req.user.id })
-        .sort({ createdAt: -1 }).select("-resume -selfDescription -jobDescription -__v -tecnicalQuestion -behaviooralQuestion -skillGaps -preparationPlan")
+        .sort({ createdAt: -1 })
+
+    const reportsWithHash = interviewReports.map(report => {
+        const reportObj = report.toObject()
+        // Generate a hash of the resume text
+        const hash = crypto.createHash('md5').update(reportObj.resume || '').digest('hex')
+        
+        // Remove large fields
+        delete reportObj.resume
+        delete reportObj.selfDescription
+        delete reportObj.jobDescription
+        delete reportObj.technicalQuestions
+        delete reportObj.behavioralQuestion
+        delete reportObj.skillGaps
+        delete reportObj.preparationPlan
+        delete reportObj.__v
+        
+        reportObj.resumeHash = hash
+        return reportObj
+    })
+
+    const uniqueResumes = new Set(reportsWithHash.map(r => r.resumeHash))
 
     res.status(200).json({
-        totalInterviews: interviewReports.length,
-        interviewReports
+        totalInterviews: reportsWithHash.length,
+        totalResumes: uniqueResumes.size,
+        interviewReports: reportsWithHash
     })
 }
 

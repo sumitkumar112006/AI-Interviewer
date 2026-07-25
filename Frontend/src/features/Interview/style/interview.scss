@@ -1,34 +1,32 @@
 .interview-page {
     position: relative;
-    --bg-1: #07111f;
-    --bg-2: #0d1a2f;
-    --panel: rgba(18, 29, 48, 0.72);
-    --panel-strong: rgba(10, 18, 32, 0.9);
-    --border: rgba(129, 173, 255, 0.14);
-    --border-strong: rgba(129, 173, 255, 0.22);
-    --text: #edf4ff;
-    --muted: #95a5c6;
-    --accent: #57d0ff;
-    --accent-soft: #7d7cff;
+    --bg-1: #090d16;
+    --bg-2: #090d16;
+    --panel: #0f1322;
+    --panel-strong: #0b0e17;
+    --border: #1c2338;
+    --border-strong: #2c3550;
+    --text: #ffffff;
+    --muted: #8f9cae;
+    --accent: #6366f1;
+    --accent-soft: #a78bfa;
     --danger: #ff7a9a;
-    --button-start: #ff2d6f;
-    --button-end: #ff4d7f;
-    --field-bg: rgba(5, 13, 24, 0.92);
+    --button-start: #6366f1;
+    --button-end: #a855f7;
+    --field-bg: #0b0e17;
     --high: #ff7a9a;
     --medium: #ffb366;
     --low: #87d7a1;
 
-    min-height: 100vh;
-    padding: 2.2rem 1.2rem;
+    width: 100%;
+    min-height: auto;
+    padding: 0;
     display: flex;
     justify-content: center;
     align-items: flex-start;
-    background:
-        radial-gradient(circle at top left, rgba(87, 208, 255, 0.16), transparent 24%),
-        radial-gradient(circle at top right, rgba(125, 124, 255, 0.12), transparent 20%),
-        linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%);
+    background: transparent;
     color: var(--text);
-    font-family: "Bahnschrift", "Segoe UI", "Trebuchet MS", sans-serif;
+    font-family: inherit;
 
     .logout-btn {
         position: absolute;

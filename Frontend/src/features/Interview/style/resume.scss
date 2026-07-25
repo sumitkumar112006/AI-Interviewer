@@ -1,24 +1,22 @@
 .resume-page {
     position: relative;
-    --bg-1: #07111f;
-    --bg-2: #0d1a2f;
-    --panel: rgba(18, 29, 48, 0.72);
-    --border: rgba(129, 173, 255, 0.14);
-    --border-strong: rgba(129, 173, 255, 0.22);
-    --text: #edf4ff;
-    --muted: #95a5c6;
-    --button-start: #ff2d6f;
-    --button-end: #ff4d7f;
+    --bg-1: #090d16;
+    --bg-2: #090d16;
+    --panel: #0f1322;
+    --border: #1c2338;
+    --border-strong: #2c3550;
+    --text: #ffffff;
+    --muted: #8f9cae;
+    --button-start: #6366f1;
+    --button-end: #a855f7;
     --danger: #ff7a9a;
 
-    min-height: 100vh;
-    padding: 2rem 1.2rem;
-    background:
-        radial-gradient(circle at top left, rgba(87, 208, 255, 0.16), transparent 24%),
-        radial-gradient(circle at top right, rgba(125, 124, 255, 0.12), transparent 20%),
-        linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%);
+    width: 100%;
+    min-height: auto;
+    padding: 0;
+    background: transparent;
     color: var(--text);
-    font-family: "Bahnschrift", "Segoe UI", "Trebuchet MS", sans-serif;
+    font-family: inherit;
 
     .logout-btn {
         position: absolute;

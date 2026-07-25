@@ -515,7 +515,6 @@ async function generateResumePfd({ resume, selfDescription, jobDescription }) {
     Rules:
     - Use exactly one top-level key: "html".
     - The "html" value must be a string.
-    - All hyperlinks/anchor tags (<a>) in the HTML must have target="_blank" and rel="noopener noreferrer" attributes.
     - The string must contain complete printable HTML for an A4 resume.
     - Do not return markdown fences.
     - Do not return undefined or null.
