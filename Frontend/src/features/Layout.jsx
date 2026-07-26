@@ -29,12 +29,11 @@ const Layout = () => {
   let activeMenu = "dashboard";
   let breadcrumb = "Dashboard";
 
-  const showSubTabs = path.startsWith("/interview/") || path.startsWith("/resume/") || 
-    (path.startsWith("/coming-soon") && new URLSearchParams(location.search).get("feature") === "cover-letter-builder");
+  const showSubTabs = path.startsWith("/interview/") || path.startsWith("/resume/") || path.startsWith("/cover-letter/");
 
   // Extract active report ID from path or query parameters, fallback to recentReportId
   let activeReportId = recentReportId;
-  const match = path.match(/\/(interview|resume)\/([^/]+)/);
+  const match = path.match(/\/(interview|resume|cover-letter)\/([^/]+)/);
   if (match && match[2]) {
     activeReportId = match[2];
   } else {
@@ -45,11 +44,9 @@ const Layout = () => {
     }
   }
 
-  const showInterviewPrep = path.startsWith("/interview/") || path.startsWith("/resume/") || 
-    (path.startsWith("/coming-soon") && new URLSearchParams(location.search).get("feature") === "cover-letter-builder");
+  const showInterviewPrep = path.startsWith("/interview/") || path.startsWith("/resume/") || path.startsWith("/cover-letter/");
 
-  const showResumeAndCoverLetter = path.startsWith("/resume/") || 
-    (path.startsWith("/coming-soon") && new URLSearchParams(location.search).get("feature") === "cover-letter-builder");
+  const showResumeAndCoverLetter = path.startsWith("/resume/") || path.startsWith("/cover-letter/");
 
   if (path === "/" || path === "") {
     activeMenu = "dashboard";
@@ -60,6 +57,9 @@ const Layout = () => {
   } else if (path.startsWith("/resume/")) {
     activeMenu = "cv-generator";
     breadcrumb = "CV Generator > Resume Studio";
+  } else if (path.startsWith("/cover-letter/")) {
+    activeMenu = "cover-letter-builder";
+    breadcrumb = "CV Generator > Cover Letter Builder";
   } else if (path === "/profile") {
     activeMenu = "profile";
     breadcrumb = "Settings > Profile";
@@ -67,11 +67,7 @@ const Layout = () => {
     const params = new URLSearchParams(location.search);
     const feature = params.get("feature") || "feature";
     activeMenu = feature;
-    if (feature === "cover-letter-builder") {
-      breadcrumb = "CV Generator > Cover Letter Builder";
-    } else {
-      breadcrumb = `Feature > ${feature.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}`;
-    }
+    breadcrumb = `Feature > ${feature.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}`;
   }
 
   return (
@@ -259,8 +255,8 @@ const Layout = () => {
               </Link>
 
               <Link
-                to={activeReportId ? `/coming-soon?feature=cover-letter-builder&reportId=${activeReportId}` : "/coming-soon?feature=cover-letter-builder"}
-                className={`sub-tab-link ${path.startsWith("/coming-soon") && new URLSearchParams(location.search).get("feature") === "cover-letter-builder" ? "active" : ""}`}
+                to={activeReportId ? `/cover-letter/${activeReportId}` : "/"}
+                className={`sub-tab-link ${path.startsWith("/cover-letter/") ? "active" : ""}`}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>

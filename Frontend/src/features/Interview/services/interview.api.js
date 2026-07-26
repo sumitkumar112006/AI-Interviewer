@@ -53,11 +53,11 @@ export const generateInterviewReport = async ({ jobDescription, selfDescription,
  * @description Serbvices to generate resume pdf based on user self description resumr content
  */
 
-export const generateResumePdf = async (interviewReportId) => {
+export const generateResumePdf = async (interviewReportId, htmlContent = null) => {
     let response
 
     try {
-        response = await api.post(`/api/interview/resume/pdf/${interviewReportId}`, null, {
+        response = await api.post(`/api/interview/resume/pdf/${interviewReportId}`, { htmlContent }, {
             responseType: 'blob'
         })
     } catch (error) {
@@ -98,5 +98,10 @@ export const generateResumePdf = async (interviewReportId) => {
 
 export async function deleteReportById(interviewReportId) {
     const response = await api.delete(`/api/interview/${interviewReportId}`)
+    return response.data
+}
+
+export async function updateResumeHtml(interviewReportId, { generatedResumeHtml }) {
+    const response = await api.put(`/api/interview/resume/${interviewReportId}`, { generatedResumeHtml })
     return response.data
 }

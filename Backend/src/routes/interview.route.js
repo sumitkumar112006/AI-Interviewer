@@ -50,4 +50,7 @@ interviewRouter.post('/resume/pdf/:interviewReportId', authMidleware.authUser, i
 
 interviewRouter.delete('/:interviewReportId', authMidleware.authUser, interviewController.deleteReportById)
 
+// Update resume HTML content
+interviewRouter.put('/resume/:interviewReportId', authMidleware.authUser, interviewController.updateResumeHtmlController)
+
 module.exports = interviewRouter

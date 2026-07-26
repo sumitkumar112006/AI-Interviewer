@@ -1,7 +1,7 @@
 const pdfParse = require('pdf-parse')
 const mongoose = require('mongoose')
 const crypto = require('crypto')
-const { generateInterviewReport, generateResumePfd } = require('../services/ai.service')
+const { generateInterviewReport, generateResumePfd, generateResumeHtml, generatePfdFromHtml } = require('../services/ai.service')
 const interviewReportModle = require('../models/interviewReport.model')
 const interviewReportModel = require('../models/interviewReport.model')
 
@@ -129,8 +129,19 @@ async function generateResumePdfController(req, res) {
         }
 
         const { resume, selfDescription, jobDescription } = interviewReport
+        const { htmlContent } = req.body
 
-        const pdfBuffer = await generateResumePfd({ resume, selfDescription, jobDescription })
+        let pdfBuffer
+        if (htmlContent) {
+            pdfBuffer = await generatePfdFromHtml(htmlContent)
+        } else if (interviewReport.generatedResumeHtml) {
+            pdfBuffer = await generatePfdFromHtml(interviewReport.generatedResumeHtml)
+        } else {
+            const generatedHtml = await generateResumeHtml({ resume, selfDescription, jobDescription })
+            interviewReport.generatedResumeHtml = generatedHtml
+            await interviewReport.save()
+            pdfBuffer = await generatePfdFromHtml(generatedHtml)
+        }
 
         if (!pdfBuffer || pdfBuffer.length === 0) {
             return res.status(500).json({ message: 'Failed to generate resume PDF.' })
@@ -190,10 +201,39 @@ async function deleteReportById(req, res) {
     }
 }
 
+async function updateResumeHtmlController(req, res) {
+    try {
+        const { interviewReportId } = req.params;
+        const { generatedResumeHtml } = req.body;
+
+        if (!mongoose.isValidObjectId(interviewReportId)) {
+            return res.status(400).json({ message: "Invalid report id" });
+        }
+
+        const report = await interviewReportModel.findOneAndUpdate(
+            { _id: interviewReportId, user: req.user.id },
+            { generatedResumeHtml },
+            { new: true }
+        );
+
+        if (!report) {
+            return res.status(404).json({ message: "Interview report not found" });
+        }
+
+        res.status(200).json({
+            message: "Resume updated successfully!",
+            interviewReport: report
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+}
+
 module.exports = {
     generateInterviewReportController,
     getInterviewReportByIdController,
     getAllInterviewReportController,
     generateResumePdfController,
-    deleteReportById
+    deleteReportById,
+    updateResumeHtmlController
 }

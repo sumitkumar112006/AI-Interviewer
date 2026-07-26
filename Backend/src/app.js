@@ -2,6 +2,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const multer = require('multer');
+const coverLetterRouter = require('./routes/coverletter.route');
 
 const app = express();
 
@@ -47,6 +48,8 @@ const interviewRouter = require('./routes/interview.route');
 // Use all the routes here.
 app.use("/api/auth", authRouter);
 app.use('/api/interview', interviewRouter)
+app.use('/api/cover-letter', coverLetterRouter);
+
 
 app.use((err, req, res, next) => {
     if (err?.message?.includes("not allowed by CORS")) {

@@ -500,7 +500,7 @@ async function generatePfdFromHtml(htmlContent) {
 
 
 
-async function generateResumePfd({ resume, selfDescription, jobDescription }) {
+async function generateResumeHtml({ resume, selfDescription, jobDescription }) {
     const resumePdfSchema = z.object({
         html: z.string().describe("The HTML content of the resume including all the hyperlinks, styles, and formatting necessary for a professional 1-2 page resume. And this resume should have all those updated details which are mentioned in the resume, self description and job description. It should be ATS friendly based on the Job Description and visually appealing for human recruiters.")
     })
@@ -529,6 +529,10 @@ async function generateResumePfd({ resume, selfDescription, jobDescription }) {
     Self Description: ${selfDescription}
     Job Description: ${jobDescription}
     - Return only valid JSON.
+    - Do not add fake or unreal information, Knowledge, or data which is not present in the resume, self description or job description.
+    - If the Resume Data is less or incomplete and the Job description requires more information then the Job description should guide the resume html to be generated, it should align with the job description.
+    - Do not use fake hyper links for email address, github, linkedin.
+    - Every link should be varified and real in you are not able to verify then leave it blank.
     `
 
     let response
@@ -559,15 +563,144 @@ async function generateResumePfd({ resume, selfDescription, jobDescription }) {
     const jsonContent = JSON.parse(response.text)
     const htmlContent = extractResumeHtmlContent(jsonContent)
     console.log(htmlContent);
-    const normalizedHtmlDocument = normalizeResumeHtmlDocument(htmlContent)
-
-
-
-    const pdfBuffer = await generatePfdFromHtml(normalizedHtmlDocument)
-    return pdfBuffer
-
-    // return confirm
-
+    return normalizeResumeHtmlDocument(htmlContent)
 }
 
-module.exports = { generateInterviewReport, generateResumePfd }
+async function generateResumePfd({ resume, selfDescription, jobDescription }) {
+    const normalizedHtmlDocument = await generateResumeHtml({ resume, selfDescription, jobDescription })
+    const pdfBuffer = await generatePfdFromHtml(normalizedHtmlDocument)
+    return pdfBuffer
+}
+
+
+const coverLetterPdfSchema = z.object({
+    html: z.string().describe("The complete HTML content of the professional cover letter. It should look clean, professional, and well-spaced, optimized for a single A4 page.")
+});
+
+// Add the helper function and export it
+// Add helper for scraping company culture
+async function scrapeCompanyCulture(companyName) {
+    if (!companyName || !companyName.trim()) {
+        return null;
+    }
+
+    console.log(`[Scraper] Starting culture search for company: ${companyName}`);
+    let browser;
+    try {
+        browser = await puppeteer.launch({
+            headless: "new",
+            args: [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage"
+            ]
+        });
+        const page = await browser.newPage();
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        
+        // Search DuckDuckGo HTML version for company culture
+        const searchQuery = encodeURIComponent(`${companyName} company culture values mission about`);
+        const searchUrl = `https://html.duckduckgo.com/html/?q=${searchQuery}`;
+        
+        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 8000 });
+        
+        // Extract the first 3 links from search results (ignoring ads and duckduckgo search urls)
+        const urls = await page.evaluate(() => {
+            const links = Array.from(document.querySelectorAll('a.result__a'));
+            return links
+                .map(a => a.href)
+                .filter(href => href && !href.includes('duckduckgo.com'))
+                .slice(0, 3);
+        });
+        
+        if (!urls || urls.length === 0) {
+            console.log(`[Scraper] No search results found for ${companyName}`);
+            await browser.close();
+            return null;
+        }
+        
+        // Take the first link as the most relevant culture page
+        const targetUrl = urls[0];
+        console.log(`[Scraper] Navigating to target site for culture data: ${targetUrl}`);
+        
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+        
+        // Extract main text content
+        const textContent = await page.evaluate(() => {
+            const elementsToRemove = document.querySelectorAll('script, style, nav, footer, header, noscript');
+            elementsToRemove.forEach(el => el.remove());
+            const bodyText = document.body.innerText || "";
+            return bodyText.replace(/\s+/g, ' ').trim();
+        });
+        
+        await browser.close();
+        
+        // Limit scraped text length to avoid token limit issues
+        const trimmedText = textContent.slice(0, 2000);
+        console.log(`[Scraper] Successfully scraped ${trimmedText.length} chars from ${targetUrl}`);
+        
+        return {
+            sourceUrl: targetUrl,
+            scrapedText: trimmedText
+        };
+    } catch (err) {
+        console.error(`[Scraper] Failed to scrape company culture:`, err.message);
+        if (browser) {
+            try {
+                await browser.close();
+            } catch (closeErr) {
+                // ignore
+            }
+        }
+        return null;
+    }
+}
+
+// Add the helper function and export it
+async function generateCoverLetter({ resume, selfDescription, jobDescription, companyName, roleName }) {
+    let scrapedCulture = null;
+    if (companyName && companyName.trim()) {
+        scrapedCulture = await scrapeCompanyCulture(companyName);
+    }
+
+    let culturePromptSection = "";
+    if (scrapedCulture) {
+        culturePromptSection = `
+        We scraped the company's website (${scrapedCulture.sourceUrl}) and found the following details about their culture, values, or mission:
+        ---
+        ${scrapedCulture.scrapedText}
+        ---
+        Please use this company culture/values information to adapt the tone, language, and emphasized strengths of the cover letter so it reflects the company's culture and values.
+        `;
+    }
+
+    const prompt = `
+    Generate a professional cover letter in valid JSON format.
+    
+    Rules:
+    - Use exactly one top-level key: "html".
+    - The "html" value must be a string containing print-ready HTML optimized for an A4 page.
+    - Write in a natural, persuasive human tone. Avoid sounding overly robotic or generic.
+    - Address it professionally. If companyName (${companyName || 'the company'}) or roleName (${roleName || 'the position'}) is provided, use them correctly.
+    - Tailor the letter by connecting the candidate's Resume strengths and Self Description with the Job Description requirements.
+    - Do not fabricate experiences or certifications not mentioned in the resume.
+    ${culturePromptSection}
+    
+    Candidate details:
+    Resume: ${resume}
+    Self Description: ${selfDescription || 'Not provided'}
+    Job Description: ${jobDescription}
+    `;
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseJsonSchema: zodToJsonSchema(coverLetterPdfSchema)
+        }
+    });
+    const jsonContent = JSON.parse(response.text);
+    return jsonContent.html; // Returns the generated HTML string
+}
+
+module.exports = { generateInterviewReport, generateResumePfd, generateCoverLetter, generatePfdFromHtml, generateResumeHtml }
