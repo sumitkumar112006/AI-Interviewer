@@ -12,14 +12,33 @@ export async function register({ username, email, password }) {
         const response = await api.post('register', {
             username, email, password
         })
-
         return response.data
-
     } catch (err) {
         throw err;
     }
 }
 
+export async function verifyOtp({ email, otp }) {
+    try {
+        const response = await api.post('verify-otp', {
+            email, otp
+        })
+        return response.data
+    } catch (err) {
+        throw err;
+    }
+}
+
+export async function resendOtp({ email }) {
+    try {
+        const response = await api.post('resend-otp', {
+            email
+        })
+        return response.data
+    } catch (err) {
+        throw err;
+    }
+}
 
 export async function login({ email, password }) {
     try {
@@ -28,13 +47,9 @@ export async function login({ email, password }) {
         }, {
             withCredentials: true
         })
-
         return response.data
-
-
     } catch (err) {
         throw err;
-
     }
 }
 
@@ -52,13 +67,11 @@ export async function logout() {
 export async function getMe() {
     try {
         const response = await api.get('get-me')
-
         return response.data
     } catch (err) {
         if (err?.response?.status === 401) {
             return { user: null }
         }
-
         throw err;
     }
 }

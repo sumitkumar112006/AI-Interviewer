@@ -229,11 +229,45 @@ async function updateResumeHtmlController(req, res) {
     }
 }
 
+async function updateInterviewProgressController(req, res) {
+    try {
+        const { interviewId } = req.params;
+        const { technicalQuestions, behavioralQuestion, completedTasks } = req.body;
+
+        if (!mongoose.isValidObjectId(interviewId)) {
+            return res.status(400).json({ message: "Invalid report id" });
+        }
+
+        const updateData = {};
+        if (technicalQuestions !== undefined) updateData.technicalQuestions = technicalQuestions;
+        if (behavioralQuestion !== undefined) updateData.behavioralQuestion = behavioralQuestion;
+        if (completedTasks !== undefined) updateData.completedTasks = completedTasks;
+
+        const report = await interviewReportModel.findOneAndUpdate(
+            { _id: interviewId, user: req.user.id },
+            updateData,
+            { new: true }
+        );
+
+        if (!report) {
+            return res.status(404).json({ message: "Interview report not found" });
+        }
+
+        res.status(200).json({
+            message: "Interview progress updated successfully!",
+            interviewReport: report
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+}
+
 module.exports = {
     generateInterviewReportController,
     getInterviewReportByIdController,
     getAllInterviewReportController,
     generateResumePdfController,
     deleteReportById,
-    updateResumeHtmlController
+    updateResumeHtmlController,
+    updateInterviewProgressController
 }

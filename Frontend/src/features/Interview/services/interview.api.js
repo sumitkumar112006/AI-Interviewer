@@ -105,3 +105,8 @@ export async function updateResumeHtml(interviewReportId, { generatedResumeHtml 
     const response = await api.put(`/api/interview/resume/${interviewReportId}`, { generatedResumeHtml })
     return response.data
 }
+
+export async function updateInterviewProgress(interviewId, { technicalQuestions, behavioralQuestion, completedTasks }) {
+    const response = await api.put(`/api/interview/progress/${interviewId}`, { technicalQuestions, behavioralQuestion, completedTasks })
+    return response.data
+}

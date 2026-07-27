@@ -45,6 +45,10 @@ const technicalQuestionSchema = new mongoose.Schema({
     answer: {
         type: String,
         required: [true, "Answer is required for technical question"],
+    },
+    userResponse: {
+        type: String,
+        default: ""
     }
 }, {
     _id: false, // this will prevent mongoose from creating an _id for each technical question  
@@ -63,6 +67,10 @@ const behavioralQuestionSchema = new mongoose.Schema({
     answer: {
         type: String,
         required: [true, "Answer is required for Behavioral question"],
+    },
+    userResponse: {
+        type: String,
+        default: ""
     }
 }, {
     _id: false,
@@ -128,6 +136,10 @@ const interviewReportSchema = new mongoose.Schema({
     behavioralQuestion: [behavioralQuestionSchema],
     skillGaps: [skillGapSchema],
     preparationPlan: [interviewPreparationPlanSchema],
+    completedTasks: {
+        type: [String],
+        default: []
+    },
     user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "users"

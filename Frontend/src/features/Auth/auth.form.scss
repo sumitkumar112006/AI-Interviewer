@@ -28,6 +28,17 @@ main {
         flex-direction: column; 
         gap: 1rem;
 
+        .error-message {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            color: #ef4444;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.88rem;
+            font-weight: 500;
+            line-height: 1.4;
+            animation: fadeIn 0.2s ease-out;
+        }
 
         .auth-form {
             display:flex;
@@ -41,6 +52,4 @@ main {
         color:#ca003d;
         text-decoration:none;
     }
-
-    
 }

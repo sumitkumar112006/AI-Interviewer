@@ -53,4 +53,7 @@ interviewRouter.delete('/:interviewReportId', authMidleware.authUser, interviewC
 // Update resume HTML content
 interviewRouter.put('/resume/:interviewReportId', authMidleware.authUser, interviewController.updateResumeHtmlController)
 
+// Update interview progress (questions responses, roadmap tasks)
+interviewRouter.put('/progress/:interviewId', authMidleware.authUser, interviewController.updateInterviewProgressController)
+
 module.exports = interviewRouter

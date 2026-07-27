@@ -63,6 +63,18 @@ const Layout = () => {
   } else if (path === "/profile") {
     activeMenu = "profile";
     breadcrumb = "Settings > Profile";
+  } else if (path === "/privacy-policy") {
+    activeMenu = "privacy-policy";
+    breadcrumb = "Legal > Privacy Policy";
+  } else if (path === "/terms-of-service") {
+    activeMenu = "terms-of-service";
+    breadcrumb = "Legal > Terms of Service";
+  } else if (path === "/contact-us") {
+    activeMenu = "contact-us";
+    breadcrumb = "Support > Contact Us";
+  } else if (path === "/about-us") {
+    activeMenu = "about-us";
+    breadcrumb = "Company > About KIVI-AI";
   } else if (path.startsWith("/coming-soon")) {
     const params = new URLSearchParams(location.search);
     const feature = params.get("feature") || "feature";
@@ -275,10 +287,10 @@ const Layout = () => {
         {/* Global Footer */}
         <footer className="app-footer">
           <div className="app-footer__links">
-            <a href="#">Privacy Policy</a>
-            <a href="#">Terms of Service</a>
-            <a href="#">Contact Us</a>
-            <a href="#">About KIVI-AI</a>
+            <Link to="/privacy-policy">Privacy Policy</Link>
+            <Link to="/terms-of-service">Terms of Service</Link>
+            <Link to="/contact-us">Contact Us</Link>
+            <Link to="/about-us">About KIVI-AI</Link>
           </div>
           <p className="app-footer__copy">© 2026 KIVI-AI. All rights reserved.</p>
         </footer>

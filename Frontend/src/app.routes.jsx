@@ -9,6 +9,10 @@ import Resume from "./features/Interview/pages/Resume";
 import CoverLetter from "./features/Interview/pages/CoverLetter";
 import ComingSoon from "./features/Interview/pages/ComingSoon";
 import Layout from "./features/Layout";
+import PrivacyPolicy from "./features/Footer/pages/PrivacyPolicy";
+import TermsOfService from "./features/Footer/pages/TermsOfService";
+import ContactUs from "./features/Footer/pages/ContactUs";
+import AboutUs from "./features/Footer/pages/AboutUs";
 
 
 export const router = createBrowserRouter([
@@ -28,7 +32,11 @@ export const router = createBrowserRouter([
             { path: "interview/:interviewId", element: <Interview /> },
             { path: "resume/:interviewId", element: <Resume /> },
             { path: "cover-letter/:interviewId", element: <CoverLetter /> },
-            { path: "coming-soon", element: <ComingSoon /> }
+            { path: "coming-soon", element: <ComingSoon /> },
+            { path: "privacy-policy", element: <PrivacyPolicy /> },
+            { path: "terms-of-service", element: <TermsOfService /> },
+            { path: "contact-us", element: <ContactUs /> },
+            { path: "about-us", element: <AboutUs /> }
         ] 
     },
     
