@@ -384,8 +384,8 @@ const CoverLetter = () => {
                             </button>
                         </form>
 
-                        <div className="info-card">
-                            💡 <strong>KIVI-AI</strong> automatically blends the <strong>resume</strong> text and <strong>job description</strong> from your interview report to align your cover letter with the job's core requirements.
+                        <div className="warn-card">
+                            ⚠️ <span>KIVI can make mistakes</span> — please review your details carefully before downloading.
                         </div>
 
                         {coverLetter && (

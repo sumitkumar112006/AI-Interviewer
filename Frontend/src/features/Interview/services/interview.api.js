@@ -7,6 +7,30 @@ const api = axios.create({
     withCredentials: true
 })
 
+api.interceptors.response.use(
+    response => response,
+    error => {
+        const status = error?.response?.status;
+        let msg = error?.response?.data?.message || error?.message || '';
+
+        const isValidationErr = status === 422 || msg.includes('validation') || msg.includes('required') || msg.includes('too_small') || msg.trim().startsWith('[');
+        const isLlmBusy = status === 503 || msg.includes('high demand') || msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('RESOURCE_EXHAUSTED');
+
+        if (isValidationErr || isLlmBusy) {
+            const cleanMessage = isLlmBusy
+                ? "AI service is currently experiencing high demand. Please try again in a few seconds."
+                : "The AI response was not structured properly. Please click 'Generate' again.";
+            
+            const title = isLlmBusy ? "AI Service Busy" : "Generation Failed";
+
+            if (typeof window !== 'undefined' && window.triggerGlobalError) {
+                window.triggerGlobalError(cleanMessage, error?.stack || '', true, title);
+            }
+        }
+        return Promise.reject(error);
+    }
+);
+
 
 
 

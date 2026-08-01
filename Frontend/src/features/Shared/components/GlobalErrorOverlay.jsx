@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ErrorModal } from '../../../components/ErrorModal';
 
 // A global error boundary component to catch React rendering crashes
 export class ErrorBoundary extends React.Component {
@@ -113,15 +114,29 @@ export class ErrorBoundary extends React.Component {
 export const GlobalErrorOverlay = () => {
     const [error, setError] = useState(null);
 
+    const checkIsLlmBusy = (msg = '', status = 0) => {
+        return status === 503 ||
+            msg.includes('503') ||
+            msg.includes('high demand') ||
+            msg.includes('AI service') ||
+            msg.includes('UNAVAILABLE') ||
+            msg.includes('RESOURCE_EXHAUSTED');
+    };
+
     useEffect(() => {
         // Expose trigger function globally
-        window.triggerGlobalError = (message, details = '') => {
-            setError({ message, details });
+        window.triggerGlobalError = (message, details = '', isLlmBusy = false, modalTitle = null) => {
+            let cleanMsg = message;
+            if (typeof cleanMsg === 'string' && (cleanMsg.trim().startsWith('[') || cleanMsg.trim().startsWith('{') || cleanMsg.includes('too_small') || cleanMsg.includes('validation failed'))) {
+                cleanMsg = "The AI response was not structured properly. Please click 'Generate' again.";
+            }
+            const llmBusy = isLlmBusy || checkIsLlmBusy(cleanMsg);
+            const title = modalTitle || (llmBusy ? "AI Service Busy" : "Generation Failed");
+            setError({ message: cleanMsg, details, isLlmBusy: true, title });
         };
 
         // Listen for uncaught JavaScript exceptions
         const handleGlobalError = (event) => {
-            // Ignore resize-observer errors or external script failures that are non-critical
             if (event.message && (
                 event.message.includes('ResizeObserver') || 
                 event.message.includes('Script error.')
@@ -129,9 +144,15 @@ export const GlobalErrorOverlay = () => {
                 return;
             }
 
+            let msg = event.message || "An unexpected runtime error occurred";
+            if (typeof msg === 'string' && (msg.trim().startsWith('[') || msg.trim().startsWith('{'))) {
+                msg = "The AI response was not structured properly. Please click 'Generate' again.";
+            }
             setError({
-                message: event.message || "An unexpected runtime error occurred",
-                details: event.error?.stack || `${event.filename || 'unknown'}:${event.lineno || 0}:${event.colno || 0}`
+                message: msg,
+                details: event.error?.stack || `${event.filename || 'unknown'}:${event.lineno || 0}:${event.colno || 0}`,
+                isLlmBusy: true,
+                title: checkIsLlmBusy(msg) ? "AI Service Busy" : "Generation Failed"
             });
         };
 
@@ -140,13 +161,24 @@ export const GlobalErrorOverlay = () => {
             const reason = event.reason;
             let message = "Asynchronous request failed";
             let details = "";
+            let status = reason?.response?.status || 0;
 
             if (reason) {
-                message = reason.message || message;
+                message = reason.response?.data?.message || reason.message || message;
                 details = reason.stack || String(reason);
             }
 
-            setError({ message, details });
+            if (typeof message === 'string' && (message.trim().startsWith('[') || message.trim().startsWith('{') || message.includes('too_small') || message.includes('validation failed'))) {
+                message = "The AI response was not structured properly. Please click 'Generate' again.";
+            }
+
+            const isBusy = checkIsLlmBusy(message, status);
+            setError({
+                message,
+                details,
+                isLlmBusy: true,
+                title: isBusy ? "AI Service Busy" : "Generation Failed"
+            });
         };
 
         window.addEventListener('error', handleGlobalError);
@@ -162,6 +194,17 @@ export const GlobalErrorOverlay = () => {
     }, []);
 
     if (!error) return null;
+
+    if (error.isLlmBusy) {
+        return (
+            <ErrorModal
+                isOpen={true}
+                title={error.title || "AI Service Busy"}
+                message={error.message}
+                onClose={() => setError(null)}
+            />
+        );
+    }
 
     return (
         <div style={{

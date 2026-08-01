@@ -5,109 +5,111 @@ const { generateInterviewReport, generateResumePfd, generateResumeHtml, generate
 const interviewReportModle = require('../models/interviewReport.model')
 const interviewReportModel = require('../models/interviewReport.model')
 
-async function generateInterviewReportController(req, res) {
-    if (!req.file) {
-        return res.status(400).json({
-            message: "Resume PDF file is required"
+async function generateInterviewReportController(req, res, next) {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                message: "Resume PDF file is required"
+            })
+        }
+
+        if (!req.body?.selfDescription?.trim() || !req.body?.jobDescription?.trim()) {
+            return res.status(400).json({
+                message: "Job description and self description are required"
+            })
+        }
+
+        const resumeContent = await (new pdfParse.PDFParse(Uint8Array.from(req.file.buffer))).getText()
+        const { selfDescription, jobDescription } = req.body
+
+        const interviewReportByAI = await generateInterviewReport({
+            resume: resumeContent.text,
+            selfDescription,
+            jobDescription
         })
-    }
 
-    if (!req.body ?.selfDescription ?.trim() || !req.body ?.jobDescription ?.trim()) {
-        return res.status(400).json({
-            message: "Job description and self description are required"
+        const interviewReport = await interviewReportModle.create({
+            user: req.user.id,
+            resume: resumeContent.text,
+            selfDescription,
+            jobDescription,
+            ...interviewReportByAI
         })
+
+        res.status(201).json({
+            message: "Interview Report Generated Successfully !",
+            interviewReport
+        })
+    } catch (error) {
+        next(error)
     }
-
-    const resumeContent = await (new pdfParse.PDFParse(Uint8Array.from(req.file.buffer))).getText()
-    const { selfDescription, jobDescription } = req.body
-
-    const interviewReportByAI = await generateInterviewReport({
-        resume: resumeContent.text,
-        selfDescription,
-        jobDescription
-    })
-
-    const interviewReport = await interviewReportModle.create({
-        user: req.user.id,
-        resume: resumeContent.text,
-        selfDescription,
-        jobDescription,
-        ...interviewReportByAI
-    })
-
-
-    res.status(201).json({
-        message: "Interview Report Generated Successfully !",
-        interviewReport
-    })
 }
 
-async function getInterviewReportByIdController(req, res) {
-    const { interviewId } = req.params
+async function getInterviewReportByIdController(req, res, next) {
+    try {
+        const { interviewId } = req.params
 
-    if (!mongoose.isValidObjectId(interviewId)) {
-        return res.status(400).json({
-            message: "Invalid interview report id"
+        if (!mongoose.isValidObjectId(interviewId)) {
+            return res.status(400).json({
+                message: "Invalid interview report id"
+            })
+        }
+
+        const interviewReport = await interviewReportModle.findOne({
+            _id: interviewId,
+            user: req.user.id
         })
-    }
 
-    const interviewReport = await interviewReportModle.findOne({
-        _id: interviewId,
-        user: req.user.id
-    })
+        if (!interviewReport) {
+            return res.status(404).json({
+                message: "Interview report not found"
+            })
+        }
 
-    if (!interviewReport) {
-        return res.status(404).json({
-            message: "Interview report not found"
+        res.status(200).json({
+            interviewReport
         })
+    } catch (error) {
+        next(error)
     }
-
-    res.status(200).json({
-        interviewReport
-    })
 }
 
+async function getAllInterviewReportController(req, res, next) {
+    try {
+        const interviewReports = await interviewReportModle
+            .find({ user: req.user.id })
+            .sort({ createdAt: -1 })
 
-async function getAllInterviewReportController(req, res) {
-    const interviewReports = await interviewReportModle
-        .find({ user: req.user.id })
-        .sort({ createdAt: -1 })
+        const reportsWithHash = interviewReports.map(report => {
+            const reportObj = report.toObject()
+            const hash = crypto.createHash('md5').update(reportObj.resume || '').digest('hex')
+            
+            delete reportObj.resume
+            delete reportObj.selfDescription
+            delete reportObj.jobDescription
+            delete reportObj.technicalQuestions
+            delete reportObj.behavioralQuestion
+            delete reportObj.skillGaps
+            delete reportObj.preparationPlan
+            delete reportObj.__v
+            
+            reportObj.resumeHash = hash
+            return reportObj
+        })
 
-    const reportsWithHash = interviewReports.map(report => {
-        const reportObj = report.toObject()
-        // Generate a hash of the resume text
-        const hash = crypto.createHash('md5').update(reportObj.resume || '').digest('hex')
-        
-        // Remove large fields
-        delete reportObj.resume
-        delete reportObj.selfDescription
-        delete reportObj.jobDescription
-        delete reportObj.technicalQuestions
-        delete reportObj.behavioralQuestion
-        delete reportObj.skillGaps
-        delete reportObj.preparationPlan
-        delete reportObj.__v
-        
-        reportObj.resumeHash = hash
-        return reportObj
-    })
+        const uniqueResumes = new Set(reportsWithHash.map(r => r.resumeHash))
 
-    const uniqueResumes = new Set(reportsWithHash.map(r => r.resumeHash))
-
-    res.status(200).json({
-        totalInterviews: reportsWithHash.length,
-        totalResumes: uniqueResumes.size,
-        interviewReports: reportsWithHash
-    })
+        res.status(200).json({
+            totalInterviews: reportsWithHash.length,
+            totalResumes: uniqueResumes.size,
+            interviewReports: reportsWithHash
+        })
+    } catch (error) {
+        next(error)
+    }
 }
 
-
-
-/**
- * @description it will require resume jobdescription selfDescription
- */
-
-async function generateResumePdfController(req, res) {
+async function generateResumePdfController(req, res, next) {
     try {
         const { interviewReportId } = req.params
 
@@ -155,27 +157,19 @@ async function generateResumePdfController(req, res) {
         res.send(pdfBuffer)
     } catch (error) {
         console.error("generateResumePdfController error:", error)
-        return res.status(500).json({
-            message: error ?.message || "Failed to generate resume PDF."
-        })
+        next(error)
     }
 }
 
-/**
- * It will require only interview report and authanticated user.
- */
-async function deleteReportById(req, res) {
+async function deleteReportById(req, res, next) {
     try {
         const { interviewReportId } = req.params;
 
-        //Checking Report ID is vailid or not.
         if (!mongoose.isValidObjectId(interviewReportId)) {
             return res.status(400).json({
                 message: "Invalid interview report id"
             })
         }
-
-        // 2. Find and delete the report owned by the authenticated user
 
         const deleteReport = await interviewReportModle.findOneAndDelete({
             _id: interviewReportId, 
@@ -195,13 +189,11 @@ async function deleteReportById(req, res) {
 
     } catch (err) {
         console.error("deleteReportById error: ", err)
-        return res.status(500).json({
-            message: err?.message || "Failed to delete the interview report."
-        });
+        next(err)
     }
 }
 
-async function updateResumeHtmlController(req, res) {
+async function updateResumeHtmlController(req, res, next) {
     try {
         const { interviewReportId } = req.params;
         const { generatedResumeHtml } = req.body;
@@ -225,11 +217,11 @@ async function updateResumeHtmlController(req, res) {
             interviewReport: report
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        next(error)
     }
 }
 
-async function updateInterviewProgressController(req, res) {
+async function updateInterviewProgressController(req, res, next) {
     try {
         const { interviewId } = req.params;
         const { technicalQuestions, behavioralQuestion, completedTasks } = req.body;
@@ -258,7 +250,7 @@ async function updateInterviewProgressController(req, res) {
             interviewReport: report
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        next(error)
     }
 }
 

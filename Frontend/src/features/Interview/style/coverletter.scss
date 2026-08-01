@@ -159,10 +159,41 @@
         border-radius: 0.75rem;
         font-size: 0.85rem;
         color: var(--muted);
-        line-height: 1.5;
+        line-height: 1.6;
+        text-align: left;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        word-break: break-word;
+        overflow-wrap: break-word;
+        display: flex;
+        align-items: flex-start;
+        gap: 0.6rem;
 
         strong {
             color: var(--accent);
+        }
+    }
+
+    .warn-card {
+        padding: 1rem 1.25rem;
+        background: rgba(245, 158, 11, 0.08);
+        border: 1px dashed rgba(245, 158, 11, 0.4);
+        border-radius: 0.75rem;
+        font-size: 0.82rem;
+        color: #d4a84b;
+        line-height: 1.6;
+        width: 100%;
+        box-sizing: border-box;
+        word-break: break-word;
+        overflow-wrap: break-word;
+        display: flex;
+        align-items: flex-start;
+        gap: 0.6rem;
+
+        span {
+            font-weight: 700;
+            color: #f59e0b;
         }
     }
 

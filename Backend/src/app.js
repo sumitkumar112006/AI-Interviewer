@@ -70,11 +70,46 @@ app.use((err, req, res, next) => {
         return res.status(400).json({ message: err.message });
     }
 
-    console.error(err);
 
-    return res.status(err.status || 500).json({
-        message: err.message || "Internal server error"
+    let rawMessage = err?.message || "Internal server error";
+    let statusCode = err?.status || err?.statusCode || 500;
+
+    // 1. Detect Gemini 503 / UNAVAILABLE / High Demand / Quota errors
+    if (
+        statusCode === 503 ||
+        rawMessage.includes("503") ||
+        rawMessage.includes("UNAVAILABLE") ||
+        rawMessage.includes("high demand") ||
+        rawMessage.includes("RESOURCE_EXHAUSTED") ||
+        rawMessage.includes("QUOTA") ||
+        rawMessage.includes("overloaded")
+    ) {
+        statusCode = 503;
+        rawMessage = "AI service is currently experiencing high demand. Please try again in a few seconds.";
+    }
+    // 2. Detect Zod validation errors or Mongoose Schema validation errors
+    else if (
+        err?.name === "ZodError" ||
+        err?.name === "ValidationError" ||
+        rawMessage.trim().startsWith("[") ||
+        rawMessage.includes("too_small") ||
+        rawMessage.includes("validation failed") ||
+        rawMessage.includes("is required")
+    ) {
+        statusCode = 422;
+        rawMessage = "The AI response was not structured properly. Please click 'Generate' again.";
+    }
+    // 3. Fallback for raw JSON error strings or unexpected backend errors
+    else {
+        if (rawMessage.trim().startsWith("{") || rawMessage.trim().startsWith("[")) {
+            rawMessage = "An unexpected error occurred while generating. Please try again.";
+        }
+    }
+
+    return res.status(statusCode).json({
+        message: rawMessage
     });
+
 });
 
 

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { updateInterviewProgress } from '../services/interview.api';
 import { Search, Filter } from 'lucide-react';
 
 const TechnicalQuestionsTab = ({ interviewId, initialQuestions, onUpdateReport }) => {
+  const navigate = useNavigate();
   const [questions, setQuestions] = useState(initialQuestions || []);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTopic, setActiveTopic] = useState('All Topics');
@@ -86,7 +88,7 @@ const TechnicalQuestionsTab = ({ interviewId, initialQuestions, onUpdateReport }
     <div className="tab-layout technical-questions-tab">
       <div className="premium-header-banner">
         <div className="header-text-content">
-          <span className="back-link">← Back to Dashboard</span>
+          <span className="back-link" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>← Back to Dashboard</span>
           <h1 className="banner-title">Technical Questions</h1>
           <p className="banner-desc">
             Ace the technical round with curated questions and detailed answers.

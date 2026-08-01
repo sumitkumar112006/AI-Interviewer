@@ -7,6 +7,25 @@ const api = axios.create({
     withCredentials: true
 });
 
+api.interceptors.response.use(
+    response => response,
+    error => {
+        const status = error?.response?.status;
+        const msg = error?.response?.data?.message || error?.message || '';
+        
+        if (status === 503 || msg.includes('high demand') || msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('RESOURCE_EXHAUSTED')) {
+            if (typeof window !== 'undefined' && window.triggerGlobalError) {
+                window.triggerGlobalError(
+                    msg || "AI service is currently experiencing high demand. Please try again in a few seconds.",
+                    error?.stack || '',
+                    true
+                );
+            }
+        }
+        return Promise.reject(error);
+    }
+);
+
 export async function generateCoverLetterFromReport(interviewReportId, { companyName, roleName } = {}) {
     const response = await api.post(`/api/cover-letter/generate-from-report/${interviewReportId}`, {
         companyName,

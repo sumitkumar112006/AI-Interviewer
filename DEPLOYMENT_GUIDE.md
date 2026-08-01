@@ -266,6 +266,42 @@ cd Frontend && npm run build
 
 # Push to GitHub to trigger deployments
 git push origin main
+
+#Backend Deployment 
+railway up (From Backend Folder)
+
+#Frontend Deployment 
+vercel --prod (From resume generator folder)
+
 ```
 
-I am changing this line only
+
+
+
+
+Every AI request (Resume, Interview Report, Cover Letter)
+           │
+           ▼
+┌─────────────────────────────┐
+│  1️⃣  TRY GROQ (Primary)     │
+│  Model: llama-3.3-70b       │
+│  Fast · High quality        │
+└────────────┬────────────────┘
+             │
+     Success? ──── YES ──→ ✅ Return response to user
+             │
+            NO (Rate limit 429 / quota / too many requests)
+             │
+             ▼
+┌─────────────────────────────────────────┐
+│  2️⃣  FALLBACK → OpenRouter              │
+│  Model: nvidia/nemotron-3-super-120b    │
+│  Free · 120B params · 262k context     │
+└────────────┬────────────────────────────┘
+             │
+     Success? ──── YES ──→ ✅ Return response to user
+             │
+            NO (any other error)
+             │
+             ▼
+          ❌ Throw error to user

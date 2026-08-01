@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { updateInterviewProgress } from '../services/interview.api';
 import { Search, Filter } from 'lucide-react';
 
 const BehavioralQuestionsTab = ({ interviewId, initialQuestions, onUpdateReport }) => {
+  const navigate = useNavigate();
   const [questions, setQuestions] = useState(initialQuestions || []);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All Questions');
@@ -87,7 +89,7 @@ const BehavioralQuestionsTab = ({ interviewId, initialQuestions, onUpdateReport 
     <div className="tab-layout behavioral-questions-tab">
       <div className="premium-header-banner premium-header-banner--behavioral">
         <div className="header-text-content">
-          <span className="back-link">← Back to Dashboard</span>
+          <span className="back-link" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>← Back to Dashboard</span>
           <h1 className="banner-title banner-title--behavioral">Behavioral Questions</h1>
           <p className="banner-desc">
             Practice behavioral questions to communicate your experience and mindset effectively.

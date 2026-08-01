@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { updateInterviewProgress } from '../services/interview.api';
 import { CheckCircle, Lock, Play, Circle } from 'lucide-react';
 
 const TechnicalRoadmapTab = ({ interviewId, preparationPlan, completedTasks: initialCompletedTasks, onUpdateReport }) => {
+  const navigate = useNavigate();
   const [plan, setPlan] = useState(preparationPlan || []);
   const [completedTasks, setCompletedTasks] = useState(initialCompletedTasks || []);
   const [activeSubTab, setActiveSubTab] = useState('Roadmap'); // 'Roadmap' or 'My Progress'
@@ -75,7 +77,7 @@ const TechnicalRoadmapTab = ({ interviewId, preparationPlan, completedTasks: ini
     <div className="tab-layout roadmap-tab">
       <div className="premium-header-banner premium-header-banner--roadmap">
         <div className="header-text-content">
-          <span className="back-link">← Back to Dashboard</span>
+          <span className="back-link" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>← Back to Dashboard</span>
           <h1 className="banner-title banner-title--roadmap">Technical Roadmap</h1>
           <p className="banner-desc">
             A step-by-step roadmap to build your skills and become job-ready.

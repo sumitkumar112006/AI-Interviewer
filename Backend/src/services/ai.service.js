@@ -1,4 +1,5 @@
-const { GoogleGenAI } = require("@google/genai")
+const Groq = require("groq-sdk")
+
 const { z } = require('zod')
 const { zodToJsonSchema } = require('zod-to-json-schema')
 const puppeteer = require('puppeteer');
@@ -8,12 +9,23 @@ const fs = require('fs')
 const axios = require('axios');
 
 
-// Initialize Google GenAI client
-const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_GENAI_API_KEY })
+// Initialize Groq client
+const ai = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
-if (!process.env.GOOGLE_GENAI_API_KEY) {
-    console.warn('GOOGLE_GENAI_API_KEY is not set. AI calls will likely fail.')
+if (!process.env.GROQ_API_KEY) {
+    console.warn('GROQ_API_KEY is not set. AI calls will likely fail.')
 }
+
+// OpenRouter fallback config (OpenAI-compatible API)
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
+const OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free" // Free 120B model on OpenRouter
+
+if (!OPENROUTER_API_KEY) {
+    console.warn('OPENROUTER_API_KEY is not set. OpenRouter fallback will not be available.')
+}
+
+const GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
 
@@ -248,15 +260,6 @@ function normalizeSkillGapItem(item) {
 }
 
 
-
-
-
-
-
-
-
-
-
 function normalizeSkillGapArray(value) {
     return normalizeObjectArray(value)
         .map(normalizeSkillGapItem)
@@ -358,6 +361,95 @@ function normalizeInterviewReport(rawReport) {
     }
 }
 
+/**
+ * Extract JSON from a Groq response text that may contain markdown fences or extra text.
+ */
+function extractJsonFromText(text) {
+    // Strip markdown code fences if present
+    const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+    if (fenceMatch) {
+        return fenceMatch[1].trim()
+    }
+    // Try to find raw JSON object/array in the text
+    const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/)
+    if (jsonMatch) {
+        return jsonMatch[1].trim()
+    }
+    return text.trim()
+}
+
+/**
+ * Check if the error from Groq is a rate-limit / quota error.
+ */
+function isGroqRateLimitError(err) {
+    // Groq SDK sets status on the error object
+    if (err?.status === 429) return true
+    if (err?.statusCode === 429) return true
+    // Some SDKs wrap it in a message
+    const msg = (err?.message ?? "").toLowerCase()
+    return msg.includes('rate limit') || msg.includes('rate_limit') || msg.includes('quota') || msg.includes('too many requests')
+}
+
+/**
+ * Call OpenRouter as a fallback (OpenAI-compatible API).
+ * Supports many free and paid models via https://openrouter.ai
+ */
+async function callOpenRouter(systemPrompt, userPrompt) {
+    if (!OPENROUTER_API_KEY) {
+        throw new Error('OPENROUTER_API_KEY is not configured. Cannot use OpenRouter as fallback.')
+    }
+    console.log('[AI] Switched to OpenRouter fallback.')
+    const response = await axios.post(
+        OPENROUTER_BASE_URL,
+        {
+            model: OPENROUTER_MODEL,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt }
+            ],
+            temperature: 0.7,
+            max_tokens: 8192,
+        },
+        {
+            headers: {
+                'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://resumegenerator.app',
+                'X-Title': 'Resume Generator'
+            }
+        }
+    )
+    return response.data.choices[0].message.content
+}
+
+/**
+ * Primary AI call: tries Groq first, falls back to OpenRouter on rate-limit errors.
+ */
+async function callGroq(systemPrompt, userPrompt) {
+    try {
+        const completion = await ai.chat.completions.create({
+            model: GROQ_MODEL,
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt }
+            ],
+            temperature: 0.7,
+            max_completion_tokens: 8192,
+            top_p: 1,
+            stream: false,
+            stop: null
+        })
+        return completion.choices[0].message.content
+    } catch (err) {
+        if (isGroqRateLimitError(err)) {
+            console.warn(`[AI] Groq rate limit hit (${err?.status ?? err?.message}). Falling back to OpenRouter...`)
+            return await callOpenRouter(systemPrompt, userPrompt)
+        }
+        // Re-throw any other errors unchanged
+        throw err
+    }
+}
+
 
 async function generateInterviewReport({
     resume,
@@ -369,7 +461,9 @@ async function generateInterviewReport({
     const candidateSummary = selfDescription ?? selfDescribe
     const roleDescription = jobDescription ?? jobDescribe
 
-    const prompt = `
+    const systemPrompt = `You are an expert AI interview coach. You MUST respond ONLY with valid JSON — no markdown, no explanation, no commentary. Never wrap the JSON in code fences.`
+
+    const userPrompt = `
 Generate an interview report in valid JSON only.
 
 Rules:
@@ -444,24 +538,16 @@ Resume: ${resume}
 Self Description: ${candidateSummary}
 Job Description: ${roleDescription}
 `
-    const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-            responseMimeType: "application/json",
-            responseJsonSchema: zodToJsonSchema(aiInterviewReportSchema)
-        }
-    })
 
-    const parsedResponse = JSON.parse(response.text)
+    const rawText = await callGroq(systemPrompt, userPrompt)
+    const jsonText = extractJsonFromText(rawText)
+    const parsedResponse = JSON.parse(jsonText)
     const normalizedResponse = normalizeInterviewReport(parsedResponse)
     const interviewReport = mongooseInterviewReportSchema.parse(normalizedResponse)
 
     console.log(interviewReport);
 
     return interviewReport
-
-
 }
 
 
@@ -497,70 +583,68 @@ async function generatePfdFromHtml(htmlContent) {
 }
 
 
-
-
-
 async function generateResumeHtml({ resume, selfDescription, jobDescription }) {
-    const resumePdfSchema = z.object({
-        html: z.string().describe("The HTML content of the resume including all the hyperlinks, styles, and formatting necessary for a professional 1-2 page resume. And this resume should have all those updated details which are mentioned in the resume, self description and job description. It should be ATS friendly based on the Job Description and visually appealing for human recruiters.")
-    })
-    const resumeGenerationModels = [
-        "gemini-3-flash-preview",
-        "gemini-2.5-flash"
-    ]
+    const systemPrompt = `You are an expert resume writer. You MUST respond ONLY with valid JSON — no markdown, no explanation. The JSON must have exactly one key: "html", whose value is a complete HTML string for a professional resume. Never wrap the JSON in code fences.`
 
-    const prompt = `
-    Generate a professional one-two page resume in valid JSON only.
+    const userPrompt = `
+Generate a professional one-two page resume in valid JSON only.
 
-    Rules:
-    - Use exactly one top-level key: "html".
-    - The "html" value must be a string.
-    - The string must contain complete printable HTML for an A4 resume.
-    - Do not return markdown fences.
-    - Do not return undefined or null.
-    - Do not feel like AI generated content. Write like a human creating a resume.
-    - Focus on clarity, professionalism, and relevance to the job description.
-    - Use the candidate details to create a tailored resume that highlights strengths and fits the target role.
-    - Resume should be ATS friendly it should rank in ATS systems and also visually appealing for human recruiters.
-    - Resume should be concise and ideally fit in one-two page when converted to PDF.
-    
-    Candidate details:
-    Resume: ${resume}
-    Self Description: ${selfDescription}
-    Job Description: ${jobDescription}
-    - Return only valid JSON.
-    - Do not add fake or unreal information, Knowledge, or data which is not present in the resume, self description or job description.
-    - If the Resume Data is less or incomplete and the Job description requires more information then the Job description should guide the resume html to be generated, it should align with the job description.
-    - Do not use fake hyper links for email address, github, linkedin.
-    - Every link should be varified and real in you are not able to verify then leave it blank.
-    `
+Rules:
+- Use exactly one top-level key: "html".
+- The "html" value must be a string.
+- The string must contain complete printable HTML for an A4 resume.
+- Do not return markdown fences.
+- Do not return undefined or null.
+- Do not feel like AI generated content. Write like a human creating a resume.
+- Focus on clarity, professionalism, and relevance to the job description.
+- Use the candidate details to create a tailored resume that highlights strengths and fits the target role.
+- Resume should be ATS friendly it should rank in ATS systems and also visually appealing for human recruiters.
+- Resume should be concise and ideally fit in one-two page when converted to PDF.
+- If any link assosiated with any Word in resume that make use extract link and add them carfully with new resume with same name. (eg:-Portfolio, Linkedin, Github, Preview, etc.) 
+Generate a complete, self-contained HTML document for a 1 to 2 page A4 resume, single-column, ATS-friendly, styled clean and professional.
 
-    let response
-    let lastError
+SETUP
+- Full doc: <!DOCTYPE html> to </html>. One <style> block in <head>. No external CSS/fonts/images/JS.
+- Font: 'Calibri', 'Arial', sans-serif. Body #1a1a1a on white, 11 to 12pt, line-height 1.35.
+- @page { size: A4; margin: 12mm 16mm; } body { margin:0; width:210mm; }
 
-    for (const model of resumeGenerationModels) {
-        try {
-            response = await ai.models.generateContent({
-                model,
-                contents: prompt,
-                config: {
-                    responseMimeType: "application/json",
-                    responseJsonSchema: zodToJsonSchema(resumePdfSchema)
-                }
-            })
-            break
-        } catch (error) {
-            lastError = error
-        }
-    }
+HEADER
+- Name (h1, 20 to 22pt bold) → title line (11pt, gray) → contact line (location | phone | email, 9pt) → links line (GitHub | LinkedIn | Portfolio as real <a> tags, one accent color e.g. navy #1a3a6b) → thin gray rule.
 
-    if (!response) {
-        throw new Error(
-            `Resume HTML generation failed for all configured models. ${lastError?.message || 'Unknown AI generation error.'}`
-        )
-    }
+SECTIONS (in order)
+Summary → Technical Skills → Soft Skills → Experience → Projects → Achievements → Education.
+- h2 for section titles: uppercase, 11 to 12pt bold, bottom border, accent or near-black.
+- Every section: page-break-inside: avoid.
 
-    const jsonContent = JSON.parse(response.text)
+CONTENT RULES
+- Summary: one dense <p>, 3 to 4 lines.
+- Skills: "<strong>Category:</strong> items" per line, tight spacing.
+- Soft Skills: one comma-separated line.
+- Experience/Projects: h3 title + dates/stack right-aligned or inline; 2 to 4 real <ul><li> bullets, action-verb-led; links (Live/GitHub) below in small text.
+- Achievements: flat bullet list.
+- Education: degree + institution one line, graduation date aligned right.
+- Never invent facts, metrics, dates, or employers not in source data.
+
+LAYOUT / ATS SAFETY
+- Strict single column, no floats/multi-column/tables-for-layout, no fixed/absolute positioning, no animations/gradients/icon fonts.
+- Real semantic h1/h2/h3/ul/li only — never typed "•" in a <p>.
+- One accent color max; everything else near-black/gray.
+- If content overflows 2 pages: tighten spacing first, then trim oldest/least relevant bullets — never cut contact info or most recent role.
+
+Candidate details:
+Resume: ${resume}
+Self Description: ${selfDescription}
+Job Description: ${jobDescription}
+- Return only valid JSON.
+- Do not add fake or unreal information, Knowledge, or data which is not present in the resume, self description or job description.
+- If the Resume Data is less or incomplete and the Job description requires more information then the Job description should guide the resume html to be generated, it should align with the job description.
+- Do not use fake hyper links for email address, github, linkedin.
+- Every link should be varified and real in you are not able to verify then leave it blank.
+`
+
+    const rawText = await callGroq(systemPrompt, userPrompt)
+    const jsonText = extractJsonFromText(rawText)
+    const jsonContent = JSON.parse(jsonText)
     const htmlContent = extractResumeHtmlContent(jsonContent)
     console.log(htmlContent);
     return normalizeResumeHtmlDocument(htmlContent)
@@ -674,32 +758,29 @@ async function generateCoverLetter({ resume, selfDescription, jobDescription, co
         `;
     }
 
-    const prompt = `
-    Generate a professional cover letter in valid JSON format.
-    
-    Rules:
-    - Use exactly one top-level key: "html".
-    - The "html" value must be a string containing print-ready HTML optimized for an A4 page.
-    - Write in a natural, persuasive human tone. Avoid sounding overly robotic or generic.
-    - Address it professionally. If companyName (${companyName || 'the company'}) or roleName (${roleName || 'the position'}) is provided, use them correctly.
-    - Tailor the letter by connecting the candidate's Resume strengths and Self Description with the Job Description requirements.
-    - Do not fabricate experiences or certifications not mentioned in the resume.
-    ${culturePromptSection}
-    
-    Candidate details:
-    Resume: ${resume}
-    Self Description: ${selfDescription || 'Not provided'}
-    Job Description: ${jobDescription}
-    `;
-    const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-            responseMimeType: "application/json",
-            responseJsonSchema: zodToJsonSchema(coverLetterPdfSchema)
-        }
-    });
-    const jsonContent = JSON.parse(response.text);
+    const systemPrompt = `You are an expert cover letter writer. You MUST respond ONLY with valid JSON — no markdown, no explanation. The JSON must have exactly one key: "html", whose value is a complete print-ready HTML string for a professional cover letter. Never wrap the JSON in code fences.`
+
+    const userPrompt = `
+Generate a professional cover letter in valid JSON format.
+
+Rules:
+- Use exactly one top-level key: "html".
+- The "html" value must be a string containing print-ready HTML optimized for an A4 page.
+- Write in a natural, persuasive human tone. Avoid sounding overly robotic or generic.
+- Address it professionally. If companyName (${companyName || 'the company'}) or roleName (${roleName || 'the position'}) is provided, use them correctly.
+- Tailor the letter by connecting the candidate's Resume strengths and Self Description with the Job Description requirements.
+- Do not fabricate experiences or certifications not mentioned in the resume.
+${culturePromptSection}
+
+Candidate details:
+Resume: ${resume}
+Self Description: ${selfDescription || 'Not provided'}
+Job Description: ${jobDescription}
+`;
+
+    const rawText = await callGroq(systemPrompt, userPrompt);
+    const jsonText = extractJsonFromText(rawText);
+    const jsonContent = JSON.parse(jsonText);
     return jsonContent.html; // Returns the generated HTML string
 }
 

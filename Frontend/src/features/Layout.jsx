@@ -201,7 +201,7 @@ const Layout = () => {
               {/* AI Connected Pill */}
               <div className="ai-engine-pill" title="AI Model currently connected to power your queries">
                 <span className="pulse-dot"></span>
-                <span className="ai-engine-name">Gemini 2.5 Flash</span>
+                <span className="ai-engine-name">Llama 3.3 · Groq</span>
               </div>
 
               {/* Dark Mode Icon */}

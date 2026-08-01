@@ -18,7 +18,12 @@ export const useInterview = () => {
         setLoading(true)
         try {
             const response = await generateInterviewReport({ jobDescription, selfDescription, resumeFile })
+
+            // 1. Set current report
             setReport(response.interviewReport)
+
+            // 2. UPDATE HISTORY LIST IN REAL-TIME (Add this line):
+            setReports(prevReports => prevReports ? [response.interviewReport, ...prevReports] : [response.interviewReport])
             return response.interviewReport
         } catch (err) {
             console.error('Generate report error:', err)

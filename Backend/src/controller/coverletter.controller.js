@@ -4,7 +4,7 @@ const { generateCoverLetter, generatePfdFromHtml } = require('../services/ai.ser
 const coverLetterModel = require('../models/coverLetter.model');
 const interviewReportModel = require('../models/interviewReport.model');
 
-async function createCoverLetterController(req, res) {
+async function createCoverLetterController(req, res, next) {
     try {
         if (!req.file) {
             return res.status(400).json({ message: "Resume PDF file is required" });
@@ -41,11 +41,11 @@ async function createCoverLetterController(req, res) {
         });
     } catch (error) {
         console.error("createCoverLetterController error:", error);
-        res.status(500).json({ message: error.message || "Failed to generate Cover Letter." });
+        next(error);
     }
 }
 
-async function getCoverLetterByIdController(req, res) {
+async function getCoverLetterByIdController(req, res, next) {
     try {
         const { coverLetterId } = req.params;
 
@@ -64,11 +64,11 @@ async function getCoverLetterByIdController(req, res) {
 
         res.status(200).json({ coverLetter });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        next(error);
     }
 }
 
-async function getAllCoverLettersController(req, res) {
+async function getAllCoverLettersController(req, res, next) {
     try {
         const coverLetters = await coverLetterModel
             .find({ user: req.user.id })
@@ -77,11 +77,11 @@ async function getAllCoverLettersController(req, res) {
 
         res.status(200).json({ coverLetters });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        next(error);
     }
 }
 
-async function generateCoverLetterPdfController(req, res) {
+async function generateCoverLetterPdfController(req, res, next) {
     try {
         const { coverLetterId } = req.params;
 
@@ -107,11 +107,11 @@ async function generateCoverLetterPdfController(req, res) {
 
         res.send(pdfBuffer);
     } catch (error) {
-        res.status(500).json({ message: error.message || "Failed to generate PDF." });
+        next(error);
     }
 }
 
-async function deleteCoverLetterController(req, res) {
+async function deleteCoverLetterController(req, res, next) {
     try {
         const { coverLetterId } = req.params;
 
@@ -130,11 +130,11 @@ async function deleteCoverLetterController(req, res) {
 
         res.status(200).json({ message: "Cover letter deleted successfully!" });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        next(error);
     }
 }
 
-async function createCoverLetterFromReportController(req, res) {
+async function createCoverLetterFromReportController(req, res, next) {
     try {
         const { interviewReportId } = req.params;
         const { companyName, roleName } = req.body;
@@ -183,11 +183,11 @@ async function createCoverLetterFromReportController(req, res) {
         });
     } catch (error) {
         console.error("createCoverLetterFromReportController error:", error);
-        res.status(500).json({ message: error.message || "Failed to generate Cover Letter." });
+        next(error);
     }
 }
 
-async function getCoverLetterByReportIdController(req, res) {
+async function getCoverLetterByReportIdController(req, res, next) {
     try {
         const { interviewReportId } = req.params;
 
@@ -202,11 +202,11 @@ async function getCoverLetterByReportIdController(req, res) {
 
         res.status(200).json({ coverLetter });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        next(error);
     }
 }
 
-async function updateCoverLetterController(req, res) {
+async function updateCoverLetterController(req, res, next) {
     try {
         const { coverLetterId } = req.params;
         const { generatedContent } = req.body;
@@ -230,7 +230,7 @@ async function updateCoverLetterController(req, res) {
             coverLetter
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        next(error);
     }
 }
 

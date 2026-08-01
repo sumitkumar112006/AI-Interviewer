@@ -394,13 +394,26 @@ const Resume = () => {
                                 </div>
                             </div>
 
-                            <iframe
-                                ref={iframeRef}
-                                srcDoc={iframeContent}
-                                onLoad={handleIframeLoad}
-                                title="Resume Preview"
-                                className="resume-frame"
-                            />
+                            <div className="resume-warn-card">
+                                <div className="warn-card-title">⚠️ <span>KIVI can make mistakes</span> — always verify before downloading.</div>
+                                <div className="warn-card-tips">
+                                    <div className="warn-tip">📄 <strong>Download the PDF</strong> to see the actual formatting — this preview is for <em>content check only</em>.</div>
+                                    <div className="warn-tip">🔗 <strong>Check all hyperlinks</strong> carefully. If any are missing or broken, add them using the <strong>🔗 Link</strong> option in the toolbar below.</div>
+                                </div>
+                            </div>
+
+                            <div className="resume-iframe-wrapper">
+                                <iframe
+                                    ref={iframeRef}
+                                    srcDoc={iframeContent}
+                                    onLoad={handleIframeLoad}
+                                    title="Resume Preview"
+                                    className="resume-frame"
+                                />
+                                <div className="resume-warn-slide">
+                                    ⚠️ <strong>KIVI can make mistakes</strong> — please review your details carefully before downloading.
+                                </div>
+                            </div>
                         </div>
                     ) : (
                         <div className="resume-feedback">Nothing to preview yet.</div>
