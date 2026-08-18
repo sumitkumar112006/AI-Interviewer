@@ -174,7 +174,7 @@ async function createCoverLetterFromReportController(req, res, next) {
                 roleName,
                 generatedContent: coverLetterHtml
             },
-            { upsert: true, new: true }
+            { upsert: true, returnDocument: 'after' }
         );
 
         res.status(201).json({
@@ -218,7 +218,7 @@ async function updateCoverLetterController(req, res, next) {
         const coverLetter = await coverLetterModel.findOneAndUpdate(
             { _id: coverLetterId, user: req.user.id },
             { generatedContent },
-            { new: true }
+            { returnDocument: 'after' }
         );
 
         if (!coverLetter) {

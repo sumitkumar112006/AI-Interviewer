@@ -1,11 +1,11 @@
 const { Router } = require("express");
-const { 
-    registerUserController, 
-    verifyOtpController, 
-    resendOtpController, 
-    loginController, 
-    logoutController, 
-    getMeController 
+const {
+    registerUserController,
+    verifyOtpController,
+    resendOtpController,
+    loginController,
+    logoutController,
+    getMeController
 } = require("../controller/auth.controller");
 
 const authRouter = Router();

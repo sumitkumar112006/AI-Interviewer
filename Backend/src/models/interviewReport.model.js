@@ -147,7 +147,12 @@ const interviewReportSchema = new mongoose.Schema({
     generatedResumeHtml: {
         type: String,
         default: ""
-    }
+    },
+    detectedSkills: [{
+        name: { type: String, required: true },
+        category: { type: String, default: "General" },
+        score: { type: Number, default: 75 }
+    }]
 
 }, {
     timestamps: true

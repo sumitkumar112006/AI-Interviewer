@@ -109,6 +109,54 @@ const TIME_FILTERS = ['All Time', 'Last 7 Days', 'Last 30 Days', 'Last 3 Months'
 const SORT_OPTIONS = ['Newest First', 'Oldest First', 'Highest Score', 'Lowest Score']
 const PAGE_SIZE = 8
 
+const MAJOR_SKILLS_LIST = [
+    { name: 'JavaScript', category: 'Languages', match: ['javascript', 'js'] },
+    { name: 'TypeScript', category: 'Languages', match: ['typescript', 'ts'] },
+    { name: 'Python', category: 'Languages', match: ['python', 'python3'] },
+    { name: 'Java', category: 'Languages', match: ['java', 'jdk'] },
+    { name: 'C++', category: 'Languages', match: ['c++', 'cpp'] },
+    { name: 'SQL', category: 'Languages', match: ['sql', 'mysql', 'postgres', 'postgresql'] },
+    { name: 'Node.js', category: 'Frameworks', match: ['node.js', 'nodejs', 'node'] },
+    { name: 'React', category: 'Frameworks', match: ['react', 'react.js', 'reactjs'] },
+    { name: 'Express.js', category: 'Frameworks', match: ['express.js', 'expressjs', 'express'] },
+    { name: 'Next.js', category: 'Frameworks', match: ['next.js', 'nextjs'] },
+    { name: 'HTML/CSS', category: 'Frameworks', match: ['html', 'css', 'scss', 'sass', 'tailwind'] },
+    { name: 'MongoDB', category: 'Databases', match: ['mongodb', 'mongo', 'mongoose'] },
+    { name: 'Redis', category: 'Databases', match: ['redis'] },
+    { name: 'Docker', category: 'DevOps', match: ['docker', 'container'] },
+    { name: 'AWS', category: 'DevOps', match: ['aws', 's3', 'ec2', 'lambda'] },
+    { name: 'Git', category: 'DevOps', match: ['git', 'github'] },
+    { name: 'System Design', category: 'Core', match: ['system design', 'architecture'] },
+    { name: 'Data Structures', category: 'Core', match: ['data structures', 'dsa', 'algorithms'] },
+    { name: 'REST APIs', category: 'Core', match: ['rest', 'rest api', 'restful'] }
+]
+
+function extractMajorSkillsFromReport(r) {
+    if (Array.isArray(r?.detectedSkills) && r.detectedSkills.length > 0) {
+        return r.detectedSkills
+    }
+    const text = [
+        r?.developerTitle || '',
+        r?.title || '',
+        ...(r?.technicalQuestions || []).map(q => q.question || ''),
+        ...(r?.skillGaps || []).map(s => s.skill || '')
+    ].join(' ').toLowerCase()
+
+    const score = getScore(r) ?? 75
+
+    const matches = []
+    MAJOR_SKILLS_LIST.forEach(item => {
+        const isMatched = item.match.some(m => {
+            const regex = new RegExp(`(?:^|[^a-zA-Z0-9_#+])${m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|[^a-zA-Z0-9_#+])`, 'i')
+            return regex.test(text)
+        })
+        if (isMatched) {
+            matches.push({ name: item.name, category: item.category, score })
+        }
+    })
+    return matches
+}
+
 const AllReports = () => {
     const { loading, reports, getReports, deleteReport } = useInterview()
     const navigate = useNavigate()
@@ -121,6 +169,7 @@ const AllReports = () => {
     const [sort, setSort] = useState('Newest First')
     const [page, setPage] = useState(1)
     const [deletingId, setDeletingId] = useState(null)
+    const [skillViewMode, setSkillViewMode] = useState('list') // 'list' | 'graph'
 
     useEffect(() => {
         if (reports !== null || hasLoaded.current) return
@@ -156,29 +205,29 @@ const AllReports = () => {
         ]
     }, [allReports])
 
-    /* skill performance from skillGaps */
+    /* skill performance & major tech stack aggregation */
     const skillPerf = useMemo(() => {
         const map = {}
         allReports.forEach(r => {
-            const s = getScore(r) ?? 0;
-            (r.technicalQuestions || []).forEach(q => {
-                const skill = q.question?.split(' ').slice(0, 3).join(' ')
-                if (skill) {
-                    if (!map[skill]) map[skill] = []
-                    map[skill].push(s)
+            const detected = extractMajorSkillsFromReport(r)
+            detected.forEach(sk => {
+                if (!map[sk.name]) {
+                    map[sk.name] = { name: sk.name, category: sk.category, count: 0, scores: [] }
                 }
-            });
-            // Use skillGaps as a proxy
-            (r.skillGaps || []).forEach(sg => {
-                const name = sg.skill
-                if (!map[name]) map[name] = []
-                map[name].push(sg.severity === 'low' ? 80 : sg.severity === 'medium' ? 60 : 40)
+                map[sk.name].count += 1
+                map[sk.name].scores.push(sk.score || 75)
             })
         })
-        return Object.entries(map)
-            .map(([name, vals]) => ({ name, avg: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) }))
-            .sort((a, b) => b.avg - a.avg)
-            .slice(0, 6)
+        return Object.values(map)
+            .map(item => ({
+                name: item.name,
+                category: item.category,
+                count: item.count,
+                avg: Math.round(item.scores.reduce((a, b) => a + b, 0) / item.scores.length)
+            }))
+            .filter(sk => sk.avg >= 50)
+            .sort((a, b) => b.count - a.count || b.avg - a.avg)
+            .slice(0, 7)
     }, [allReports])
 
     /* sparkline history */
@@ -317,23 +366,74 @@ const AllReports = () => {
                     </div>
                 </div>
 
-                {/* Skill Performance */}
+                {/* Skill Performance & Tech Stack Preferences */}
                 <div className="ar-panel ar-skill-panel">
-                    <div className="ar-panel-header">
-                        <h3>Skill Performance (Avg.)</h3>
+                    <div className="ar-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h3>Skill Preferences &amp; Stack</h3>
+                        <div className="ar-skill-toggle">
+                            <button
+                                className={`ar-toggle-btn ${skillViewMode === 'list' ? 'active' : ''}`}
+                                onClick={() => setSkillViewMode('list')}
+                                title="List View"
+                            >
+                                ≡ List
+                            </button>
+                            <button
+                                className={`ar-toggle-btn ${skillViewMode === 'graph' ? 'active' : ''}`}
+                                onClick={() => setSkillViewMode('graph')}
+                                title="Chart Graph View"
+                            >
+                                📊 Graph
+                            </button>
+                        </div>
                     </div>
-                    <div className="ar-skill-list">
-                        {skillPerf.length === 0 && <p className="ar-empty-sub">Not enough data yet.</p>}
-                        {skillPerf.map((sk, i) => (
-                            <div className="ar-skill-row" key={i}>
-                                <span className="ar-skill-name">{sk.name}</span>
-                                <div className="ar-skill-bar-wrap">
-                                    <div className="ar-skill-bar" style={{ width: `${sk.avg}%`, background: getScoreColor(sk.avg) }} />
+
+                    {skillPerf.length === 0 ? (
+                        <div className="ar-skill-empty">
+                            <div className="ar-empty-icon">⚡</div>
+                            <p className="ar-empty-sub">No major tech stacks detected yet.</p>
+                            <span className="ar-empty-hint">Upload a resume or create an interview report to analyze your top skills.</span>
+                        </div>
+                    ) : skillViewMode === 'list' ? (
+                        <div className="ar-skill-list">
+                            {skillPerf.map((sk, i) => (
+                                <div className="ar-skill-row" key={i}>
+                                    <div className="ar-skill-info">
+                                        <span className="ar-skill-name">{sk.name}</span>
+                                        <span className="ar-skill-cat">{sk.category}</span>
+                                    </div>
+                                    <div className="ar-skill-bar-wrap">
+                                        <div className="ar-skill-bar" style={{ width: `${sk.avg}%`, background: getScoreColor(sk.avg) }} />
+                                    </div>
+                                    <span className="ar-skill-pct" style={{ color: getScoreColor(sk.avg) }}>{sk.avg}%</span>
                                 </div>
-                                <span className="ar-skill-pct" style={{ color: getScoreColor(sk.avg) }}>{sk.avg}%</span>
+                            ))}
+                        </div>
+                    ) : (
+                        /* Graph Chart View */
+                        <div className="ar-skill-graph-wrap">
+                            <div className="ar-graph-bars">
+                                {skillPerf.map((sk, i) => {
+                                    const maxCount = Math.max(...skillPerf.map(s => s.count)) || 1
+                                    const heightPct = Math.max(25, Math.round((sk.count / maxCount) * 100))
+                                    const colors = ['#6366f1', '#22c55e', '#f59e0b', '#06b6d4', '#a855f7', '#3b82f6', '#ec4899']
+                                    const color = colors[i % colors.length]
+                                    return (
+                                        <div className="ar-graph-col" key={i}>
+                                            <div className="ar-graph-val">{sk.avg}%</div>
+                                            <div className="ar-graph-bar-outer">
+                                                <div
+                                                    className="ar-graph-bar-inner"
+                                                    style={{ height: `${heightPct}%`, background: `linear-gradient(180deg, ${color}, ${color}88)` }}
+                                                />
+                                            </div>
+                                            <span className="ar-graph-label">{sk.name}</span>
+                                        </div>
+                                    )
+                                })}
                             </div>
-                        ))}
-                    </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Timeline */}

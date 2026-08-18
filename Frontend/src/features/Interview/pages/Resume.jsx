@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { generateResumePdf, getInterviewReportById, updateResumeHtml } from '../services/interview.api'
+import { generateResumePdf, getInterviewReportById, updateResumeHtml, rewriteResumeSection } from '../services/interview.api'
 import { useInterview } from '../hooks/useInterview'
 import LoadingPage from '../Loading'
 import '../style/resume.scss'
@@ -25,9 +25,17 @@ const Resume = () => {
     const { interviewId } = useParams()
     const location = useLocation()
     const navigate = useNavigate()
-    const { loading, setLoading } = useInterview()
+    const { 
+        loading, 
+        setLoading, 
+        report, 
+        getReoprtById,
+        previousResume,
+        jobDescription,
+        newResume,
+        updateNewResume
+    } = useInterview()
 
-    const [report, setReport] = useState(location.state?.interviewReport ?? null)
     const [error, setError] = useState('')
 
     // Inline Editing State
@@ -43,6 +51,135 @@ const Resume = () => {
     const [linkText, setLinkText] = useState('')
     const [linkUrl, setLinkUrl] = useState('')
 
+    // Scale factor for mobile responsiveness
+    const [scaleFactor, setScaleFactor] = useState(1)
+
+    useEffect(() => {
+        const handleResize = () => {
+            const wrapper = document.querySelector('.resume-iframe-wrapper')
+            if (wrapper) {
+                const width = wrapper.clientWidth
+                const availableWidth = width - 32 // 16px padding left & right
+                if (availableWidth < 794) {
+                    setScaleFactor(availableWidth / 794)
+                } else {
+                    setScaleFactor(1)
+                }
+            }
+        }
+
+        handleResize()
+        window.addEventListener('resize', handleResize)
+        const timer = setTimeout(handleResize, 150)
+
+        return () => {
+            window.removeEventListener('resize', handleResize)
+            clearTimeout(timer)
+        }
+    }, [iframeContent, loading])
+
+    // KIVI Floating Assistant & Idle Nudge State
+    const [isKiviOpen, setIsKiviOpen] = useState(false)
+    const [showIdleNudge, setShowIdleNudge] = useState(false)
+    const idleTimerRef = React.useRef(null)
+
+    // Proactive Idle Nudge effect (triggers nudge after 6s of inactivity)
+    useEffect(() => {
+        const resetIdleTimer = () => {
+            setShowIdleNudge(false)
+            if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+            idleTimerRef.current = setTimeout(() => {
+                setShowIdleNudge(true)
+            }, 6000)
+        }
+
+        resetIdleTimer()
+
+        window.addEventListener('mousemove', resetIdleTimer)
+        window.addEventListener('keydown', resetIdleTimer)
+        window.addEventListener('click', resetIdleTimer)
+
+        return () => {
+            if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+            window.removeEventListener('mousemove', resetIdleTimer)
+            window.removeEventListener('keydown', resetIdleTimer)
+            window.removeEventListener('click', resetIdleTimer)
+        }
+    }, [])
+
+    // AI Resume Chat Copilot State
+    const [selectedSnippet, setSelectedSnippet] = useState('')
+    const [chatMessages, setChatMessages] = useState([
+        {
+            id: 1,
+            sender: 'ai',
+            text: '👋 Hi! I am your AI Resume Copilot. Highlight any text on your resume to refine it, or ask me for suggestions!'
+        }
+    ])
+    const [chatInput, setChatInput] = useState('')
+    const [chatLoading, setChatLoading] = useState(false)
+    const chatEndRef = React.useRef(null)
+
+    const scrollToBottom = () => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+
+    useEffect(() => {
+        scrollToBottom()
+    }, [chatMessages, chatLoading])
+
+    const handleSendChatMessage = async (e, customText = null, actionPreset = null) => {
+        if (e) e.preventDefault()
+        const messageToSend = customText || chatInput
+        if (!messageToSend.trim() && !selectedSnippet && !actionPreset) return
+
+        const userMsgText = messageToSend.trim() || (actionPreset ? `Apply preset: ${actionPreset}` : 'Refine selection')
+        
+        const userMsg = {
+            id: Date.now(),
+            sender: 'user',
+            text: userMsgText,
+            highlightedContext: selectedSnippet ? selectedSnippet : null
+        }
+
+        setChatMessages(prev => [...prev, userMsg])
+        if (!customText) setChatInput('')
+        setChatLoading(true)
+
+        try {
+            const res = await rewriteResumeSection({
+                selectedText: selectedSnippet,
+                instruction: messageToSend,
+                action: actionPreset || 'enhance',
+                message: messageToSend
+            })
+
+            const aiMsg = {
+                id: Date.now() + 1,
+                sender: 'ai',
+                text: res?.replyText || 'Here is the refined suggestion for your resume.',
+                suggestedSnippet: res?.suggestedSnippet || res?.rewrittenText || null
+            }
+            setChatMessages(prev => [...prev, aiMsg])
+        } catch (err) {
+            console.error("AI Chat error:", err)
+            const errorMsg = {
+                id: Date.now() + 1,
+                sender: 'ai',
+                text: '⚠️ Sorry, I encountered an issue. Please try clicking the action button or sending your message again.'
+            }
+            setChatMessages(prev => [...prev, errorMsg])
+        } finally {
+            setChatLoading(false)
+        }
+    }
+
+    const handleApplySuggestedSnippet = (snippet) => {
+        if (!snippet) return
+        applyFormat('insertText', snippet)
+        setIsDirty(true)
+    }
+
     useEffect(() => {
         let isMounted = true
 
@@ -50,12 +187,7 @@ const Resume = () => {
             setLoading(true)
             setError('')
             try {
-                const reportRes = await getInterviewReportById(interviewId)
-                const fetchedReport = reportRes?.interviewReport ?? null
-
-                if (isMounted) {
-                    setReport(fetchedReport)
-                }
+                const fetchedReport = await getReoprtById(interviewId)
 
                 if (fetchedReport) {
                     if (fetchedReport.generatedResumeHtml) {
@@ -67,14 +199,10 @@ const Resume = () => {
                         // Generate resume initial HTML
                         await generateResumePdf(interviewId)
                         // Refetch report to get the saved HTML
-                        const updatedReportRes = await getInterviewReportById(interviewId)
-                        const updatedReport = updatedReportRes?.interviewReport ?? null
-                        if (isMounted) {
-                            setReport(updatedReport)
-                            if (updatedReport?.generatedResumeHtml) {
-                                setIframeContent(updatedReport.generatedResumeHtml)
-                                editedContentRef.current = updatedReport.generatedResumeHtml
-                            }
+                        const updatedReport = await getReoprtById(interviewId)
+                        if (isMounted && updatedReport?.generatedResumeHtml) {
+                            setIframeContent(updatedReport.generatedResumeHtml)
+                            editedContentRef.current = updatedReport.generatedResumeHtml
                         }
                     }
                 }
@@ -108,7 +236,13 @@ const Resume = () => {
         if (!win) return
         const sel = win.getSelection()
         if (sel && sel.rangeCount > 0) {
-            savedRangeRef.current = sel.getRangeAt(0)
+            const range = sel.getRangeAt(0)
+            savedRangeRef.current = range
+            const text = sel.toString().trim()
+            if (text && text.length > 0) {
+                setSelectedSnippet(text)
+                setIsKiviOpen(true)
+            }
         }
     }
 
@@ -146,7 +280,8 @@ const Resume = () => {
 
     const handleIframeLoad = (e) => {
         const iframe = e.target
-        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document
+        const iframeWin = iframe.contentWindow
+        const iframeDoc = iframe.contentDocument || iframeWin?.document
         if (iframeDoc && iframeDoc.body) {
             iframeDoc.body.contentEditable = "true"
             iframeDoc.body.style.outline = "none"
@@ -158,10 +293,17 @@ const Resume = () => {
                 setIsDirty(true)
             })
 
-            // Keep track of text selection
-            iframeDoc.addEventListener('mouseup', saveSelection)
-            iframeDoc.addEventListener('keyup', saveSelection)
-            iframeDoc.addEventListener('selectionchange', saveSelection)
+            // Keep track of text selection live on selectionchange, mouseup, and keyup
+            const onSelectUpdate = () => {
+                setTimeout(saveSelection, 10)
+            }
+
+            iframeDoc.addEventListener('mouseup', onSelectUpdate)
+            iframeDoc.addEventListener('keyup', onSelectUpdate)
+            iframeDoc.addEventListener('selectionchange', onSelectUpdate)
+            if (iframeWin) {
+                iframeWin.addEventListener('mouseup', onSelectUpdate)
+            }
         }
     }
 
@@ -201,12 +343,11 @@ const Resume = () => {
         setSaveLoading(true)
         setError('')
         try {
-            const res = await updateResumeHtml(interviewId, {
-                generatedResumeHtml: editedContentRef.current
-            })
-            setReport(res.interviewReport)
-            setIframeContent(res.interviewReport.generatedResumeHtml)
-            setIsDirty(false)
+            const updatedReport = await updateNewResume(editedContentRef.current)
+            if (updatedReport) {
+                setIframeContent(updatedReport.generatedResumeHtml)
+                setIsDirty(false)
+            }
         } catch (err) {
             console.error("Error saving resume changes:", err)
             setError(err?.response?.data?.message || err?.message || 'Failed to save changes.')
@@ -221,12 +362,11 @@ const Resume = () => {
         try {
             // Auto-save changes first if dirty
             if (isDirty) {
-                const res = await updateResumeHtml(interviewId, {
-                    generatedResumeHtml: editedContentRef.current
-                })
-                setReport(res.interviewReport)
-                setIframeContent(res.interviewReport.generatedResumeHtml)
-                setIsDirty(false)
+                const updatedReport = await updateNewResume(editedContentRef.current)
+                if (updatedReport) {
+                    setIframeContent(updatedReport.generatedResumeHtml)
+                    setIsDirty(false)
+                }
             }
 
             const pdfBlob = await generateResumePdf(interviewId, editedContentRef.current)
@@ -253,7 +393,7 @@ const Resume = () => {
         setLoading(true)
         setError('')
         try {
-            await updateResumeHtml(interviewId, { generatedResumeHtml: "" })
+            await updateNewResume("")
             window.location.reload()
         } catch (err) {
             console.error("Error regenerating resume:", err)
@@ -267,12 +407,19 @@ const Resume = () => {
             <div className="resume-shell">
                 <div className="resume-header panel">
                     <div className="resume-heading">
-                        <p className="eyebrow">Resume Studio</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                            <p className="eyebrow">Resume Studio</p>
+                            {isDirty && (
+                                <span className="unsaved-badge">
+                                    ● Unsaved Changes
+                                </span>
+                            )}
+                        </div>
                         <h1>{displayTitle}</h1>
                         <p className="intro">Edit your AI-generated resume directly on the sheet and download the A4 PDF.</p>
                     </div>
 
-                    <div className="resume-actions" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div className="resume-actions">
                         <button
                             type="button"
                             className="ghost-btn"
@@ -283,19 +430,12 @@ const Resume = () => {
                         
                         <button
                             type="button"
-                            className="primary-btn"
+                            className="primary-btn save-btn"
                             onClick={handleSaveChanges}
                             disabled={saveLoading || !isDirty}
-                            style={{ background: 'var(--success-color)' }}
                         >
                             {saveLoading ? 'Saving...' : '💾 Save Changes'}
                         </button>
-
-                        {isDirty && (
-                            <span style={{ fontSize: '0.8rem', color: '#f59e0b', fontWeight: '600', marginRight: '0.5rem' }}>
-                                ⚠️ Unsaved changes
-                            </span>
-                        )}
 
                         <button
                             type="button"
@@ -306,9 +446,10 @@ const Resume = () => {
                         >
                             ↺ Regenerate
                         </button>
+
                         <button
                             type="button"
-                            className="primary-btn"
+                            className="primary-btn download-btn"
                             onClick={handleDownloadPdf}
                             disabled={loading || saveLoading || !iframeContent}
                         >
@@ -331,93 +472,117 @@ const Resume = () => {
                     </div>
                 )}
 
-                <div className="resume-preview panel" style={{ marginTop: '1rem' }}>
-                    {loading && !iframeContent ? (
-                        <div className="resume-feedback" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-                            <span className="pulse-dot"></span>
-                            <p style={{ color: 'var(--muted)' }}>Drafting and formatting your ATS resume using Gemini AI...</p>
-                        </div>
-                    ) : iframeContent ? (
-                        <div className="resume-frame-container" style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-                            <div className="formatting-toolbar">
-                                <button 
-                                    type="button" 
-                                    className="toolbar-btn" 
-                                    onMouseDown={(e) => { e.preventDefault(); applyFormat('bold'); }}
-                                    title="Bold"
-                                    style={{ fontWeight: 'bold' }}
-                                >
-                                    B
-                                </button>
-                                <button 
-                                    type="button" 
-                                    className="toolbar-btn" 
-                                    onMouseDown={(e) => { e.preventDefault(); applyFormat('italic'); }}
-                                    title="Italic"
-                                    style={{ fontStyle: 'italic' }}
-                                >
-                                    I
-                                </button>
-                                <button 
-                                    type="button" 
-                                    className="toolbar-btn" 
-                                    onMouseDown={(e) => { e.preventDefault(); applyFormat('underline'); }}
-                                    title="Underline"
-                                    style={{ textDecoration: 'underline' }}
-                                >
-                                    U
-                                </button>
-                                <div className="toolbar-divider" />
-                                <button 
-                                    type="button" 
-                                    className="toolbar-btn" 
-                                    onMouseDown={handleInsertLinkClick}
-                                    title="Insert Link"
-                                >
-                                    🔗 Link
-                                </button>
-                                <div className="toolbar-divider" />
-                                <div className="toolbar-select-container">
-                                    <label htmlFor="fontSizeSelect" style={{ fontSize: '0.75rem', color: 'var(--muted)', marginRight: '0.4rem' }}>Size:</label>
-                                    <select 
-                                        id="fontSizeSelect"
-                                        onChange={(e) => applyFormat('fontSize', e.target.value)}
-                                        defaultValue="3"
-                                        className="toolbar-select"
+                {/* Full-Width Resume Studio Workspace */}
+                <div className="resume-workspace-layout">
+                    <div className="resume-preview-column panel">
+                        {loading && !iframeContent ? (
+                            <div className="resume-feedback" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '2rem' }}>
+                                <div className="shimmer" style={{ gap: '12px', width: '100%', justifyContent: 'center' }}>
+                                    <div className="shimmer-checkbox"></div>
+                                    <div className="shimmer-text"></div>
+                                </div>
+                                <div className="shimmer" style={{ gap: '12px', width: '100%', justifyContent: 'center' }}>
+                                    <div className="shimmer-checkbox"></div>
+                                    <div className="shimmer-text" style={{ width: '60%' }}></div>
+                                </div>
+                                <p style={{ color: 'var(--muted)', marginTop: '0.5rem' }}>Drafting and formatting your ATS resume using Gemini AI...</p>
+                            </div>
+                        ) : iframeContent ? (
+                            <div className="resume-frame-container">
+                                <div className="formatting-toolbar">
+                                    <button 
+                                        type="button" 
+                                        className="toolbar-btn" 
+                                        onMouseDown={(e) => { e.preventDefault(); applyFormat('bold'); }}
+                                        title="Bold"
+                                        style={{ fontWeight: 'bold' }}
                                     >
-                                        <option value="2">Small</option>
-                                        <option value="3">Normal</option>
-                                        <option value="4">Medium</option>
-                                        <option value="5">Large</option>
-                                        <option value="6">X-Large</option>
-                                    </select>
+                                        B
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        className="toolbar-btn" 
+                                        onMouseDown={(e) => { e.preventDefault(); applyFormat('italic'); }}
+                                        title="Italic"
+                                        style={{ fontStyle: 'italic' }}
+                                    >
+                                        I
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        className="toolbar-btn" 
+                                        onMouseDown={(e) => { e.preventDefault(); applyFormat('underline'); }}
+                                        title="Underline"
+                                        style={{ textDecoration: 'underline' }}
+                                    >
+                                        U
+                                    </button>
+                                    <div className="toolbar-divider" />
+                                    <button 
+                                        type="button" 
+                                        className="toolbar-btn" 
+                                        onMouseDown={handleInsertLinkClick}
+                                        title="Insert Link"
+                                    >
+                                        🔗 Link
+                                    </button>
+                                    <div className="toolbar-divider" />
+                                    <div className="toolbar-select-container">
+                                        <label htmlFor="fontSizeSelect" style={{ fontSize: '0.75rem', color: 'var(--muted)', marginRight: '0.4rem' }}>Size:</label>
+                                        <select 
+                                            id="fontSizeSelect"
+                                            onChange={(e) => applyFormat('fontSize', e.target.value)}
+                                            defaultValue="3"
+                                            className="toolbar-select"
+                                        >
+                                            <option value="2">Small</option>
+                                            <option value="3">Normal</option>
+                                            <option value="4">Medium</option>
+                                            <option value="5">Large</option>
+                                            <option value="6">X-Large</option>
+                                        </select>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div className="resume-warn-card">
-                                <div className="warn-card-title">⚠️ <span>KIVI can make mistakes</span> — always verify before downloading.</div>
-                                <div className="warn-card-tips">
-                                    <div className="warn-tip">📄 <strong>Download the PDF</strong> to see the actual formatting — this preview is for <em>content check only</em>.</div>
-                                    <div className="warn-tip">🔗 <strong>Check all hyperlinks</strong> carefully. If any are missing or broken, add them using the <strong>🔗 Link</strong> option in the toolbar below.</div>
+                                 <div className="resume-iframe-wrapper" style={{ overflowX: 'hidden' }}>
+                                    <div 
+                                        className="resume-scaler-container" 
+                                        style={{ 
+                                            width: '100%', 
+                                            height: `${1123 * scaleFactor}px`, 
+                                            display: 'flex', 
+                                            justifyContent: 'center', 
+                                            alignItems: 'flex-start',
+                                            overflow: 'hidden'
+                                        }}
+                                    >
+                                        <div 
+                                            className="resume-frame-scaler" 
+                                            style={{ 
+                                                width: '794px', 
+                                                height: '1123px',
+                                                transform: `scale(${scaleFactor})`,
+                                                transformOrigin: 'top center',
+                                                transition: 'transform 0.2s ease',
+                                                flexShrink: 0
+                                            }}
+                                        >
+                                            <iframe
+                                                ref={iframeRef}
+                                                srcDoc={iframeContent}
+                                                onLoad={handleIframeLoad}
+                                                title="Resume Preview"
+                                                className="resume-frame"
+                                                style={{ width: '100%', height: '100%', border: 'none', margin: 0 }}
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-
-                            <div className="resume-iframe-wrapper">
-                                <iframe
-                                    ref={iframeRef}
-                                    srcDoc={iframeContent}
-                                    onLoad={handleIframeLoad}
-                                    title="Resume Preview"
-                                    className="resume-frame"
-                                />
-                                <div className="resume-warn-slide">
-                                    ⚠️ <strong>KIVI can make mistakes</strong> — please review your details carefully before downloading.
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="resume-feedback">Nothing to preview yet.</div>
-                    )}
+                        ) : (
+                            <div className="resume-feedback">Nothing to preview yet.</div>
+                        )}
+                    </div>
                 </div>
             </div>
 

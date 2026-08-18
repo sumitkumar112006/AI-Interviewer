@@ -31,7 +31,7 @@ const ComingSoon = () => {
                 </p>
                 <div className="ai-badge">
                     <span className="pulse-dot"></span>
-                    <span>AI Engine Connected: Llama 3.3 · Groq</span>
+                    <span>AI Engine Connected: GPT-OSS 120B · Groq</span>
                 </div>
                 <button className="back-home-btn" onClick={() => navigate('/')}>
                     Back to Dashboard

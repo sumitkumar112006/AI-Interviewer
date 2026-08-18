@@ -232,7 +232,17 @@ const Interview = () => {
         return (
             <div className="interview-page">
                 <div className="interview-shell">
-                    <div className="feedback-card">Loading interview report...</div>
+                    <div className="feedback-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '2rem' }}>
+                        <div className="shimmer" style={{ gap: '12px', width: '100%', justifyContent: 'center' }}>
+                            <div className="shimmer-checkbox"></div>
+                            <div className="shimmer-text"></div>
+                        </div>
+                        <div className="shimmer" style={{ gap: '12px', width: '100%', justifyContent: 'center' }}>
+                            <div className="shimmer-checkbox"></div>
+                            <div className="shimmer-text" style={{ width: '50%' }}></div>
+                        </div>
+                        <p style={{ margin: 0, color: '#94a3b8' }}>Loading interview report...</p>
+                    </div>
                 </div>
             </div>
         );

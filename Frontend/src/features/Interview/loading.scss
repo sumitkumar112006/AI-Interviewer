@@ -135,3 +135,38 @@ p {
 .logout-btn:active {
     transform: scale(0.98);
 }
+
+/* Shimmer effect styles */
+
+.shimmer {
+    display: flex;
+    align-items: center;
+}
+
+.shimmer-checkbox {
+    width: 16px;
+    height: 16px;
+    background: linear-gradient(90deg, var(--skeleton-base) 25%, var(--skeleton-highlight) 50%, var(--skeleton-base) 75%);
+    background-size: 200% 100%;
+    animation: shimmerAnimation 1.5s infinite linear;
+    border-radius: 4px;
+    flex: 0 0 16px;
+}
+
+.shimmer-text {
+    width: min(420px, 80%);
+    height: 16px;
+    background: linear-gradient(90deg, var(--skeleton-base) 25%, var(--skeleton-highlight) 50%, var(--skeleton-base) 75%);
+    background-size: 200% 100%;
+    animation: shimmerAnimation 1.5s infinite linear;
+    border-radius: 4px;
+}
+
+@keyframes shimmerAnimation {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}

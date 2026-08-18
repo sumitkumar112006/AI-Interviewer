@@ -1,0 +1,63 @@
+/* ============================================================
+   AUTH MASCOT STYLES — STATIC PLACEMENT
+   ============================================================ */
+
+.auth-mascot-wrapper {
+    position: absolute;
+    top: -184px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 254px;
+    height: 200px;
+    pointer-events: none;
+    z-index: 12;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+
+    /* Body Layer */
+    .mascot-body-layer {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+        z-index: 1;
+
+        .mascot-img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.45));
+        }
+    }
+
+    /* Hands Layer (Resting on card top edge) */
+    .mascot-hands-layer {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 15; /* Above card top border */
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+
+        .mascot-hands-img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+    .auth-mascot-wrapper {
+        top: -128px;
+        width: 210px;
+        height: 150px;
+    }
+}

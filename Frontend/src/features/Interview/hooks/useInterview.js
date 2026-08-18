@@ -1,4 +1,4 @@
-import { getAllInterviewReport, generateInterviewReport, getInterviewReportById, generateResumePdf, deleteReportById } from '../services/interview.api';
+import { getAllInterviewReport, getSkillAnalytics, generateInterviewReport, getInterviewReportById, generateResumePdf, deleteReportById, updateResumeHtml } from '../services/interview.api';
 import { useContext } from 'react';
 import { interviewContext } from '../interview.context';
 
@@ -12,7 +12,17 @@ export const useInterview = () => {
         throw new Error("useInterview must be used within an InterviewProvider")
     }
 
-    const { loading, setLoading, report, setReport, reports, setReports } = context
+    const { 
+        loading, 
+        setLoading, 
+        report, 
+        setReport, 
+        reports, 
+        setReports,
+        previousResume,
+        jobDescription,
+        newResume
+    } = context
 
     const generateReport = async ({ jobDescription, selfDescription, resumeFile }) => {
         setLoading(true)
@@ -51,11 +61,21 @@ export const useInterview = () => {
         try {
             const response = await getAllInterviewReport()
             setReports(response.interviewReports)
-            return response.interviewReports
+            return response
         } catch (error) {
             console.log(error)
         } finally {
             setLoading(false)
+        }
+    }
+
+    const getSkillsStats = async () => {
+        try {
+            const response = await getSkillAnalytics()
+            return response.skillAnalytics
+        } catch (error) {
+            console.log(error)
+            return null
         }
     }
 
@@ -92,5 +112,36 @@ export const useInterview = () => {
         }
     }
 
-    return { loading, setLoading, report, reports, getReoprtById, getReports, generateReport, getResumePdf, deleteReport }
+    const updateNewResume = async (htmlContent) => {
+        if (!report) return
+        setLoading(true)
+        try {
+            const reportId = report._id?.$oid || report._id
+            const res = await updateResumeHtml(reportId, { generatedResumeHtml: htmlContent })
+            setReport(res.interviewReport)
+            return res.interviewReport
+        } catch (error) {
+            console.error("Error updating centralized resume:", error)
+            throw error
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    return { 
+        loading, 
+        setLoading, 
+        report, 
+        reports, 
+        getReoprtById, 
+        getReports,
+        getSkillsStats,
+        generateReport, 
+        getResumePdf, 
+        deleteReport,
+        previousResume,
+        jobDescription,
+        newResume,
+        updateNewResume
+    }
 }   

@@ -5,6 +5,10 @@ const bcrypt = require('bcryptjs');
 const JWT = require('jsonwebtoken');
 const { isEmailDomainReal } = require("../utils/emailValidator");
 const { sendOtpEmail } = require("../services/email.service");
+const {
+    blacklistTokenInRedis,
+    isTokenBlacklistedInRedis
+} = require("../services/redis.service");
 
 const cookieOptions = {
     httpOnly: true,
@@ -14,23 +18,36 @@ const cookieOptions = {
 };
 
 function handleAuthControllerError(res, err) {
+    if (!err) {
+        return res.status(400).json({ message: "An invalid authentication request occurred." });
+    }
+
     if (err?.code === 11000) {
-        const duplicateField = Object.keys(err.keyPattern || {})[0];
+        const keyPattern = err.keyPattern || err.keyValue || {};
+        const duplicateField = Object.keys(keyPattern)[0] || "field";
         const normalizedField = duplicateField === "emain" ? "email" : duplicateField;
 
         return res.status(409).json({
-            message: `${normalizedField || "User"} already exists`
+            message: `${normalizedField.charAt(0).toUpperCase() + normalizedField.slice(1)} already registered. Please log in or use a different one.`
         });
     }
 
     if (err?.name === "ValidationError") {
+        const messages = err.errors ? Object.values(err.errors).map(e => e.message).join(", ") : err.message;
         return res.status(400).json({
-            message: err.message
+            message: messages || "Invalid input data provided."
         });
     }
 
-    return res.status(500).json({
-        message: err?.message || "Internal server error"
+    if (err?.name === "CastError") {
+        return res.status(400).json({
+            message: `Invalid format for field: ${err.path}`
+        });
+    }
+
+    console.error("[AUTH ERROR]", err);
+    return res.status(400).json({
+        message: err?.message || "Registration or authentication request failed. Please verify your details."
     });
 }
 
@@ -62,13 +79,55 @@ async function registerUserController(req, res) {
         });
 
         if (existingUser) {
+            // If existing user is NOT verified, update credentials and re-send fresh OTP instead of throwing 409
+            if (!existingUser.isVerified) {
+                // Rate limit check: restrict OTP generation to once every 2 minutes
+                const activeOtp = await otpModel.findOne({ email: normalizedEmail });
+                if (activeOtp) {
+                    const elapsedSeconds = (Date.now() - new Date(activeOtp.createdAt).getTime()) / 1000;
+                    const COOLDOWN_PERIOD = 120; // 2 minutes (120 seconds)
+                    if (elapsedSeconds < COOLDOWN_PERIOD) {
+                        const remaining = Math.ceil(COOLDOWN_PERIOD - elapsedSeconds);
+                        return res.status(429).json({
+                            message: `Please wait ${remaining} seconds before requesting another verification code.`
+                        });
+                    }
+                }
+
+                const hash = await bcrypt.hash(password, 10);
+                existingUser.username = username;
+                existingUser.email = normalizedEmail;
+                existingUser.password = hash;
+                await existingUser.save();
+
+                // Generate 6-digit OTP
+                const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+                // Store OTP directly in DB
+                await otpModel.deleteMany({ email: normalizedEmail });
+                await otpModel.create({ email: normalizedEmail, otp });
+
+                let sendResult = { success: false, fallbackOtp: otp };
+                try {
+                    sendResult = await sendOtpEmail(normalizedEmail, otp);
+                } catch (emailErr) {
+                    console.error("Email delivery warning:", emailErr.message);
+                }
+
+                return res.status(200).json({
+                    message: "Registration initiated! Please check your email for the verification OTP.",
+                    email: existingUser.email,
+                    requiresOtp: true
+                });
+            }
+
             if (existingUser.username === username) {
                 return res.status(409).json({
-                    message: "Username already exists"
+                    message: "Username already registered. Please log in or use a different username."
                 });
             } else {
                 return res.status(409).json({
-                    message: "Email already exists"
+                    message: "Email already registered. Please log in to your account."
                 });
             }
         }
@@ -84,12 +143,17 @@ async function registerUserController(req, res) {
         // Generate 6-digit OTP
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-        // Delete any existing OTP records for this email and save new one
+        // Store OTP directly in DB
         await otpModel.deleteMany({ email: normalizedEmail });
         await otpModel.create({ email: normalizedEmail, otp });
 
         // Send Email
-        await sendOtpEmail(normalizedEmail, otp);
+        let sendResult = { success: false, fallbackOtp: otp };
+        try {
+            sendResult = await sendOtpEmail(normalizedEmail, otp);
+        } catch (emailErr) {
+            console.error("Email delivery warning:", emailErr.message);
+        }
 
         return res.status(200).json({
             message: "Registration initiated! Please check your email for the verification OTP.",
@@ -118,8 +182,18 @@ async function verifyOtpController(req, res) {
         const normalizedEmail = email.trim().toLowerCase();
         const trimmedOtp = String(otp).trim();
 
+        // Check MongoDB for active OTP
+        let isValidOtp = false;
         const validOtpRecord = await otpModel.findOne({ email: normalizedEmail, otp: trimmedOtp });
-        if (!validOtpRecord) {
+        if (validOtpRecord) {
+            // Ensure OTP is within strict 10-minute (600s) TTL window
+            const ageInSeconds = (Date.now() - new Date(validOtpRecord.createdAt).getTime()) / 1000;
+            if (ageInSeconds <= 600) {
+                isValidOtp = true;
+            }
+        }
+
+        if (!isValidOtp) {
             return res.status(400).json({
                 message: "Invalid or expired verification OTP code"
             });
@@ -128,7 +202,7 @@ async function verifyOtpController(req, res) {
         const user = await userModel.findOneAndUpdate(
             { email: normalizedEmail },
             { isVerified: true },
-            { new: true }
+            { returnDocument: 'after' }
         );
 
         if (!user) {
@@ -137,8 +211,8 @@ async function verifyOtpController(req, res) {
             });
         }
 
-        // Delete used OTP
-        await otpModel.deleteOne({ _id: validOtpRecord._id });
+        // Delete used OTP from DB
+        await otpModel.deleteMany({ email: normalizedEmail });
 
         // Generate JWT token & login automatically
         const token = JWT.sign(
@@ -181,11 +255,29 @@ async function resendOtpController(req, res) {
             return res.status(404).json({ message: "User account not found" });
         }
 
+        // Rate limit check: restrict OTP generation to once every 2 minutes
+        const activeOtp = await otpModel.findOne({ email: normalizedEmail });
+        if (activeOtp) {
+            const elapsedSeconds = (Date.now() - new Date(activeOtp.createdAt).getTime()) / 1000;
+            const COOLDOWN_PERIOD = 120; // 2 minutes (120 seconds)
+            if (elapsedSeconds < COOLDOWN_PERIOD) {
+                const remaining = Math.ceil(COOLDOWN_PERIOD - elapsedSeconds);
+                return res.status(429).json({
+                    message: `Please wait ${remaining} seconds before requesting another verification code.`
+                });
+            }
+        }
+
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         await otpModel.deleteMany({ email: normalizedEmail });
         await otpModel.create({ email: normalizedEmail, otp });
 
-        await sendOtpEmail(normalizedEmail, otp);
+        let sendResult = { success: false, fallbackOtp: otp };
+        try {
+            sendResult = await sendOtpEmail(normalizedEmail, otp);
+        } catch (emailErr) {
+            console.error("Email delivery warning:", emailErr.message);
+        }
 
         return res.status(200).json({
             message: "Verification OTP code resent to your email!",
@@ -203,50 +295,80 @@ async function resendOtpController(req, res) {
  */
 async function loginController(req, res) {
     const { email, password } = req.body;
-    if (!email || !password) {
-        return res.status(400).json({
-            message: "Provide all details carefully"
-        });
-    }
-
-    const normalizedEmail = email.trim().toLowerCase();
-    const user = await userModel.findOne({
-        email: normalizedEmail
-    });
-
-    if (!user) {
-        return res.status(400).json({
-            message: "Invalid email or password"
-        });
-    }
-
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-
-    if (!isPasswordValid) {
-        return res.status(400).json({
-            message: "Please enter a valid password"
-        });
-    }
-
-    const token = JWT.sign({ id: user._id, username: user.username },
-        process.env.JWT_SECRET,
-        { expiresIn: "1d" }
-    );
-
-    res.cookie("token", token, cookieOptions);
-
-    return res.status(200).json({
-        message: "User logged in successfully",
-        user: {
-            id: user._id,
-            username: user.username
+    try {
+        if (!email || !password) {
+            return res.status(400).json({
+                message: "Provide all details carefully"
+            });
         }
-    });
+
+        const normalizedEmail = email.trim().toLowerCase();
+        const user = await userModel.findOne({
+            email: normalizedEmail
+        });
+
+        if (!user) {
+            return res.status(400).json({
+                message: "Invalid email or password"
+            });
+        }
+
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+
+        if (!isPasswordValid) {
+            return res.status(400).json({
+                message: "Please enter a valid password"
+            });
+        }
+
+        if (!user.isVerified) {
+            // Send a fresh OTP to the unverified user
+            const otp = Math.floor(100000 + Math.random() * 900000).toString();
+            await otpModel.deleteMany({ email: normalizedEmail });
+            await otpModel.create({ email: normalizedEmail, otp });
+
+            let sendResult = { success: false, fallbackOtp: otp };
+            try {
+                sendResult = await sendOtpEmail(normalizedEmail, otp);
+            } catch (emailErr) {
+                console.error("Email delivery warning:", emailErr.message);
+            }
+
+            let message = "Your email is not verified yet. A new verification OTP code has been sent to your email.";
+            if (!sendResult?.success && sendResult?.fallbackOtp) {
+                message = `Your email is not verified yet. Verification code: ${sendResult.fallbackOtp}`;
+            }
+
+            return res.status(403).json({
+                message,
+                requiresOtp: true,
+                email: user.email,
+                fallbackOtp: sendResult?.fallbackOtp
+            });
+        }
+
+        const token = JWT.sign({ id: user._id, username: user.username },
+            process.env.JWT_SECRET,
+            { expiresIn: "1d" }
+        );
+
+        res.cookie("token", token, cookieOptions);
+
+        return res.status(200).json({
+            message: "User logged in successfully",
+            user: {
+                id: user._id,
+                username: user.username
+            }
+        });
+    } catch (err) {
+        return handleAuthControllerError(res, err);
+    }
 }
 
 /**
  * @name logoutController
- * @description clear token from user cookies and blacklist the token for future use.
+ * @description clear token from user cookies and blacklist the token in Redis & DB.
  * @access public
  */
 async function logoutController(req, res) {
@@ -258,9 +380,9 @@ async function logoutController(req, res) {
         });
     }
 
-    await blacklistModel.create({
-        token
-    });
+    // Blacklist token in Redis (24hr TTL) & DB
+    await blacklistTokenInRedis(token, 86400);
+    await blacklistModel.create({ token });
 
     res.clearCookie("token", cookieOptions);
 
@@ -284,9 +406,13 @@ async function getMeController(req, res) {
         });
     }
 
-    const isTokenBlacklisted = await blacklistModel.findOne({ token });
+    let isBlacklisted = await isTokenBlacklistedInRedis(token);
+    if (!isBlacklisted) {
+        const isTokenBlacklisted = await blacklistModel.findOne({ token });
+        if (isTokenBlacklisted) isBlacklisted = true;
+    }
 
-    if (isTokenBlacklisted) {
+    if (isBlacklisted) {
         res.clearCookie("token", cookieOptions);
 
         return res.status(200).json({

@@ -2,9 +2,16 @@ const express = require('express')
 const authMidleware = require('../middleware/auth.middleware')
 const interviewController = require('../controller/interview.controller')
 const upload = require('../middleware/file.middleware')
+const { createRateLimiter } = require('../middleware/rateLimiter.middleware')
 
 const interviewRouter = express.Router();
 
+const aiGenerationLimiter = createRateLimiter({
+    prefix: 'ratelimit:ai',
+    windowSeconds: 60, // 1 minute
+    maxRequests: 5,
+    message: 'AI Report generation limit reached. Please wait a minute before generating another report.'
+});
 
 /**
  * @route POST /api/interview
@@ -12,7 +19,7 @@ const interviewRouter = express.Router();
  * @access private
  */
 
-interviewRouter.post('/', authMidleware.authUser, upload.single("resume"), interviewController.generateInterviewReportController)
+interviewRouter.post('/', authMidleware.authUser, aiGenerationLimiter, upload.single("resume"), interviewController.generateInterviewReportController)
 
 /**
  * @route GET /api/interview/report/:interviewId
@@ -20,6 +27,13 @@ interviewRouter.post('/', authMidleware.authUser, upload.single("resume"), inter
  * @access private
  */
 interviewRouter.get('/report/:interviewId', authMidleware.authUser, interviewController.getInterviewReportByIdController)
+
+/**
+ * @route GET /api/interview/skill-analytics
+ * @description Get aggregated major skill analytics and performance metrics.
+ * @access private
+ */
+interviewRouter.get('/skill-analytics', authMidleware.authUser, interviewController.getSkillAnalyticsController)
 
 /**
  * @route GET /api/interview/:interviewId
@@ -55,5 +69,11 @@ interviewRouter.put('/resume/:interviewReportId', authMidleware.authUser, interv
 
 // Update interview progress (questions responses, roadmap tasks)
 interviewRouter.put('/progress/:interviewId', authMidleware.authUser, interviewController.updateInterviewProgressController)
+
+// Rewrite a selected resume section/bullet point with AI Writer
+interviewRouter.post('/resume/rewrite-section', authMidleware.authUser, interviewController.rewriteResumeSectionController)
+
+// Get active AI model status and info
+interviewRouter.get('/model-info', authMidleware.authUser, interviewController.getAiModelInfoController)
 
 module.exports = interviewRouter

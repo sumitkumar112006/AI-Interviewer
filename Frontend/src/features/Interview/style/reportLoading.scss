@@ -1,0 +1,295 @@
+/* ================================================
+   REPORT GENERATION LOADING OVERLAY - KIVI-AI
+   ================================================ */
+
+.report-loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 99999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: rgba(9, 13, 22, 0.88);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    animation: fadeInOverlay 0.3s ease-out forwards;
+    padding: 1.5rem;
+    box-sizing: border-box;
+}
+
+@keyframes fadeInOverlay {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.report-loading-glow {
+    position: absolute;
+    width: 550px;
+    height: 550px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(99, 102, 241, 0.22) 0%, rgba(168, 85, 247, 0.15) 45%, rgba(0, 0, 0, 0) 70%);
+    filter: blur(90px);
+    pointer-events: none;
+    animation: pulseGlow 4s ease-in-out infinite alternate;
+}
+
+@keyframes pulseGlow {
+    from {
+        transform: scale(0.9);
+        opacity: 0.7;
+    }
+    to {
+        transform: scale(1.1);
+        opacity: 1;
+    }
+}
+
+.report-loading-card {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    max-width: 540px;
+    background: #0f1322;
+    border: 1px solid #1c2338;
+    border-radius: 20px;
+    padding: 2.25rem 2rem;
+    box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 30px rgba(99, 102, 241, 0.12);
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+    animation: slideUpCard 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideUpCard {
+    from {
+        transform: translateY(20px) scale(0.97);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+}
+
+/* ── Header ───────────────────────────────────── */
+.report-loading-header {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+
+    .sparkle-circle {
+        width: 52px;
+        height: 52px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2));
+        border: 1px solid rgba(99, 102, 241, 0.35);
+        color: #a78bfa;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 0.5rem;
+        box-shadow: 0 0 20px rgba(167, 139, 250, 0.25);
+        animation: spinSlow 8s linear infinite;
+    }
+
+    h2 {
+        margin: 0;
+        font-size: 1.45rem;
+        font-weight: 700;
+        color: #ffffff;
+        letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+        margin: 0;
+        font-size: 0.9rem;
+        color: #8f9cae;
+        line-height: 1.4;
+    }
+}
+
+@keyframes spinSlow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ── Progress Section ────────────────────────── */
+.progress-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+
+    .progress-bar-bg {
+        width: 100%;
+        height: 8px;
+        background: #181f33;
+        border-radius: 999px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .progress-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899);
+        border-radius: 999px;
+        transition: width 0.4s ease-out;
+        box-shadow: 0 0 12px rgba(168, 85, 247, 0.5);
+    }
+
+    .progress-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.82rem;
+        color: #64748b;
+        font-weight: 500;
+
+        .progress-percentage {
+            color: #a78bfa;
+            font-weight: 700;
+        }
+    }
+}
+
+/* ── Operations Checklist List ───────────────── */
+.operations-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    background: #0b0e17;
+    border: 1px solid #1a2236;
+    border-radius: 14px;
+    padding: 1.1rem;
+}
+
+.operation-item {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    transition: all 0.3s ease;
+
+    .status-indicator {
+        width: 22px;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .icon-done {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #10b981;
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+        animation: popCheck 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+
+    .icon-active {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #10b981;
+        position: relative;
+        box-shadow: 0 0 12px rgba(16, 185, 129, 0.8);
+
+        .pulse-ring {
+            position: absolute;
+            top: -4px;
+            left: -4px;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            border: 2px solid #10b981;
+            animation: pulseRing 1.4s ease-out infinite;
+        }
+    }
+
+    .icon-pending {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 2px solid #334155;
+        background: transparent;
+    }
+
+    .operation-label {
+        font-size: 0.88rem;
+        font-weight: 500;
+        color: #475569;
+        transition: color 0.3s ease;
+    }
+
+    &.done {
+        .operation-label {
+            color: #94a3b8;
+            text-decoration: none;
+        }
+    }
+
+    &.active {
+        .operation-label {
+            color: #ffffff;
+            font-weight: 600;
+        }
+    }
+
+    &.pending {
+        .operation-label {
+            color: #475569;
+        }
+    }
+}
+
+@keyframes popCheck {
+    0% { transform: scale(0); }
+    100% { transform: scale(1); }
+}
+
+@keyframes pulseRing {
+    0% {
+        transform: scale(0.6);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1.6);
+        opacity: 0;
+    }
+}
+
+/* ── Interview Tip Box ────────────────────────── */
+.loading-tip-box {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: rgba(99, 102, 241, 0.07);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    font-size: 0.84rem;
+    color: #cbd5e1;
+
+    .tip-icon {
+        font-size: 1.1rem;
+        flex-shrink: 0;
+    }
+
+    .tip-text {
+        line-height: 1.35;
+        color: #a5b4fc;
+        font-weight: 500;
+    }
+}

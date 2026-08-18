@@ -311,6 +311,15 @@
     width: fit-content;
     max-width: 100%;
     box-sizing: border-box;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+
+    &::-webkit-scrollbar {
+        display: none; /* Hide scrollbar for premium styling */
+    }
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }
 
 .page-tab-nav-btn {
@@ -1492,9 +1501,10 @@
 
     .progress-card-left {
         display: flex;
+        flex-direction: row; /* Explicitly keep rocket and text side-by-side as a row */
         align-items: center;
         gap: 1.25rem;
-        min-width: 0;
+        min-width: 250px;
         flex: 1;
 
         .rocket-icon {
@@ -1505,6 +1515,7 @@
 
         .progress-card-text {
             min-width: 0;
+            flex: 1;
 
             h4 {
                 font-size: 1.05rem;
@@ -1537,6 +1548,24 @@
 
         &:active {
             transform: translateY(0);
+        }
+    }
+
+    /* Mobile view responsiveness */
+    @media (max-width: 768px) {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+        padding: 1.25rem;
+
+        .progress-card-left {
+            width: 100%;
+            min-width: 0;
+        }
+
+        .view-progress-btn {
+            width: 100%;
+            text-align: center;
         }
     }
 }

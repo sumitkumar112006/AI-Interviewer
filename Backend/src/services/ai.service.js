@@ -1,3 +1,4 @@
+require('dotenv').config();
 const Groq = require("groq-sdk")
 
 const { z } = require('zod')
@@ -25,7 +26,16 @@ if (!OPENROUTER_API_KEY) {
     console.warn('OPENROUTER_API_KEY is not set. OpenRouter fallback will not be available.')
 }
 
-const GROQ_MODEL = "llama-3.3-70b-versatile"
+// Gemini config
+const { GoogleGenAI } = require('@google/genai')
+const GEMINI_API_KEY = process.env.GOOGLE_GENAI_API_KEY
+const aiGemini = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null
+
+if (!GEMINI_API_KEY) {
+    console.warn('GOOGLE_GENAI_API_KEY is not set. Gemini fallback will not be available.')
+}
+
+const GROQ_MODEL = "openai/gpt-oss-120b"
 
 
 
@@ -65,6 +75,12 @@ const skillGapSchema = z.object({
         ),
 })
 
+const detectedSkillSchema = z.object({
+    name: z.string().describe("Standardized major skill or tech stack name e.g. Node.js, React, Python, JavaScript, Java, SQL, MongoDB, Docker, AWS, System Design"),
+    category: z.string().default("General"),
+    knowledgePercentage: z.coerce.number().min(0).max(100).describe("Evaluated actual knowledge percentage (0-100%) based on listed project depth and experience.")
+})
+
 
 const aiInterviewReportSchema = z.object({
     developerTitle: z
@@ -97,6 +113,10 @@ const aiInterviewReportSchema = z.object({
 
     skillGaps: z.array(skillGapSchema).describe(
         "List of the most important skill gaps detected during the interview across technical ability, communication, behavioral traits, confidence, problem-solving, and practical experience."
+    ),
+
+    detectedSkills: z.array(detectedSkillSchema).optional().describe(
+        "List of major tech stacks evaluated with percentage knowledge score (0-100%) based on candidate's listed projects, experience, and technical depth."
     ),
 
 
@@ -133,6 +153,7 @@ const mongooseInterviewReportSchema = z.object({
     technicalQuestions: z.array(questionSchema).length(5),
     behavioralQuestion: z.array(questionSchema).length(5),
     skillGaps: z.array(skillGapSchema),
+    detectedSkills: z.array(detectedSkillSchema).optional(),
     preparationPlan: z.array(
         z.object({
             day: z.string(),
@@ -218,8 +239,8 @@ function normalizeQuestionItem(item, fallbackIntention, fallbackAnswer) {
 function normalizeQuestionArray(value, options = {}) {
     const {
         limit = 5,
-            fallbackIntention = "Assesses the candidate's fit for the target role.",
-            fallbackAnswer = "Answer with a concise, role-specific example that shows clear reasoning and results.",
+        fallbackIntention = "Assesses the candidate's fit for the target role.",
+        fallbackAnswer = "Answer with a concise, role-specific example that shows clear reasoning and results.",
     } = options
 
     return normalizeObjectArray(value)
@@ -319,12 +340,21 @@ function normalizeResumeHtmlDocument(htmlContent) {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <style>
-        body {
+        @page {
+            size: A4;
             margin: 0;
-            padding: 32px;
-            font-family: Arial, sans-serif;
+        }
+        body {
+            margin: 0 auto;
+            width: 210mm;
+            min-height: 297mm;
+            padding: 12mm 16mm;
+            box-sizing: border-box;
+            font-family: 'Calibri', 'Arial', sans-serif;
             color: #111827;
-            line-height: 1.5;
+            background: #ffffff;
+            line-height: 1.4;
+            -webkit-print-color-adjust: exact;
         }
     </style>
 </head>
@@ -341,22 +371,31 @@ function normalizeInterviewReport(rawReport) {
         tasks: normalizeStringArray(item?.tasks),
     }))
 
+    const normalizedDetectedSkills = Array.isArray(rawReport.detectedSkills)
+        ? rawReport.detectedSkills.map(sk => ({
+            name: String(sk?.name ?? sk?.skill ?? '').trim(),
+            category: String(sk?.category ?? 'General').trim(),
+            knowledgePercentage: Math.max(0, Math.min(100, Number(sk?.knowledgePercentage ?? sk?.score ?? 75)))
+        })).filter(sk => sk.name)
+        : []
+
     return {
         developerTitle: String(rawReport.developerTitle ?? rawReport.title ?? rawReport.Title ?? "").trim(),
         matchScore: rawReport.matchScore,
         technicalQuestions: normalizeQuestionArray(
             rawReport.technicalQuestions ?? rawReport.technicalQuestion, {
-                fallbackIntention: "Evaluates technical depth, implementation ability, and practical problem-solving for the role.",
-                fallbackAnswer: "Answer with concrete implementation details, tradeoffs, and an example from your past work.",
-            }
+            fallbackIntention: "Evaluates technical depth, implementation ability, and practical problem-solving for the role.",
+            fallbackAnswer: "Answer with concrete implementation details, tradeoffs, and an example from your past work.",
+        }
         ),
         behavioralQuestion: normalizeQuestionArray(
             rawReport.behavioralQuestion ?? rawReport.behaviouralQuestion, {
-                fallbackIntention: "Evaluates communication, ownership, teamwork, and professional judgment in real situations.",
-                fallbackAnswer: "Use a concise STAR-style example that shows your actions, reasoning, and outcome.",
-            }
+            fallbackIntention: "Evaluates communication, ownership, teamwork, and professional judgment in real situations.",
+            fallbackAnswer: "Use a concise STAR-style example that shows your actions, reasoning, and outcome.",
+        }
         ),
         skillGaps: normalizeSkillGapArray(rawReport.skillGaps),
+        detectedSkills: normalizedDetectedSkills,
         preparationPlan: normalizedPreparationPlan,
     }
 }
@@ -423,31 +462,83 @@ async function callOpenRouter(systemPrompt, userPrompt) {
 }
 
 /**
- * Primary AI call: tries Groq first, falls back to OpenRouter on rate-limit errors.
+ * Call Gemini (Google GenAI SDK) as the primary provider.
+ */
+async function callGemini(systemPrompt, userPrompt) {
+    if (!aiGemini) {
+        throw new Error('Gemini API is not configured.')
+    }
+    const response = await aiGemini.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+            { role: 'user', parts: [{ text: `${systemPrompt}\n\nUser request:\n${userPrompt}` }] }
+        ],
+        config: {
+            temperature: 0.7,
+        }
+    })
+    return response.text
+}
+
+let isGroqHealthy = true;
+let groqLastFailureTime = 0;
+const GROQ_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes cooldown
+
+/**
+ * Primary AI call dispatcher: tries Groq first (if healthy), then falls back to Gemini, then OpenRouter.
  */
 async function callGroq(systemPrompt, userPrompt) {
-    try {
-        const completion = await ai.chat.completions.create({
-            model: GROQ_MODEL,
-            messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userPrompt }
-            ],
-            temperature: 0.7,
-            max_completion_tokens: 8192,
-            top_p: 1,
-            stream: false,
-            stop: null
-        })
-        return completion.choices[0].message.content
-    } catch (err) {
-        if (isGroqRateLimitError(err)) {
-            console.warn(`[AI] Groq rate limit hit (${err?.status ?? err?.message}). Falling back to OpenRouter...`)
-            return await callOpenRouter(systemPrompt, userPrompt)
-        }
-        // Re-throw any other errors unchanged
-        throw err
+    // Check if Groq has recovered from cooldown
+    if (!isGroqHealthy && (Date.now() - groqLastFailureTime > GROQ_COOLDOWN_MS)) {
+        console.log('[AI] Groq cooldown period passed. Attempting to use Groq again.');
+        isGroqHealthy = true;
     }
+
+    // 1. Try Groq if healthy
+    if (isGroqHealthy) {
+        try {
+            const completion = await ai.chat.completions.create({
+                model: GROQ_MODEL,
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ],
+                temperature: 0.7,
+                max_completion_tokens: 8192,
+                top_p: 1,
+                stream: false,
+                stop: null
+            });
+            return completion.choices[0].message.content;
+        } catch (err) {
+            console.warn(`[AI] Groq call failed (${err?.status ?? err?.statusCode ?? err?.message}). Setting Groq to unhealthy status.`);
+            isGroqHealthy = false;
+            groqLastFailureTime = Date.now();
+            // Fall through to other providers
+        }
+    }
+
+    // 2. Try Gemini fallback if configured
+    if (aiGemini) {
+        try {
+            return await callGemini(systemPrompt, userPrompt);
+        } catch (geminiErr) {
+            console.error('[AI] Gemini fallback failed:', geminiErr.message);
+            // Fall through to OpenRouter
+        }
+    }
+
+    // 3. Try OpenRouter fallback if configured
+    if (OPENROUTER_API_KEY) {
+        try {
+            return await callOpenRouter(systemPrompt, userPrompt);
+        } catch (orErr) {
+            console.error('[AI] OpenRouter fallback failed:', orErr.message);
+            throw orErr;
+        }
+    }
+
+    throw new Error('All AI providers (Groq, Gemini, OpenRouter) failed or are not configured.');
 }
 
 
@@ -461,7 +552,7 @@ async function generateInterviewReport({
     const candidateSummary = selfDescription ?? selfDescribe
     const roleDescription = jobDescription ?? jobDescribe
 
-    const systemPrompt = `You are an expert AI interview coach. You MUST respond ONLY with valid JSON — no markdown, no explanation, no commentary. Never wrap the JSON in code fences.`
+    const systemPrompt = `You are an expert AI interview coach, You have 10+ years of experience as HR Manager in IT industry.You MUST respond ONLY with valid JSON — no markdown, no explanation, no commentary. Never wrap the JSON in code fences.`
 
     const userPrompt = `
 Generate an interview report in valid JSON only.
@@ -475,14 +566,17 @@ Rules:
   - technicalQuestions
   - behavioralQuestion
   - skillGaps
+  - detectedSkills
   - preparationPlan
 - Provide exactly 5 technicalQuestions.
 - Provide exactly 5 behavioralQuestion items.
 - technicalQuestions must focus on technical evaluation.
 - behavioralQuestion must focus on communication, leadership, teamwork, problem-solving, emotional intelligence, and professional decision-making.
+- detectedSkills must evaluate candidate's actual knowledge percentage (0-100%) for each major tech stack based on listed projects, experience, technical answers, and skill gaps.
 - technicalQuestions must be an array of objects.
 - behavioralQuestion must be an array of objects.
 - skillGaps must be an array of objects.
+- detectedSkills must be an array of objects.
 - preparationPlan must be an array of objects.
 - Do not wrap objects inside strings.
 - Keep every field practical and concise.
@@ -509,6 +603,18 @@ Expected format:
     {
       "skill": "...",
       "severity": "low"
+    }
+  ],
+  "detectedSkills": [
+    {
+      "name": "Node.js",
+      "category": "Frameworks",
+      "knowledgePercentage": 85
+    },
+    {
+      "name": "React",
+      "category": "Frameworks",
+      "knowledgePercentage": 90
     }
   ],
   "preparationPlan": [
@@ -556,30 +662,48 @@ async function generatePfdFromHtml(htmlContent) {
     // 1. Regex to automatically insert target="_blank" and rel="noopener noreferrer" into all <a> tags
     const processedHtml = htmlContent.replace(/<a\s+(?![^>]*target=)/gi, '<a target="_blank" rel="noopener noreferrer" ');
 
-    const browser = await puppeteer.launch({
-        headless: "new",
+    const puppeteerLaunchOpts = {
+        headless: "shell",
         args: [
             "--no-sandbox",
             "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage"
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-software-rasterizer"
         ]
-    });
-    const page = await browser.newPage();
+    };
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+        puppeteerLaunchOpts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
 
-    // 2. Pass the processed HTML instead of raw HTML
-    await page.setContent(processedHtml, { waitUntil: 'networkidle0' });
+    let browser;
+    try {
+        browser = await puppeteer.launch(puppeteerLaunchOpts);
+        const page = await browser.newPage();
+        await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
 
-    const pdfBuffer = await page.pdf({
-        format: 'A4',
-        margin: {
-            top: '60px',
-            right: '20px',
-            bottom: '40px',
-            left: '20px'
+        // 2. Pass the processed HTML and wait for load instead of networkidle0 to prevent timeouts
+        await page.setContent(processedHtml, { waitUntil: 'load' });
+
+        const pdfBuffer = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: {
+                top: '10mm',
+                right: '20mm',
+                bottom: '10mm',
+                left: '20mm'
+            }
+        });
+        return pdfBuffer;
+    } catch (err) {
+        console.error("Puppeteer PDF generation error:", err);
+        throw err;
+    } finally {
+        if (browser) {
+            await browser.close();
         }
-    });
-    await browser.close();
-    return pdfBuffer;
+    }
 }
 
 
@@ -644,8 +768,25 @@ Job Description: ${jobDescription}
 
     const rawText = await callGroq(systemPrompt, userPrompt)
     const jsonText = extractJsonFromText(rawText)
-    const jsonContent = JSON.parse(jsonText)
-    const htmlContent = extractResumeHtmlContent(jsonContent)
+    
+    let htmlContent = ""
+    try {
+        const jsonContent = JSON.parse(jsonText)
+        htmlContent = extractResumeHtmlContent(jsonContent)
+    } catch (parseError) {
+        console.warn("[AI] JSON parsing failed in generateResumeHtml. Falling back to direct HTML extraction. Error:", parseError.message)
+        const htmlMatch = rawText.match(/<!DOCTYPE html>[\s\S]*<\/html>/i) || 
+                          rawText.match(/<html[\s\S]*<\/html>/i) || 
+                          rawText.match(/<body[\s\S]*<\/body>/i) || 
+                          rawText.match(/<div[\s\S]*<\/div>/i)
+        
+        if (htmlMatch) {
+            htmlContent = htmlMatch[0].trim()
+        } else {
+            htmlContent = rawText.replace(/```(?:html)?/g, '').trim()
+        }
+    }
+
     console.log(htmlContent);
     return normalizeResumeHtmlDocument(htmlContent)
 }
@@ -671,23 +812,29 @@ async function scrapeCompanyCulture(companyName) {
     console.log(`[Scraper] Starting culture search for company: ${companyName}`);
     let browser;
     try {
-        browser = await puppeteer.launch({
-            headless: "new",
+        const cultureLaunchOpts = {
+            headless: "shell",
             args: [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage"
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-software-rasterizer"
             ]
-        });
+        };
+        if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+            cultureLaunchOpts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+        }
+        browser = await puppeteer.launch(cultureLaunchOpts);
         const page = await browser.newPage();
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-        
+
         // Search DuckDuckGo HTML version for company culture
         const searchQuery = encodeURIComponent(`${companyName} company culture values mission about`);
         const searchUrl = `https://html.duckduckgo.com/html/?q=${searchQuery}`;
-        
+
         await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 8000 });
-        
+
         // Extract the first 3 links from search results (ignoring ads and duckduckgo search urls)
         const urls = await page.evaluate(() => {
             const links = Array.from(document.querySelectorAll('a.result__a'));
@@ -696,19 +843,19 @@ async function scrapeCompanyCulture(companyName) {
                 .filter(href => href && !href.includes('duckduckgo.com'))
                 .slice(0, 3);
         });
-        
+
         if (!urls || urls.length === 0) {
             console.log(`[Scraper] No search results found for ${companyName}`);
             await browser.close();
             return null;
         }
-        
+
         // Take the first link as the most relevant culture page
         const targetUrl = urls[0];
         console.log(`[Scraper] Navigating to target site for culture data: ${targetUrl}`);
-        
+
         await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
-        
+
         // Extract main text content
         const textContent = await page.evaluate(() => {
             const elementsToRemove = document.querySelectorAll('script, style, nav, footer, header, noscript');
@@ -716,13 +863,13 @@ async function scrapeCompanyCulture(companyName) {
             const bodyText = document.body.innerText || "";
             return bodyText.replace(/\s+/g, ' ').trim();
         });
-        
+
         await browser.close();
-        
+
         // Limit scraped text length to avoid token limit issues
         const trimmedText = textContent.slice(0, 2000);
         console.log(`[Scraper] Successfully scraped ${trimmedText.length} chars from ${targetUrl}`);
-        
+
         return {
             sourceUrl: targetUrl,
             scrapedText: trimmedText
@@ -780,8 +927,151 @@ Job Description: ${jobDescription}
 
     const rawText = await callGroq(systemPrompt, userPrompt);
     const jsonText = extractJsonFromText(rawText);
-    const jsonContent = JSON.parse(jsonText);
-    return jsonContent.html; // Returns the generated HTML string
+    
+    let htmlContent = "";
+    try {
+        const jsonContent = JSON.parse(jsonText);
+        htmlContent = jsonContent.html;
+    } catch (parseError) {
+        console.warn("[AI] JSON parsing failed in generateCoverLetter. Falling back to direct HTML extraction. Error:", parseError.message);
+        const htmlMatch = rawText.match(/<!DOCTYPE html>[\s\S]*<\/html>/i) || 
+                          rawText.match(/<html[\s\S]*<\/html>/i) || 
+                          rawText.match(/<body[\s\S]*<\/body>/i) || 
+                          rawText.match(/<div[\s\S]*<\/div>/i)
+        
+        if (htmlMatch) {
+            htmlContent = htmlMatch[0].trim()
+        } else {
+            htmlContent = rawText.replace(/```(?:html)?/g, '').trim()
+        }
+    }
+    return htmlContent;
 }
 
-module.exports = { generateInterviewReport, generateResumePfd, generateCoverLetter, generatePfdFromHtml, generateResumeHtml }
+/**
+ * AI Resume Chat Copilot & Section Rewriter
+ */
+async function rewriteResumeSection({ selectedText = "", instruction = "", action = "enhance", message = "" }) {
+    const promptText = message.trim() || instruction.trim();
+    const lowerPrompt = promptText.toLowerCase();
+
+    // Detect if user is asking about the project, platform, jobs, or general info
+    const isAskingAboutProject = (
+        lowerPrompt.includes("about project") ||
+        lowerPrompt.includes("about app") ||
+        lowerPrompt.includes("about application") ||
+        lowerPrompt.includes("what is this") ||
+        lowerPrompt.includes("how this project works") ||
+        lowerPrompt.includes("how to use") ||
+        lowerPrompt.includes("what can you do") ||
+        lowerPrompt.includes("features of this app") ||
+        lowerPrompt.includes("kivi-ai") ||
+        lowerPrompt.includes("who created") ||
+        lowerPrompt.includes("what is kivi") ||
+        lowerPrompt.includes("tell me about") ||
+        lowerPrompt.includes("how does this work")
+    );
+
+    const isGeneralInfoOrJobQuery = isAskingAboutProject || (
+        !selectedText.trim() && (
+            lowerPrompt.includes("job") ||
+            lowerPrompt.includes("career") ||
+            lowerPrompt.includes("hiring") ||
+            lowerPrompt.includes("interview") ||
+            lowerPrompt.includes("salary") ||
+            lowerPrompt.includes("recommend") ||
+            lowerPrompt.includes("help") ||
+            lowerPrompt.includes("hi") ||
+            lowerPrompt.includes("hello") ||
+            lowerPrompt.includes("hey") ||
+            lowerPrompt.includes("who are you") ||
+            lowerPrompt.includes("what is") ||
+            lowerPrompt.includes("how to")
+        ) && !lowerPrompt.includes("rewrite") && !lowerPrompt.includes("enhance") && !lowerPrompt.includes("shorten") && !lowerPrompt.includes("summary")
+    );
+
+    let systemPrompt = `You are an expert AI Resume Copilot & Career Coach (KIVI AI). You help job seekers refine their resume content and answer career/job questions. 
+
+Respond in valid JSON only with two keys:
+1. "replyText": A concise, friendly conversational response answering the user or explaining your improvement (1-3 sentences max).
+2. "suggestedSnippet": (Optional string) ONLY set this if the user explicitly asked to rewrite, enhance, shorten, or generate specific resume text snippet or if text was highlighted to be rewritten. If the user is asking general questions, questions about jobs, career advice, or about the platform/application, set "suggestedSnippet" to null!
+
+Rules:
+- Return ONLY valid JSON with keys "replyText" and "suggestedSnippet".
+- Never wrap JSON in code fences.`;
+
+    if (isAskingAboutProject) {
+        systemPrompt = `You are KIVI AI, the intelligent assistant embedded inside KIVI-AI Platform (AI Technical Interviewer & ATS Resume Studio).
+
+About KIVI-AI Platform:
+- Purpose: KIVI-AI is an end-to-end AI-powered career platform designed to help software engineers prepare for technical interviews and generate ATS-friendly resumes and also provide detailed reports on their performance, And Based in thier resume provide them real Jobs and Applications.
+- Key Features:
+  1. AI Technical Mock Interviews: Conducts real-time, interactive technical interview assessments covering frontend, backend, system design, and coding.
+  2. Detailed Interview Reports: Provides granular performance analytics, technical scoring, strengths, and targeted improvement plans.
+  3. AI ATS Resume Studio: Automatically transforms candidate interview performance and self-descriptions into professional, ATS-optimized A4 resumes matching job requirements.
+  4. Live Sheet Editor & PDF Export: Allows candidates to edit resume content directly on the simulated A4 page in the browser and export clean 1:1 PDFs.
+  5. KIVI AI Assistant: Floating AI copilot (you!) that assists with live text selection re-writing, bullet point enhancement, grammar fixes, and platform support.
+
+Your Task:
+When the user asks about the project, jobs, or application, provide a friendly, helpful, and concise overview explaining what the application does and how its features help candidates succeed.
+
+Respond in valid JSON only with two keys:
+1. "replyText": Clear, enthusiastic, and informative answer about KIVI-AI Platform and career tools (2-4 sentences max).
+2. "suggestedSnippet": Set to null.
+
+Rules:
+- Return ONLY valid JSON with keys "replyText" and "suggestedSnippet".
+- Never wrap JSON in code fences.`;
+    }
+
+    let actionGuide = "Make the text snippet more impactful, professional, and results-oriented with strong action verbs.";
+    if (action === "shorten") {
+        actionGuide = "Shorten the text snippet to be concise and punchy while keeping key achievements intact.";
+    } else if (action === "fix_grammar") {
+        actionGuide = "Correct all spelling, grammar, and phrasing errors while maintaining the original meaning.";
+    } else if (action === "align_job") {
+        actionGuide = "Optimize the text snippet with industry-relevant technical keywords and professional skills.";
+    }
+
+    const userPrompt = `
+User Query / Message: ${promptText || actionGuide}
+${selectedText ? `Highlighted Resume Text: "${selectedText.trim()}"` : 'No text highlighted currently.'}
+
+Generate response JSON with "replyText" and "suggestedSnippet":
+`;
+
+    try {
+        const rawText = await callGroq(systemPrompt, userPrompt);
+        const jsonText = extractJsonFromText(rawText);
+        const parsed = JSON.parse(jsonText);
+
+        const snippetResult = (isGeneralInfoOrJobQuery || !parsed.suggestedSnippet || parsed.suggestedSnippet === "null") 
+            ? null 
+            : parsed.suggestedSnippet;
+
+        return {
+            replyText: parsed.replyText || "Here is information to assist you.",
+            suggestedSnippet: snippetResult
+        };
+    } catch (err) {
+        return {
+            replyText: isAskingAboutProject 
+                ? "KIVI-AI is an end-to-end AI platform featuring AI Mock Interviews, detailed technical reports, and an automated ATS Resume Studio with live 1:1 A4 PDF export!" 
+                : "Here is information to assist you.",
+            suggestedSnippet: (isGeneralInfoOrJobQuery || !selectedText) ? null : selectedText.trim()
+        };
+    }
+}
+
+function getAIStatus() {
+    return {
+        provider: isGroqHealthy ? "Groq AI" : (aiGemini ? "Gemini AI" : "OpenRouter"),
+        primaryModel: isGroqHealthy ? "GPT-OSS 120B" : (aiGemini ? "Gemini 2.5 Flash" : "Nemotron 3 120B"),
+        fallbackModel: isGroqHealthy ? (aiGemini ? "Gemini 2.5 Flash" : "Nemotron 3 120B (OpenRouter)") : (aiGemini ? "Nemotron 3 120B (OpenRouter)" : "None"),
+        status: "online",
+        label: isGroqHealthy ? "GPT-OSS 120B · Groq AI" : (aiGemini ? "Switched to Gemini" : "Nemotron 3 120B · OpenRouter")
+    }
+}
+
+module.exports = { generateInterviewReport, generateResumePfd, generateCoverLetter, generatePfdFromHtml, generateResumeHtml, rewriteResumeSection, getAIStatus }
+

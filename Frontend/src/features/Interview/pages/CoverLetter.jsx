@@ -7,18 +7,18 @@ import {
     deleteCoverLetter,
     updateCoverLetter
 } from '../services/coverletter.api';
-import { getInterviewReportById } from '../services/interview.api';
+import { useInterview } from '../hooks/useInterview';
 import LoadingPage from '../Loading';
 import '../style/coverletter.scss';
 
 const CoverLetter = () => {
     const { interviewId } = useParams();
     const navigate = useNavigate();
+    const { report, getReoprtById } = useInterview();
 
     const [loading, setLoading] = useState(false);
     const [pageLoading, setPageLoading] = useState(true);
     const [error, setError] = useState('');
-    const [report, setReport] = useState(null);
     const [coverLetter, setCoverLetter] = useState(null);
 
     // Form State
@@ -45,10 +45,7 @@ const CoverLetter = () => {
             setPageLoading(true);
             setError('');
             try {
-                const reportRes = await getInterviewReportById(interviewId);
-                if (isMounted) {
-                    setReport(reportRes?.interviewReport || null);
-                }
+                await getReoprtById(interviewId);
 
                 const coverLetterRes = await getCoverLetterByReportId(interviewId);
                 if (isMounted && coverLetterRes?.coverLetter) {
@@ -404,9 +401,16 @@ const CoverLetter = () => {
                     {/* Right Panel: Interactive Paper Preview */}
                     <div className="preview-panel">
                         {loading && !coverLetter ? (
-                            <div className="feedback-message">
-                                <span className="pulse-dot"></span>
-                                <p style={{ color: 'var(--muted)', marginTop: '1rem' }}>Drafting your professional cover letter using Gemini AI...</p>
+                            <div className="feedback-message" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '2rem' }}>
+                                <div className="shimmer" style={{ gap: '12px', width: '100%', justifyContent: 'center' }}>
+                                    <div className="shimmer-checkbox"></div>
+                                    <div className="shimmer-text"></div>
+                                </div>
+                                <div className="shimmer" style={{ gap: '12px', width: '100%', justifyContent: 'center' }}>
+                                    <div className="shimmer-checkbox"></div>
+                                    <div className="shimmer-text" style={{ width: '60%' }}></div>
+                                </div>
+                                <p style={{ color: 'var(--muted)', marginTop: '0.5rem' }}>Drafting your professional cover letter using Gemini AI...</p>
                             </div>
                         ) : coverLetter ? (
                             <div className="paper-frame">

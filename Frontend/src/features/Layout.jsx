@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "./Auth/hooks/useAuth";
 import { useInterview } from "./Interview/hooks/useInterview";
+import { getAiModelInfo } from "./Interview/services/interview.api";
+import { KiviAiAssistant } from "./Shared/components/KiviAiAssistant";
 import { Outlet, useNavigate, Link, useLocation } from "react-router-dom";
 import "./layout.scss";
 
@@ -10,6 +12,28 @@ const Layout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [aiModelInfo, setAiModelInfo] = useState({
+    label: "GPT-OSS 120B · Groq AI",
+    fallbackModel: "Gemini 2.5 Flash"
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchInfo = () => {
+      getAiModelInfo().then(data => {
+        if (isMounted && data?.label) {
+          setAiModelInfo(data);
+        }
+      });
+    };
+    fetchInfo();
+    const interval = setInterval(fetchInfo, 5000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     if (reports === null) {
@@ -84,9 +108,24 @@ const Layout = () => {
 
   return (
     <div className="app-shell dark-theme">
+      {/* Sidebar Backdrop Overlay on Mobile */}
+      {isSidebarOpen && (
+        <div className="sidebar-backdrop" onClick={() => setIsSidebarOpen(false)} />
+      )}
+
       {/* LEFT SIDEBAR */}
-      <aside className="app-sidebar">
-        <Link to="/" className="sidebar-brand">
+      <aside className={`app-sidebar ${isSidebarOpen ? "open" : ""}`}>
+        {/* Close button for Mobile drawer view */}
+        <button 
+          type="button" 
+          className="sidebar-close-btn" 
+          onClick={() => setIsSidebarOpen(false)}
+          title="Close Menu"
+        >
+          ✕
+        </button>
+
+        <Link to="/" className="sidebar-brand" onClick={() => setIsSidebarOpen(false)}>
           <img src="/Logo.png" alt="KIVI-AI Logo" className="sidebar-logo" />
           <div className="sidebar-brand-text">
             <span className="sidebar-brand-name">KIVI-AI</span>
@@ -97,7 +136,7 @@ const Layout = () => {
         <div className="sidebar-section">
           <p className="sidebar-section-title">MAIN MENU</p>
           <nav className="sidebar-nav">
-            <Link to="/" className={`sidebar-link ${activeMenu === "dashboard" ? "active" : ""}`}>
+            <Link to="/" className={`sidebar-link ${activeMenu === "dashboard" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
               <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="7" height="9" />
                 <rect x="14" y="3" width="7" height="5" />
@@ -107,7 +146,7 @@ const Layout = () => {
               <span>Dashboard</span>
             </Link>
 
-            <Link to="/coming-soon?feature=find-jobs" className={`sidebar-link ${activeMenu === "find-jobs" ? "active" : ""}`}>
+            <Link to="/coming-soon?feature=find-jobs" className={`sidebar-link ${activeMenu === "find-jobs" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
               <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -115,14 +154,14 @@ const Layout = () => {
               <span>Find Jobs</span>
             </Link>
 
-            <Link to="/coming-soon?feature=my-activity" className={`sidebar-link ${activeMenu === "my-activity" ? "active" : ""}`}>
+            <Link to="/coming-soon?feature=my-activity" className={`sidebar-link ${activeMenu === "my-activity" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
               <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
               </svg>
               <span>My Activity</span>
             </Link>
 
-            <Link to="/coming-soon?feature=saved-items" className={`sidebar-link ${activeMenu === "saved-items" ? "active" : ""}`}>
+            <Link to="/coming-soon?feature=saved-items" className={`sidebar-link ${activeMenu === "saved-items" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
               <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
               </svg>
@@ -134,7 +173,7 @@ const Layout = () => {
         <div className="sidebar-section">
           <p className="sidebar-section-title">SETTINGS</p>
           <nav className="sidebar-nav">
-            <Link to="/profile" className={`sidebar-link ${activeMenu === "profile" ? "active" : ""}`}>
+            <Link to="/profile" className={`sidebar-link ${activeMenu === "profile" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
               <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                 <circle cx="12" cy="7" r="4" />
@@ -142,7 +181,7 @@ const Layout = () => {
               <span>Profile</span>
             </Link>
 
-            <Link to="/coming-soon?feature=preferences" className={`sidebar-link ${activeMenu === "preferences" ? "active" : ""}`}>
+            <Link to="/coming-soon?feature=preferences" className={`sidebar-link ${activeMenu === "preferences" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
               <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="3" />
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -150,7 +189,7 @@ const Layout = () => {
               <span>Preferences</span>
             </Link>
 
-            <Link to="/coming-soon?feature=help-support" className={`sidebar-link ${activeMenu === "help-support" ? "active" : ""}`}>
+            <Link to="/coming-soon?feature=help-support" className={`sidebar-link ${activeMenu === "help-support" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
               <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
@@ -159,7 +198,7 @@ const Layout = () => {
               <span>Help & Support</span>
             </Link>
 
-            <button onClick={onlogout} className="sidebar-link logout-btn">
+            <button onClick={() => { onlogout(); setIsSidebarOpen(false); }} className="sidebar-link logout-btn">
               <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                 <polyline points="16 17 21 12 16 7" />
@@ -186,6 +225,20 @@ const Layout = () => {
       <div className="app-content-wrapper">
         <header className="app-header">
           <div className="header-top-row">
+            {/* Hamburger Menu Toggle on Mobile */}
+            <button 
+              type="button" 
+              className="hamburger-menu-btn" 
+              onClick={() => setIsSidebarOpen(true)}
+              title="Open Navigation Menu"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+              </svg>
+            </button>
+
             <div className="header-breadcrumb">{breadcrumb}</div>
             
             <div className="header-actions">
@@ -199,9 +252,9 @@ const Layout = () => {
               </div>
 
               {/* AI Connected Pill */}
-              <div className="ai-engine-pill" title="AI Model currently connected to power your queries">
+              <div className="ai-engine-pill" title={`Active AI Model: ${aiModelInfo.label} (Fallback: ${aiModelInfo.fallbackModel || 'OpenRouter'})`}>
                 <span className="pulse-dot"></span>
-                <span className="ai-engine-name">Llama 3.3 · Groq</span>
+                <span className="ai-engine-name">{aiModelInfo.label}</span>
               </div>
 
               {/* Dark Mode Icon */}
@@ -283,6 +336,9 @@ const Layout = () => {
         <main className="app-main-content">
           <Outlet />
         </main>
+
+        {/* KIVI AI Assistant (Protected Route Only) */}
+        <KiviAiAssistant />
 
         {/* Global Footer */}
         <footer className="app-footer">

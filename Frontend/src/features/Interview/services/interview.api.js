@@ -45,6 +45,11 @@ export async function getAllInterviewReport() {
     return response.data
 }
 
+export async function getSkillAnalytics() {
+    const response = await api.get(`/api/interview/skill-analytics`)
+    return response.data
+}
+
 
 export const generateInterviewReport = async ({ jobDescription, selfDescription, resumeFile }) => {
     if (!resumeFile) {
@@ -133,4 +138,24 @@ export async function updateResumeHtml(interviewReportId, { generatedResumeHtml 
 export async function updateInterviewProgress(interviewId, { technicalQuestions, behavioralQuestion, completedTasks }) {
     const response = await api.put(`/api/interview/progress/${interviewId}`, { technicalQuestions, behavioralQuestion, completedTasks })
     return response.data
+}
+
+export async function rewriteResumeSection({ selectedText, instruction, action, message }) {
+    const response = await api.post(`/api/interview/resume/rewrite-section`, { selectedText, instruction, action, message })
+    return response.data
+}
+
+export async function getAiModelInfo() {
+    try {
+        const response = await api.get(`/api/interview/model-info`)
+        return response.data
+    } catch (err) {
+        return {
+            provider: "Groq AI",
+            primaryModel: "GPT-OSS 120B",
+            fallbackModel: "Gemini 2.5 Flash",
+            status: "online",
+            label: "GPT-OSS 120B · Groq AI"
+        }
+    }
 }

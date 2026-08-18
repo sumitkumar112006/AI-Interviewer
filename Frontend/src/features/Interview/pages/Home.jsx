@@ -3,6 +3,7 @@ import '../style/home.scss'
 import { useInterview } from '../hooks/useInterview'
 import { useNavigate } from 'react-router-dom'
 import LoadingPage from '../Loading'
+import ReportGenerationLoading from '../components/ReportGenerationLoading'
 
 function extractObjectId(value) {
     if (!value) return ''
@@ -439,6 +440,7 @@ const Home = () => {
                     </div>
                 </div>
 
+                {loading && <ReportGenerationLoading />}
             </div>
         </div>
     )

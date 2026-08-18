@@ -84,7 +84,7 @@ const AboutUs = () => {
         <section className="tech-highlights-card">
           <h2>Powered by Cutting-Edge AI</h2>
           <p>
-            Built on top of Groq (Llama 3.3 70B) with OpenRouter as fallback, React 19, Node.js, and MongoDB, KIVI-AI delivers sub-second insights and continuous intelligence for modern software developers and job seekers.
+            Built on top of Groq (GPT-OSS 120B) with Gemini as fallback, React 19, Node.js, and MongoDB, KIVI-AI delivers sub-second insights and continuous intelligence for modern software developers and job seekers.
           </p>
           <div className="tech-tags-list">
             <span className="tech-tag">Groq AI</span>

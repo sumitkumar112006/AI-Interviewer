@@ -586,3 +586,118 @@
         to { transform: translateY(0); opacity: 1; }
     }
 }
+
+/* ── Mobile responsiveness for Cover Letter page ── */
+@media (max-width: 768px) {
+    .coverletter-page {
+        .coverletter-header {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 1.25rem;
+            padding: 1.25rem 1rem;
+            text-align: center;
+
+            .coverletter-heading {
+                align-items: center;
+
+                h1 {
+                    font-size: 1.5rem;
+                    text-align: center;
+                }
+
+                .intro {
+                    font-size: 0.82rem;
+                    text-align: center;
+                }
+            }
+            
+            .action-btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        .coverletter-grid {
+            grid-template-columns: 1fr;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .form-panel {
+            padding: 1.25rem 1rem;
+        }
+
+        .preview-panel {
+            padding: 1rem 0.5rem;
+            min-height: auto;
+        }
+
+        .paper-actions-bar {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.75rem;
+            padding-bottom: 0.75rem;
+
+            .left-actions {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                width: 100%;
+                gap: 0.5rem;
+
+                .action-btn {
+                    width: 100%;
+                    justify-content: center;
+                    font-size: 0.78rem;
+                    padding: 0.5rem 0.6rem;
+                    box-sizing: border-box;
+                }
+
+                span {
+                    grid-column: span 2;
+                    justify-content: center;
+                    margin-left: 0 !important;
+                    margin-top: 0.25rem;
+                }
+            }
+
+            .right-actions {
+                display: grid;
+                grid-template-columns: 1fr;
+                width: 100%;
+                gap: 0.5rem;
+
+                .action-btn {
+                    width: 100%;
+                    justify-content: center;
+                    font-size: 0.78rem;
+                    padding: 0.5rem 0.6rem;
+                    box-sizing: border-box;
+                }
+            }
+        }
+
+        .formatting-toolbar {
+            padding: 0.4rem 0.6rem;
+            gap: 0.35rem;
+
+            .toolbar-btn {
+                padding: 0.35rem 0.5rem;
+                font-size: 0.75rem;
+            }
+
+            .toolbar-select-container {
+                font-size: 0.75rem;
+            }
+
+            .toolbar-select {
+                padding: 0.2rem 0.4rem;
+                font-size: 0.7rem;
+            }
+        }
+
+        .coverletter-iframe {
+            height: 500px;
+        }
+    }
+}
+
