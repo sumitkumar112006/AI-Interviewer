@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useInterview } from '../hooks/useInterview'
-import LoadingPage from '../Loading'
+import PageLoading from '../../Shared/components/PageLoading'
 import '../style/allreports.scss'
 
 /* ─── helpers ─────────────────────────────────────────────── */
@@ -284,7 +284,7 @@ const AllReports = () => {
         try { await deleteReport(id) } finally { setDeletingId(null) }
     }
 
-    if (loading && !allReports.length) return <main><LoadingPage /></main>
+    if (loading && !allReports.length) return <main><PageLoading title="Loading Reports..." subtitle="Fetching all interview evaluations..." /></main>
 
     /* ── group timeline by month ── */
     function groupByMonth(items) {

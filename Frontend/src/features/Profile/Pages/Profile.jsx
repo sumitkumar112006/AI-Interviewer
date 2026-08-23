@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { useAuth } from '../../Auth/hooks/useAuth';
 import { useInterview } from '../../Interview/hooks/useInterview';
-import LoadingPage from '../../Interview/Loading';
+import PageLoading from '../../Shared/components/PageLoading';
 import { Link } from 'react-router-dom';
 import '../style/profile.scss';
 
@@ -80,7 +80,7 @@ const Profile = () => {
     if (authLoading || (reportsLoading && reports === null)) {
         return (
             <main>
-                <LoadingPage />
+                <PageLoading title="Loading Profile..." subtitle="Fetching account details and saved interview reports..." />
             </main>
         );
     }

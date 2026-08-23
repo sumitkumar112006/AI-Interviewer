@@ -75,3 +75,30 @@ export async function getMe() {
         throw err;
     }
 }
+
+export async function forgotPassword({ email }) {
+    try {
+        const response = await api.post('forgot-password', { email });
+        return response.data;
+    } catch (err) {
+        throw err;
+    }
+}
+
+export async function resetPassword({ email, otp, newPassword }) {
+    try {
+        const response = await api.post('reset-password', { email, otp, newPassword });
+        return response.data;
+    } catch (err) {
+        throw err;
+    }
+}
+
+export async function getUserUsage() {
+    try {
+        const response = await api.get('usage');
+        return response.data;
+    } catch (err) {
+        return null;
+    }
+}

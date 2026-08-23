@@ -3,11 +3,12 @@ import { useAuth } from "./Auth/hooks/useAuth";
 import { useInterview } from "./Interview/hooks/useInterview";
 import { getAiModelInfo } from "./Interview/services/interview.api";
 import { KiviAiAssistant } from "./Shared/components/KiviAiAssistant";
+import NotificationBell from "./Shared/components/NotificationBell";
 import { Outlet, useNavigate, Link, useLocation } from "react-router-dom";
 import "./layout.scss";
 
 const Layout = () => {
-  const { user, handleLogout } = useAuth();
+  const { user, usage, fetchUsage, handleLogout } = useAuth();
   const { reports, getReports } = useInterview();
   const navigate = useNavigate();
   const location = useLocation();
@@ -34,6 +35,12 @@ const Layout = () => {
       clearInterval(interval);
     };
   }, []);
+
+  useEffect(() => {
+    if (fetchUsage) {
+      void fetchUsage();
+    }
+  }, [location.pathname, fetchUsage]);
 
   useEffect(() => {
     if (reports === null) {
@@ -257,6 +264,21 @@ const Layout = () => {
                 <span className="ai-engine-name">{aiModelInfo.label}</span>
               </div>
 
+              {/* Remaining Attempts Pills */}
+              <div
+                className="usage-attempts-pill"
+                title={`Plan: ${user?.plan?.toUpperCase() || 'FREE'} | Full Generations: ${usage?.fullGenerations?.remaining ?? 3}/${usage?.fullGenerations?.limit ?? 3} left | AI Writer: ${usage?.aiAssistant?.remaining ?? 10}/${usage?.aiAssistant?.limit ?? 10} left`}
+              >
+                <span className="attempts-badge plan-badge">{user?.plan?.toUpperCase() || 'FREE'}</span>
+                <span className="attempts-item" title="Full Resume & Cover Letter Generations">
+                  ⚡ {usage?.fullGenerations?.remaining ?? 3}/{usage?.fullGenerations?.limit ?? 3}<span className="attempts-unit"> Gens</span>
+                </span>
+                <span className="attempts-divider">|</span>
+                <span className="attempts-item" title="AI Assistant & Writer Rewrites">
+                  🤖 {usage?.aiAssistant?.remaining ?? 10}/{usage?.aiAssistant?.limit ?? 10}<span className="attempts-unit"> AI</span>
+                </span>
+              </div>
+
               {/* Dark Mode Icon */}
               <button className="header-icon-btn" title="Toggle theme">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -265,12 +287,7 @@ const Layout = () => {
               </button>
 
               {/* Notifications Bell */}
-              <button className="header-icon-btn notifications-btn" title="Notifications">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />
-                </svg>
-                <span className="notifications-badge">3</span>
-              </button>
+              <NotificationBell />
 
               {/* User Profile Dropdown */}
               <div className="user-profile-dropdown" onClick={() => setDropdownOpen(!dropdownOpen)}>

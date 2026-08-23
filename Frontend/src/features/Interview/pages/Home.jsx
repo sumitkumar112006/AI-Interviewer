@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react'
 import '../style/home.scss'
 import { useInterview } from '../hooks/useInterview'
+import { useAuth } from '../../Auth/hooks/useAuth'
 import { useNavigate } from 'react-router-dom'
-import LoadingPage from '../Loading'
+import PageLoading from '../../Shared/components/PageLoading'
 import ReportGenerationLoading from '../components/ReportGenerationLoading'
 
 function extractObjectId(value) {
@@ -44,7 +45,9 @@ function getReportTitle(reportItem) {
 }
 
 const Home = () => {
+    const { user } = useAuth()
     const { loading, report, generateReport, reports, getReports, deleteReport } = useInterview()
+    const isReportsBlocked = Boolean(user?.blockedFeatures?.interviewReports)
     const [formData, setFormData] = useState({ jobDescription: '', selfDescription: '' })
     const [selectedFileName, setSelectedFileName] = useState('')
     const [isDragOver, setIsDragOver] = useState(false)
@@ -158,7 +161,7 @@ const Home = () => {
     const isJobDescReady = formData.jobDescription.trim().split(/\s+/).length >= 30
 
     if (loading && reports === null) {
-        return <main><LoadingPage /></main>
+        return <main><PageLoading title="Loading Dashboard..." subtitle="Syncing your interview analytics and recent sessions..." /></main>
     }
 
     return (
@@ -224,6 +227,16 @@ const Home = () => {
                         interview guidance.
                     </p>
                 </div>
+
+                {isReportsBlocked && (
+                    <div className="blocked-feature-banner">
+                        <span className="banner-icon">🔒</span>
+                        <div className="banner-text">
+                            <strong>Mock Interview & Report Generation Restricted</strong>
+                            <p>Generation has been disabled for your account by an administrator. Please contact support to restore access.</p>
+                        </div>
+                    </div>
+                )}
 
                 {/* Main 3-col layout */}
                 <div className="interview-input-group">
@@ -325,17 +338,22 @@ const Home = () => {
                         <button
                             onClick={handleGenerateReport}
                             className='generate-btn'
-                            disabled={loading}
+                            disabled={loading || isReportsBlocked}
+                            style={isReportsBlocked ? { background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.4)', color: '#f87171', cursor: 'not-allowed' } : {}}
+                            title={isReportsBlocked ? "Disabled by Administrator" : ""}
                         >
-                            {loading
-                                ? <><span className="btn-spinner" /> <span>Generating...</span></>
-                                : <>
+                            {isReportsBlocked ? (
+                                <span>❌ Disabled by Admin</span>
+                            ) : loading ? (
+                                <><span className="btn-spinner" /> <span>Generating...</span></>
+                            ) : (
+                                <>
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
                                     </svg>
                                     <span>Generate Interview Report</span>
-                                  </>
-                            }
+                                </>
+                            )}
                         </button>
                     </div>
 

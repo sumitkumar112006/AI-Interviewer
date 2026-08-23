@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import LoadingPage from '../../Interview/Loading'
+import PageLoading from '../../Shared/components/PageLoading'
 import InteractiveAuthMascot from '../components/InteractiveAuthMascot'
 import '../styles/auth.scss'
 
@@ -101,7 +101,7 @@ const Register = () => {
     }
 
     if (loading) {
-        return <main><LoadingPage /></main>
+        return <main><PageLoading title="Setting up account..." subtitle="Please wait..." /></main>
     }
 
     return (

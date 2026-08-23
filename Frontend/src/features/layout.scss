@@ -318,7 +318,7 @@ body {
   border: 1px solid rgba(16, 185, 129, 0.15);
   border-radius: 999px;
   color: var(--success-color);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
 
   .pulse-dot {
@@ -329,6 +329,41 @@ body {
     display: inline-block;
     box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
     animation: pulse-dot-animation 2s infinite;
+  }
+}
+
+/* Remaining Attempts Pill */
+.usage-attempts-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.38rem 0.8rem;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.22);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #a5b4fc;
+  white-space: nowrap;
+
+  .plan-badge {
+    background: linear-gradient(135deg, #6366f1, #a855f7);
+    color: #ffffff;
+    font-size: 0.62rem;
+    font-weight: 800;
+    padding: 0.15rem 0.45rem;
+    border-radius: 6px;
+    letter-spacing: 0.04em;
+  }
+
+  .attempts-item {
+    color: #e0e7ff;
+    font-weight: 600;
+  }
+
+  .attempts-divider {
+    color: rgba(255, 255, 255, 0.25);
+    font-weight: 300;
   }
 }
 
@@ -679,7 +714,7 @@ body {
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-    padding: 0.85rem 1rem;
+    padding: 0.75rem 0.85rem;
     width: 100%;
     box-sizing: border-box;
 
@@ -692,11 +727,26 @@ body {
     }
 
     .header-actions {
-      gap: 0.6rem;
+      gap: 0.45rem;
+    }
+
+    .ai-engine-pill {
+      display: none !important;
+    }
+
+    .usage-attempts-pill {
+      padding: 0.25rem 0.55rem;
+      font-size: 0.7rem;
+      gap: 0.35rem;
+
+      .plan-badge {
+        font-size: 0.58rem;
+        padding: 0.1rem 0.35rem;
+      }
     }
 
     .user-profile-dropdown {
-      padding: 0.25rem;
+      padding: 0.2rem;
 
       .user-name {
         display: none;
@@ -754,6 +804,35 @@ body {
       justify-content: center;
       flex-wrap: wrap;
       gap: 1rem;
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .header-top-row {
+    padding: 0.6rem 0.65rem;
+
+    .header-breadcrumb {
+      font-size: 0.75rem;
+      max-width: 100px;
+    }
+
+    .usage-attempts-pill {
+      padding: 0.2rem 0.4rem;
+      font-size: 0.65rem;
+
+      .plan-badge {
+        display: none;
+      }
+
+      .attempts-unit {
+        display: none;
+      }
+    }
+
+    .header-icon-btn {
+      width: 32px;
+      height: 32px;
     }
   }
 }

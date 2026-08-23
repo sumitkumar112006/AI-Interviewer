@@ -3,7 +3,15 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const multer = require('multer');
-const coverLetterRouter = require('./routes/coverletter.route');
+const { createRateLimiter } = require('./middleware/rateLimiter.middleware');
+
+require('./middleware/rateLimiter.middleware');
+const globalLimiter = createRateLimiter({
+    prefix: 'ratelimit:global',
+    windowSeconds: 60,
+    maxRequests: 100,
+    message: 'Too many requests from this IP address. Please try again later.'
+});
 
 const app = express();
 
@@ -41,15 +49,23 @@ app.use(cookieParser());
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 
+// Global Rate Limiter
+app.use(globalLimiter);
+
 
 // Require all the routes here.
 const { authRouter } = require('./routes/auth.route');
 const interviewRouter = require('./routes/interview.route');
+const coverLetterRouter = require('./routes/coverletter.route');
+const adminRouter = require('./routes/admin.route');
+const notificationRouter = require('./routes/notification.route');
 
 // Use all the routes here.
 app.use("/api/auth", authRouter);
-app.use('/api/interview', interviewRouter)
+app.use('/api/interview', interviewRouter);
 app.use('/api/cover-letter', coverLetterRouter);
+app.use('/api/admin', adminRouter);
+app.use('/api/notifications', notificationRouter);
 
 
 app.use((err, req, res, next) => {

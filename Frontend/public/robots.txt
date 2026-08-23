@@ -1,0 +1,18 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+
+# Disallow private user routes and dashboard features
+Disallow: /admin-portal-dashboard-root/
+Disallow: /admin-login-secret
+Disallow: /admin/
+Disallow: /dashboard/
+Disallow: /interview/
+Disallow: /all-reports/
+Disallow: /profile/
+Disallow: /resume/
+Disallow: /cover-letter/
+Disallow: /api/
+
+# Host & Sitemap location
+Sitemap: https://ai-interviewer-silk.vercel.app/sitemap.xml

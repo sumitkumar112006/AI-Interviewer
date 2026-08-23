@@ -14,15 +14,39 @@ import PrivacyPolicy from "./features/Footer/pages/PrivacyPolicy";
 import TermsOfService from "./features/Footer/pages/TermsOfService";
 import ContactUs from "./features/Footer/pages/ContactUs";
 import AboutUs from "./features/Footer/pages/AboutUs";
-
+import AdminProtected from "./features/Admin/components/AdminProtected";
+import AdminDashboard from "./features/Admin/pages/AdminDashboard";
+import AdminLogin from "./features/Admin/pages/AdminLogin";
+import UserEvaluationPage from "./features/Admin/pages/UserEvaluationPage";
 
 export const router = createBrowserRouter([
 
     { path: "/login", element: <Login /> },
+    { path: "/admin-login-secret", element: <AdminLogin /> },
 
     { path: "/register", element: <Register /> },
     {
         path: '/logout', element: <Login />
+    },
+    {
+        path: "/admin-portal-dashboard-root",
+        element: (
+            <Protected>
+                <AdminProtected>
+                    <AdminDashboard />
+                </AdminProtected>
+            </Protected>
+        )
+    },
+    {
+        path: "/admin-portal-dashboard-root/user-evaluation/:userId",
+        element: (
+            <Protected>
+                <AdminProtected>
+                    <UserEvaluationPage />
+                </AdminProtected>
+            </Protected>
+        )
     },
 
     {   path: '/',

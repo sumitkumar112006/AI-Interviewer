@@ -8,5 +8,5 @@ Frontend/node_modules/
 .cache/
 Backend/.cache/
 Frontend/.cache/
-
+DEPLOYMENT_GUIDE.md
 .vercel

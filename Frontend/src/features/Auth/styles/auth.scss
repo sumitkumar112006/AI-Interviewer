@@ -2,9 +2,8 @@
    AUTH PAGES — PREMIUM DARK GLASSMORPHISM STYLES
    Scoped to .auth-page-root to avoid any leakage
    ============================================================ */
-
+@use './mascot.scss' as *;
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-@import './mascot.scss';
 
 /* ---------- Root Wrapper ---------- */
 .auth-page-root {
@@ -144,6 +143,32 @@
         color: rgba(167, 243, 208, 0.8);
         letter-spacing: 0.04em;
         text-transform: uppercase;
+    }
+
+    .auth-label-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+
+        label {
+            margin: 0;
+        }
+
+        .forgot-pass-btn {
+            background: none;
+            border: none;
+            color: #67e8f9;
+            font-size: 0.72rem;
+            font-weight: 500;
+            cursor: pointer;
+            padding: 0;
+            transition: color 0.2s;
+
+            &:hover {
+                color: #a5f3fc;
+                text-decoration: underline;
+            }
+        }
     }
 
     .auth-input-wrapper {

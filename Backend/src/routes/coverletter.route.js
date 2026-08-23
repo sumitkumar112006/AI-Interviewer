@@ -2,14 +2,36 @@ const express = require('express');
 const authMiddleware = require('../middleware/auth.middleware');
 const upload = require('../middleware/file.middleware');
 const coverLetterController = require('../controller/coverletter.controller');
+const { createRateLimiter, createTieredRateLimiter } = require('../middleware/rateLimiter.middleware');
 
 const coverLetterRouter = express.Router();
 
+const fullGenerationLimiter = createTieredRateLimiter({
+    prefix: 'ratelimit:full-generation',
+    windowSeconds: 86400, // 24-hour daily limit
+    limits: { free: 3, pro: 30, premium: 150 },
+    message: 'Full generation daily limit reached for your plan.'
+});
+
+const CoverLetterRewriteLimiter = createRateLimiter({
+    prefix: 'ratelimit:rewrite-cover-letter',
+    windowSeconds: 60, // 1 minute
+    maxRequests: 5,
+    message: 'Rewrite cover letter limit reached. Please wait a minute before generating another cover letter.'
+});
+
+const checkCoverLetterAccess = (req, res, next) => {
+    if (req.user?.blockedFeatures?.coverLetterGeneration) {
+        return res.status(403).json({ message: "Cover Letter & CV generation has been disabled for your account by an administrator. ❌" });
+    }
+    next();
+};
+
 // Generate Cover Letter (takes file upload "resume")
-coverLetterRouter.post('/', authMiddleware.authUser, upload.single("resume"), coverLetterController.createCoverLetterController);
+coverLetterRouter.post('/', authMiddleware.authUser, checkCoverLetterAccess, fullGenerationLimiter, upload.single("resume"), coverLetterController.createCoverLetterController);
 
 // Generate Cover Letter directly from an existing interview report
-coverLetterRouter.post('/generate-from-report/:interviewReportId', authMiddleware.authUser, coverLetterController.createCoverLetterFromReportController);
+coverLetterRouter.post('/generate-from-report/:interviewReportId', authMiddleware.authUser, checkCoverLetterAccess, fullGenerationLimiter, coverLetterController.createCoverLetterFromReportController);
 
 // Get list of cover letters
 coverLetterRouter.get('/', authMiddleware.authUser, coverLetterController.getAllCoverLettersController);
@@ -24,7 +46,7 @@ coverLetterRouter.get('/report/:interviewReportId', authMiddleware.authUser, cov
 coverLetterRouter.post('/pdf/:coverLetterId', authMiddleware.authUser, coverLetterController.generateCoverLetterPdfController);
 
 // Update cover letter content
-coverLetterRouter.put('/:coverLetterId', authMiddleware.authUser, coverLetterController.updateCoverLetterController);
+coverLetterRouter.put('/:coverLetterId', authMiddleware.authUser, CoverLetterRewriteLimiter, coverLetterController.updateCoverLetterController);
 
 // Delete cover letter
 coverLetterRouter.delete('/:coverLetterId', authMiddleware.authUser, coverLetterController.deleteCoverLetterController);

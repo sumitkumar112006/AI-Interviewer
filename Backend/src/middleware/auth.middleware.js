@@ -1,5 +1,7 @@
 const jwt = require("jsonwebtoken");
 const blacklistModel = require("../models/blacklist_model");
+const userModel = require("../models/user.model");
+const adminModel = require("../models/admin.model");
 const { isTokenBlacklistedInRedis } = require("../services/redis.service");
 
 async function authUser(req, res, next) {
@@ -30,7 +32,53 @@ async function authUser(req, res, next) {
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = decoded;
+        
+        let account = null;
+        let isAdminAccount = false;
+
+        // Check admins table if decoded contains isAdmin or role admin/super_admin
+        if (decoded.isAdmin || decoded.role === 'admin' || decoded.role === 'super_admin') {
+            account = await adminModel.findById(decoded.id).select("username email role");
+            if (account) isAdminAccount = true;
+        }
+
+        // Fallback to userModel
+        if (!account) {
+            account = await userModel.findById(decoded.id).select("username email plan role isBlocked customBonusCredits blockedFeatures");
+            if (!account) {
+                // Final fallback check in adminModel just in case
+                account = await adminModel.findById(decoded.id).select("username email role");
+                if (account) isAdminAccount = true;
+            }
+        }
+
+        if (!account) {
+            return res.status(401).json({ message: "User account not found." });
+        }
+
+        if (!isAdminAccount && account.isBlocked) {
+            return res.status(403).json({
+                message: "Your account has been suspended by an administrator. Please contact support."
+            });
+        }
+
+        req.user = {
+            id: account._id.toString(),
+            username: account.username,
+            email: account.email,
+            plan: account.plan || 'free',
+            role: account.role || (isAdminAccount ? 'admin' : 'user'),
+            isAdmin: isAdminAccount || ['admin', 'super_admin'].includes(account.role),
+            isBlocked: account.isBlocked || false,
+            customBonusCredits: account.customBonusCredits || 0,
+            blockedFeatures: account.blockedFeatures || {
+                aiAssistant: false,
+                resumeGeneration: false,
+                coverLetterGeneration: false,
+                interviewReports: false
+            }
+        };
+
         next();
     } catch (err) {
         return res.status(401).json({
@@ -39,4 +87,13 @@ async function authUser(req, res, next) {
     }
 }
 
-module.exports = { authUser }
+function requireAdmin(req, res, next) {
+    if (!req.user || (!req.user.isAdmin && !['admin', 'super_admin'].includes(req.user.role))) {
+        return res.status(403).json({
+            message: "Access denied. Administrator privileges required."
+        });
+    }
+    next();
+}
+
+module.exports = { authUser, requireAdmin };

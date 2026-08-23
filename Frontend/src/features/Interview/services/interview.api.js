@@ -79,50 +79,14 @@ export const generateInterviewReport = async ({ jobDescription, selfDescription,
 }
 
 /**
- * @description Serbvices to generate resume pdf based on user self description resumr content
+ * Ensures the resume HTML is generated on the backend.
+ * If the report already has HTML, returns immediately.
+ * If not, triggers AI generation, saves it, and returns the report.
+ * PDF is now generated client-side via window.print().
  */
-
-export const generateResumePdf = async (interviewReportId, htmlContent = null) => {
-    let response
-
-    try {
-        response = await api.post(`/api/interview/resume/pdf/${interviewReportId}`, { htmlContent }, {
-            responseType: 'blob'
-        })
-    } catch (error) {
-        const responseData = error?.response?.data
-
-        // When responseType is 'blob', error data is also a Blob — read it as text
-        if (responseData instanceof Blob) {
-            const text = await responseData.text()
-
-            let message = 'Failed to generate resume PDF.'
-
-            try {
-                const parsedError = JSON.parse(text)
-                message = parsedError?.message || message
-            } catch {
-                message = text || message
-            }
-
-            throw new Error(message)
-        }
-
-        throw error
-    }
-
-    const blob = response.data
-
-    if (!(blob instanceof Blob) || blob.size === 0) {
-        throw new Error('Resume preview response is not a valid PDF blob.')
-    }
-
-    // Ensure the blob has the correct PDF MIME type
-    if (blob.type !== 'application/pdf') {
-        return new Blob([blob], { type: 'application/pdf' })
-    }
-
-    return blob
+export const generateResumePdf = async (interviewReportId) => {
+    const response = await api.post(`/api/interview/resume/pdf/${interviewReportId}`)
+    return response.data?.interviewReport || response.data
 }
 
 export async function deleteReportById(interviewReportId) {

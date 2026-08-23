@@ -1,7 +1,7 @@
 const pdfParse = require('pdf-parse')
 const mongoose = require('mongoose')
 const crypto = require('crypto')
-const { generateInterviewReport, generateResumePfd, generateResumeHtml, generatePfdFromHtml, rewriteResumeSection, getAIStatus } = require('../services/ai.service')
+const { generateInterviewReport, generateResumePfd, generateResumeHtml, rewriteResumeSection, getAIStatus } = require('../services/ai.service')
 const interviewReportModle = require('../models/interviewReport.model')
 const interviewReportModel = require('../models/interviewReport.model')
 const { getCache, setCache, deleteCache } = require('../services/redis.service')
@@ -189,36 +189,22 @@ async function generateResumePdfController(req, res, next) {
             })
         }
 
+        // If HTML already exists, return the report as-is
+        if (interviewReport.generatedResumeHtml) {
+            return res.status(200).json({ interviewReport })
+        }
+
+        // Generate resume HTML from AI and persist it
         const { resume, selfDescription, jobDescription } = interviewReport
-        const { htmlContent } = req.body
+        const generatedHtml = await generateResumeHtml({ resume, selfDescription, jobDescription })
+        interviewReport.generatedResumeHtml = generatedHtml
+        await interviewReport.save()
 
-        let pdfBuffer
-        if (htmlContent) {
-            pdfBuffer = await generatePfdFromHtml(htmlContent)
-        } else if (interviewReport.generatedResumeHtml) {
-            pdfBuffer = await generatePfdFromHtml(interviewReport.generatedResumeHtml)
-        } else {
-            const generatedHtml = await generateResumeHtml({ resume, selfDescription, jobDescription })
-            interviewReport.generatedResumeHtml = generatedHtml
-            await interviewReport.save()
-            
-            // Invalidate report detail cache
-            const cacheKey = `cache:report:${interviewReportId}:${req.user.id}`
-            await deleteCache(cacheKey)
+        // Invalidate report detail cache
+        const cacheKey = `cache:report:${interviewReportId}:${req.user.id}`
+        await deleteCache(cacheKey)
 
-            pdfBuffer = await generatePfdFromHtml(generatedHtml)
-        }
-
-        if (!pdfBuffer || pdfBuffer.length === 0) {
-            return res.status(500).json({ message: 'Failed to generate resume PDF.' })
-        }
-
-        res.set({
-            "Content-Type": "application/pdf",
-            "Content-Disposition": `inline; filename=resume_${interviewReportId}.pdf`
-        })
-
-        res.send(pdfBuffer)
+        res.status(200).json({ interviewReport })
     } catch (error) {
         console.error("generateResumePdfController error:", error)
         next(error)

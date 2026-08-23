@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import LoadingPage from '../../Interview/Loading'
+import PageLoading from '../../Shared/components/PageLoading'
 import InteractiveAuthMascot from '../components/InteractiveAuthMascot'
 import '../styles/auth.scss'
 
@@ -22,20 +22,31 @@ const EyeClosed = () => (
 
 const Login = () => {
     const navigate = useNavigate()
-    const { loading, handleLogin, handleVerifyOtp, handleResendOtp } = useAuth()
+    const {
+        loading,
+        handleLogin,
+        handleVerifyOtp,
+        handleResendOtp,
+        handleForgotPassword,
+        handleResetPassword
+    } = useAuth()
 
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
+    const [newPassword, setNewPassword] = useState('')
     const [showPassword, setShowPassword] = useState(false)
+    const [showNewPassword, setShowNewPassword] = useState(false)
+
     const [error, setError] = useState('')
     const [infoMessage, setInfoMessage] = useState('')
     const [validationError, setValidationError] = useState('')
 
-    const [step, setStep] = useState(1)
+    const [step, setStep] = useState(1) // 1: Login, 2: Login OTP, 3: Forgot Pass Email, 4: Reset Pass OTP & New Pass
     const [otp, setOtp] = useState('')
 
     const emailValid = email.trim().length > 0 && email.includes('@')
     const passwordValid = password.length >= 1
+    const newPasswordValid = newPassword.length >= 6
 
     /* ── Step 1: Login submit ── */
     const handleSubmit = async (e) => {
@@ -89,8 +100,58 @@ const Login = () => {
         }
     }
 
+    /* ── Step 3: Request Forgot Password OTP ── */
+    const handleForgotPasswordSubmit = async (e) => {
+        e.preventDefault()
+        setError('')
+        setInfoMessage('')
+        setValidationError('')
+
+        if (!emailValid) {
+            setValidationError('Please enter a valid email address.')
+            return
+        }
+
+        try {
+            const res = await handleForgotPassword({ email })
+            setInfoMessage(res?.message || 'Reset code sent! Please check your Gmail inbox.')
+            setOtp('')
+            setStep(4)
+        } catch (err) {
+            setError(err?.response?.data?.message || 'Failed to send reset code. Please try again.')
+        }
+    }
+
+    /* ── Step 4: Reset Password Submit ── */
+    const handleResetPasswordSubmit = async (e) => {
+        e.preventDefault()
+        setError('')
+        setInfoMessage('')
+
+        if (otp.length < 6) {
+            setError('Please enter the full 6-digit OTP code.')
+            return
+        }
+
+        if (!newPasswordValid) {
+            setError('New password must be at least 6 characters long.')
+            return
+        }
+
+        try {
+            const res = await handleResetPassword({ email, otp, newPassword })
+            setInfoMessage(res?.message || 'Password reset successfully! Please log in.')
+            setPassword('')
+            setNewPassword('')
+            setOtp('')
+            setStep(1)
+        } catch (err) {
+            setError(err?.response?.data?.message || 'Failed to reset password. Please check your code.')
+        }
+    }
+
     if (loading) {
-        return <main><LoadingPage /></main>
+        return <main><PageLoading title="Authenticating..." subtitle="Verifying your session..." /></main>
     }
 
     return (
@@ -105,7 +166,10 @@ const Login = () => {
                     <span className="auth-brand-name">InterviewAI</span>
                 </div>
 
-                {step === 1 ? (
+                {/* ── Info message across steps ── */}
+                {infoMessage && <div className="auth-info-msg">{infoMessage}</div>}
+
+                {step === 1 && (
                     <>
                         {/* ── Header ── */}
                         <div className="auth-header">
@@ -144,7 +208,21 @@ const Login = () => {
 
                             {/* Password */}
                             <div className="auth-input-group">
-                                <label htmlFor="login-password">Password</label>
+                                <div className="auth-label-row">
+                                    <label htmlFor="login-password">Password</label>
+                                    <button
+                                        type="button"
+                                        className="forgot-pass-btn"
+                                        onClick={() => {
+                                            setStep(3)
+                                            setError('')
+                                            setInfoMessage('')
+                                            setValidationError('')
+                                        }}
+                                    >
+                                        Forgot password?
+                                    </button>
+                                </div>
                                 <div className="auth-input-wrapper with-icon">
                                     <input
                                         id="login-password"
@@ -201,9 +279,11 @@ const Login = () => {
                             <Link to="/register">Create one</Link>
                         </p>
                     </>
-                ) : (
+                )}
+
+                {step === 2 && (
                     <>
-                        {/* ── OTP Step ── */}
+                        {/* ── OTP Step for Unverified Login ── */}
                         <div className="auth-header">
                             <h1>Verify your email</h1>
                             <p className="otp-header-info">
@@ -213,7 +293,6 @@ const Login = () => {
                         </div>
 
                         {error && <div className="auth-error-msg">{error}</div>}
-                        {infoMessage && <div className="auth-info-msg">{infoMessage}</div>}
 
                         <form className="auth-form" onSubmit={handleVerifyOtpSubmit}>
                             <div className="auth-input-group">
@@ -252,6 +331,146 @@ const Login = () => {
                                 ← Back to login
                             </button>
                             <button type="button" className="resend-btn" onClick={handleResend}>
+                                Resend code
+                            </button>
+                        </div>
+                    </>
+                )}
+
+                {step === 3 && (
+                    <>
+                        {/* ── Step 3: Forgot Password - Request OTP ── */}
+                        <div className="auth-header">
+                            <h1>Forgot Password</h1>
+                            <p className="auth-subtitle">
+                                Enter your registered email address to receive a 6-digit reset code via Gmail.
+                            </p>
+                        </div>
+
+                        {error && <div className="auth-error-msg">{error}</div>}
+                        {validationError && <div className="auth-error-msg">{validationError}</div>}
+
+                        <form className="auth-form" onSubmit={handleForgotPasswordSubmit}>
+                            <div className="auth-input-group">
+                                <label htmlFor="forgot-email">Email Address</label>
+                                <div className="auth-input-wrapper">
+                                    <input
+                                        id="forgot-email"
+                                        type="email"
+                                        name="email"
+                                        autoComplete="email"
+                                        placeholder="you@example.com"
+                                        value={email}
+                                        onChange={(e) => {
+                                            setEmail(e.target.value)
+                                            setValidationError('')
+                                        }}
+                                        className={emailValid ? 'has-value' : ''}
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <button
+                                type="submit"
+                                className="auth-submit-btn"
+                                disabled={loading || !emailValid}
+                            >
+                                {loading ? <span className="auth-spinner" /> : 'Send Reset Code'}
+                            </button>
+                        </form>
+
+                        <div className="otp-actions">
+                            <button
+                                type="button"
+                                className="back-btn"
+                                onClick={() => { setStep(1); setError(''); setInfoMessage('') }}
+                            >
+                                ← Back to login
+                            </button>
+                        </div>
+                    </>
+                )}
+
+                {step === 4 && (
+                    <>
+                        {/* ── Step 4: Reset Password - OTP & New Password ── */}
+                        <div className="auth-header">
+                            <h1>Reset Password</h1>
+                            <p className="otp-header-info">
+                                Enter the 6-digit code sent to <strong>{email}</strong> along with your new password.
+                            </p>
+                        </div>
+
+                        {error && <div className="auth-error-msg">{error}</div>}
+
+                        <form className="auth-form" onSubmit={handleResetPasswordSubmit}>
+                            {/* OTP Code */}
+                            <div className="auth-input-group">
+                                <label htmlFor="reset-otp">6-Digit Code</label>
+                                <div className="auth-input-wrapper">
+                                    <input
+                                        id="reset-otp"
+                                        type="text"
+                                        name="otp"
+                                        inputMode="numeric"
+                                        maxLength={6}
+                                        placeholder="849201"
+                                        value={otp}
+                                        onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                        className="otp-input"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            {/* New Password */}
+                            <div className="auth-input-group">
+                                <label htmlFor="reset-new-password">New Password</label>
+                                <div className="auth-input-wrapper with-icon">
+                                    <input
+                                        id="reset-new-password"
+                                        type={showNewPassword ? 'text' : 'password'}
+                                        name="newPassword"
+                                        placeholder="At least 6 characters"
+                                        value={newPassword}
+                                        onChange={(e) => setNewPassword(e.target.value)}
+                                        className={newPasswordValid ? 'has-value' : ''}
+                                        required
+                                    />
+                                    <button
+                                        type="button"
+                                        className="eye-toggle"
+                                        onClick={() => setShowNewPassword(p => !p)}
+                                        aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                                    >
+                                        {showNewPassword ? <EyeClosed /> : <EyeOpen />}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <button
+                                type="submit"
+                                className="auth-submit-btn"
+                                disabled={loading || otp.length < 6 || !newPasswordValid}
+                            >
+                                {loading ? <span className="auth-spinner" /> : 'Reset Password'}
+                            </button>
+                        </form>
+
+                        <div className="otp-actions">
+                            <button
+                                type="button"
+                                className="back-btn"
+                                onClick={() => { setStep(1); setError(''); setInfoMessage('') }}
+                            >
+                                ← Back to login
+                            </button>
+                            <button
+                                type="button"
+                                className="resend-btn"
+                                onClick={handleForgotPasswordSubmit}
+                            >
                                 Resend code
                             </button>
                         </div>

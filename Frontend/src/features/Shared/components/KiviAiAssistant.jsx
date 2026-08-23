@@ -4,10 +4,11 @@ import { rewriteResumeSection } from '../../Interview/services/interview.api';
 import './KiviAiAssistant.scss';
 
 export function KiviAiAssistant() {
-    const { user } = useAuth();
+    const { user, fetchUsage } = useAuth();
     const [isKiviOpen, setIsKiviOpen] = useState(false);
     const [showIdleNudge, setShowIdleNudge] = useState(false);
     const idleTimerRef = useRef(null);
+    const savedRangeRef = useRef(null);
 
     if (!user) {
         return null;
@@ -18,7 +19,7 @@ export function KiviAiAssistant() {
         {
             id: 1,
             sender: 'ai',
-            text: '👋 Hi! I am KIVI, your AI Career Assistant. Highlight any text on your screen, ask me about your resume, or get job & platform help!'
+            text: '👋 Hi! I am KIVI, your AI Assistant. Highlight any text in your Resume or Cover Letter editor, then send me instructions or click quick presets to improve it!'
         }
     ]);
     const [chatInput, setChatInput] = useState('');
@@ -59,36 +60,41 @@ export function KiviAiAssistant() {
         };
     }, []);
 
-    // Global Selection Tracking (Main document & iframe)
+    // Selection Tracking across main document and TipTap editor
     useEffect(() => {
-        const handleSelectionChange = () => {
-            const sel = window.getSelection();
-            const mainText = sel ? sel.toString().trim() : '';
-            if (mainText && mainText.length > 2) {
-                setSelectedSnippet(mainText);
+        const handleSelectionChange = (e) => {
+            // Ignore mouse clicks/events originating from inside the KIVI AI drawer itself
+            const targetEl = e?.target && e.target.nodeType === 1 ? e.target : (e?.target?.parentElement || null);
+            if (targetEl && typeof targetEl.closest === 'function' && 
+                (targetEl.closest('.ai-chat-copilot-floating-drawer') || targetEl.closest('.kivi-floating-trigger'))) {
                 return;
             }
 
-            const iframe = document.querySelector('iframe');
-            if (iframe && iframe.contentWindow) {
-                try {
-                    const iframeSel = iframe.contentWindow.getSelection();
-                    const iframeText = iframeSel ? iframeSel.toString().trim() : '';
-                    if (iframeText && iframeText.length > 2) {
-                        setSelectedSnippet(iframeText);
-                    }
-                } catch (e) {
-                    // Ignore cross-origin error
+            const sel = window.getSelection();
+            const text = sel ? sel.toString().trim() : '';
+
+            if (text && text.length > 2) {
+                // Check if selection is inside a TipTap editor or document
+                const editorEl = document.querySelector('.tiptap-prose[contenteditable="true"]') || document.querySelector('[contenteditable="true"]');
+                if (editorEl && sel.rangeCount > 0 && editorEl.contains(sel.anchorNode)) {
+                    savedRangeRef.current = sel.getRangeAt(0).cloneRange();
                 }
+                setSelectedSnippet(text);
+            } else {
+                // Realtime clear when text is unselected
+                setSelectedSnippet('');
+                savedRangeRef.current = null;
             }
         };
 
         document.addEventListener('mouseup', handleSelectionChange);
         document.addEventListener('keyup', handleSelectionChange);
+        document.addEventListener('selectionchange', handleSelectionChange);
 
         return () => {
             document.removeEventListener('mouseup', handleSelectionChange);
             document.removeEventListener('keyup', handleSelectionChange);
+            document.removeEventListener('selectionchange', handleSelectionChange);
         };
     }, []);
 
@@ -118,6 +124,8 @@ export function KiviAiAssistant() {
                 message: messageToSend
             });
 
+            if (fetchUsage) fetchUsage();
+
             const aiMsg = {
                 id: Date.now() + 1,
                 sender: 'ai',
@@ -130,7 +138,7 @@ export function KiviAiAssistant() {
             const errorMsg = {
                 id: Date.now() + 1,
                 sender: 'ai',
-                text: '⚠️ Sorry, I encountered an issue. Please try sending your message again.'
+                text: err?.response?.data?.message || '⚠️ Sorry, I encountered an issue. Please try sending your message again.'
             };
             setChatMessages(prev => [...prev, errorMsg]);
         } finally {
@@ -138,8 +146,57 @@ export function KiviAiAssistant() {
         }
     };
 
+    // Apply suggested snippet directly to TipTap editor or active document
     const handleApplySuggestedSnippet = (snippet) => {
         if (!snippet) return;
+        if (fetchUsage) fetchUsage();
+
+        // 1. TipTap Prose Editor (Resume & Cover Letter)
+        const editorEl = document.querySelector('.tiptap-prose[contenteditable="true"]') || document.querySelector('[contenteditable="true"]');
+
+        if (editorEl) {
+            editorEl.focus();
+
+            // Try restoring saved selection range
+            if (savedRangeRef.current) {
+                try {
+                    const sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(savedRangeRef.current);
+                    
+                    const range = sel.getRangeAt(0);
+                    range.deleteContents();
+                    const textNode = document.createTextNode(snippet);
+                    range.insertNode(textNode);
+                    
+                    // Dispatch input event for React state updates
+                    editorEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    return;
+                } catch (err) {
+                    console.warn("Could not restore saved selection range:", err);
+                }
+            }
+
+            // Direct selection replacement
+            const sel = window.getSelection();
+            if (sel && sel.rangeCount > 0) {
+                const range = sel.getRangeAt(0);
+                if (editorEl.contains(range.commonAncestorContainer)) {
+                    range.deleteContents();
+                    const textNode = document.createTextNode(snippet);
+                    range.insertNode(textNode);
+                    editorEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    return;
+                }
+            }
+
+            // Fallback execCommand insertion
+            document.execCommand('insertText', false, snippet);
+            editorEl.dispatchEvent(new Event('input', { bubbles: true }));
+            return;
+        }
+
+        // 2. Legacy iframe fallback
         const iframe = document.querySelector('iframe.resume-frame') || document.querySelector('iframe');
         if (iframe) {
             const win = iframe.contentWindow;
@@ -168,46 +225,50 @@ export function KiviAiAssistant() {
         }
     };
 
+    const isAiBlocked = Boolean(user?.blockedFeatures?.aiAssistant);
+
     return (
         <>
-            {/* Proactive Idle Speech Bubble */}
-            {showIdleNudge && !isKiviOpen && (
-                <div className="kivi-idle-nudge-bubble" onClick={() => { setIsKiviOpen(true); setShowIdleNudge(false); }}>
-                    <span className="nudge-close-btn" onClick={(e) => { e.stopPropagation(); setShowIdleNudge(false); }}>✕</span>
-                    <div className="nudge-content">
-                        <img src="/Logo.png" alt="KIVI Logo" className="nudge-logo-img" />
-                        <div>
-                            <strong>Hey! I am KIVI</strong>
-                            <p>I'm here to help! Click here or highlight text to chat with AI.</p>
-                        </div>
+            {/* Floating Trigger Button */}
+            <div className="kivi-floating-trigger-container">
+                {showIdleNudge && !isKiviOpen && (
+                    <div className="kivi-idle-nudge-bubble" onClick={() => { setIsKiviOpen(true); setShowIdleNudge(false); }}>
+                        <span className="nudge-text">💡 Need help refining your resume? Click KIVI!</span>
+                        <button type="button" className="nudge-close" onClick={(e) => { e.stopPropagation(); setShowIdleNudge(false); }}>✕</button>
                     </div>
-                </div>
-            )}
-
-            {/* Floating Circular KIVI AI Trigger Button */}
-            <button 
-                type="button" 
-                className={`kivi-floating-trigger ${isKiviOpen ? 'active' : ''}`}
-                onClick={() => { setIsKiviOpen(!isKiviOpen); setShowIdleNudge(false); }}
-                title="KIVI AI Assistant"
-            >
-                {isKiviOpen ? (
-                    <span className="trigger-close-icon">✕</span>
-                ) : (
-                    <img src="/Logo.png" alt="KIVI Logo" className="kivi-trigger-logo-circular" />
                 )}
-                <span className="pulse-ring"></span>
-            </button>
+                <button
+                    type="button"
+                    className={`kivi-floating-trigger ${isKiviOpen ? 'active' : ''}`}
+                    onClick={() => {
+                        setIsKiviOpen(!isKiviOpen);
+                        setShowIdleNudge(false);
+                    }}
+                    title={isAiBlocked ? "KIVI AI (Disabled by Admin)" : "KIVI AI Assistant"}
+                >
+                    {isKiviOpen ? (
+                        <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff' }}>✕</span>
+                    ) : (
+                        <img src="/Logo.png" alt="KIVI AI" className="kivi-trigger-logo" />
+                    )}
+                </button>
+            </div>
 
-            {/* Floating KIVI AI Chat Drawer Window */}
+            {/* Floating AI Chat Drawer */}
             {isKiviOpen && (
-                <div className="ai-chat-copilot-floating-drawer panel">
-                    <div className="chat-panel-header">
-                        <div className="copilot-brand">
-                            <img src="/Logo.png" alt="KIVI Logo" className="copilot-avatar-img" />
-                            <div>
-                                <h3>KIVI AI Assistant</h3>
-                                <span className="copilot-status">● Live Assistant</span>
+                <div className="ai-chat-copilot-floating-drawer">
+                    <div className="drawer-header">
+                        <div className="header-branding">
+                            <img src="/Logo.png" alt="KIVI Logo" className="header-logo" />
+                            <div className="header-titles">
+                                <h3>KIVI Assistant</h3>
+                                <span className="header-status">
+                                    {isAiBlocked ? (
+                                        <span style={{ color: '#f87171', fontWeight: 800 }}>❌ Disabled by Admin</span>
+                                    ) : (
+                                        <>● Online · Powered by Gemini Pro</>
+                                    )}
+                                </span>
                             </div>
                         </div>
                         <button 
@@ -219,6 +280,20 @@ export function KiviAiAssistant() {
                             ✕
                         </button>
                     </div>
+
+                    {isAiBlocked && (
+                        <div style={{
+                            background: 'rgba(239, 68, 68, 0.15)',
+                            border: '1px solid rgba(239, 68, 68, 0.35)',
+                            color: '#f87171',
+                            padding: '0.6rem 0.9rem',
+                            fontSize: '0.82rem',
+                            fontWeight: 700,
+                            textAlign: 'center'
+                        }}>
+                            ❌ AI Assistant access has been disabled for your account by an administrator.
+                        </div>
+                    )}
 
                     {selectedSnippet && (
                         <div className="live-context-banner">
@@ -253,8 +328,9 @@ export function KiviAiAssistant() {
                                                 type="button"
                                                 className="apply-snippet-btn"
                                                 onClick={() => handleApplySuggestedSnippet(msg.suggestedSnippet)}
+                                                disabled={isAiBlocked}
                                             >
-                                                ✅ Apply to Resume
+                                                {isAiBlocked ? '❌ Disabled by Admin' : '✅ Apply to Document'}
                                             </button>
                                         </div>
                                     )}
@@ -280,7 +356,7 @@ export function KiviAiAssistant() {
                             type="button" 
                             className="suggestion-pill"
                             onClick={() => handleSendChatMessage(null, 'Make the text snippet high impact with action verbs', 'enhance')}
-                            disabled={chatLoading}
+                            disabled={chatLoading || isAiBlocked}
                         >
                             ✨ Enhance Impact
                         </button>
@@ -288,7 +364,7 @@ export function KiviAiAssistant() {
                             type="button" 
                             className="suggestion-pill"
                             onClick={() => handleSendChatMessage(null, 'Shorten the text to 1 concise bullet point', 'shorten')}
-                            disabled={chatLoading}
+                            disabled={chatLoading || isAiBlocked}
                         >
                             📝 Shorten
                         </button>
@@ -296,7 +372,7 @@ export function KiviAiAssistant() {
                             type="button" 
                             className="suggestion-pill"
                             onClick={() => handleSendChatMessage(null, 'Fix grammar and spelling', 'fix_grammar')}
-                            disabled={chatLoading}
+                            disabled={chatLoading || isAiBlocked}
                         >
                             🔧 Fix Grammar
                         </button>
@@ -304,7 +380,7 @@ export function KiviAiAssistant() {
                             type="button" 
                             className="suggestion-pill"
                             onClick={() => handleSendChatMessage(null, 'What is KIVI-AI Platform and how does it work?')}
-                            disabled={chatLoading}
+                            disabled={chatLoading || isAiBlocked}
                         >
                             💡 About Platform
                         </button>
@@ -317,13 +393,13 @@ export function KiviAiAssistant() {
                             className="chat-input-field"
                             value={chatInput}
                             onChange={(e) => setChatInput(e.target.value)}
-                            placeholder={selectedSnippet ? "Ask KIVI about selection..." : "Ask KIVI anything..."}
-                            disabled={chatLoading}
+                            placeholder={isAiBlocked ? "❌ AI Assistant Disabled by Admin" : (selectedSnippet ? "Ask KIVI about selection..." : "Ask KIVI anything...")}
+                            disabled={chatLoading || isAiBlocked}
                         />
                         <button 
                             type="submit" 
                             className="chat-send-btn"
-                            disabled={chatLoading || (!chatInput.trim() && !selectedSnippet)}
+                            disabled={chatLoading || isAiBlocked || (!chatInput.trim() && !selectedSnippet)}
                         >
                             🚀
                         </button>

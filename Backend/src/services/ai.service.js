@@ -3,7 +3,7 @@ const Groq = require("groq-sdk")
 
 const { z } = require('zod')
 const { zodToJsonSchema } = require('zod-to-json-schema')
-const puppeteer = require('puppeteer');
+// Puppeteer removed — PDF is now generated client-side via window.print()
 
 const request = require('request');
 const fs = require('fs')
@@ -35,7 +35,7 @@ if (!GEMINI_API_KEY) {
     console.warn('GOOGLE_GENAI_API_KEY is not set. Gemini fallback will not be available.')
 }
 
-const GROQ_MODEL = "openai/gpt-oss-120b"
+const GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
 
@@ -658,53 +658,7 @@ Job Description: ${roleDescription}
 
 
 
-async function generatePfdFromHtml(htmlContent) {
-    // 1. Regex to automatically insert target="_blank" and rel="noopener noreferrer" into all <a> tags
-    const processedHtml = htmlContent.replace(/<a\s+(?![^>]*target=)/gi, '<a target="_blank" rel="noopener noreferrer" ');
-
-    const puppeteerLaunchOpts = {
-        headless: "shell",
-        args: [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--disable-software-rasterizer"
-        ]
-    };
-    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-        puppeteerLaunchOpts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
-    }
-
-    let browser;
-    try {
-        browser = await puppeteer.launch(puppeteerLaunchOpts);
-        const page = await browser.newPage();
-        await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
-
-        // 2. Pass the processed HTML and wait for load instead of networkidle0 to prevent timeouts
-        await page.setContent(processedHtml, { waitUntil: 'load' });
-
-        const pdfBuffer = await page.pdf({
-            format: 'A4',
-            printBackground: true,
-            margin: {
-                top: '10mm',
-                right: '20mm',
-                bottom: '10mm',
-                left: '20mm'
-            }
-        });
-        return pdfBuffer;
-    } catch (err) {
-        console.error("Puppeteer PDF generation error:", err);
-        throw err;
-    } finally {
-        if (browser) {
-            await browser.close();
-        }
-    }
-}
+// generatePfdFromHtml removed — PDF is now generated client-side via window.print() + @media print CSS
 
 
 async function generateResumeHtml({ resume, selfDescription, jobDescription }) {
@@ -802,89 +756,11 @@ const coverLetterPdfSchema = z.object({
     html: z.string().describe("The complete HTML content of the professional cover letter. It should look clean, professional, and well-spaced, optimized for a single A4 page.")
 });
 
-// Add the helper function and export it
-// Add helper for scraping company culture
+// scrapeCompanyCulture removed (was Puppeteer-based). Returns null so generateCoverLetter
+// skips the culture injection section gracefully.
 async function scrapeCompanyCulture(companyName) {
-    if (!companyName || !companyName.trim()) {
-        return null;
-    }
-
-    console.log(`[Scraper] Starting culture search for company: ${companyName}`);
-    let browser;
-    try {
-        const cultureLaunchOpts = {
-            headless: "shell",
-            args: [
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-software-rasterizer"
-            ]
-        };
-        if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-            cultureLaunchOpts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
-        }
-        browser = await puppeteer.launch(cultureLaunchOpts);
-        const page = await browser.newPage();
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-
-        // Search DuckDuckGo HTML version for company culture
-        const searchQuery = encodeURIComponent(`${companyName} company culture values mission about`);
-        const searchUrl = `https://html.duckduckgo.com/html/?q=${searchQuery}`;
-
-        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 8000 });
-
-        // Extract the first 3 links from search results (ignoring ads and duckduckgo search urls)
-        const urls = await page.evaluate(() => {
-            const links = Array.from(document.querySelectorAll('a.result__a'));
-            return links
-                .map(a => a.href)
-                .filter(href => href && !href.includes('duckduckgo.com'))
-                .slice(0, 3);
-        });
-
-        if (!urls || urls.length === 0) {
-            console.log(`[Scraper] No search results found for ${companyName}`);
-            await browser.close();
-            return null;
-        }
-
-        // Take the first link as the most relevant culture page
-        const targetUrl = urls[0];
-        console.log(`[Scraper] Navigating to target site for culture data: ${targetUrl}`);
-
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
-
-        // Extract main text content
-        const textContent = await page.evaluate(() => {
-            const elementsToRemove = document.querySelectorAll('script, style, nav, footer, header, noscript');
-            elementsToRemove.forEach(el => el.remove());
-            const bodyText = document.body.innerText || "";
-            return bodyText.replace(/\s+/g, ' ').trim();
-        });
-
-        await browser.close();
-
-        // Limit scraped text length to avoid token limit issues
-        const trimmedText = textContent.slice(0, 2000);
-        console.log(`[Scraper] Successfully scraped ${trimmedText.length} chars from ${targetUrl}`);
-
-        return {
-            sourceUrl: targetUrl,
-            scrapedText: trimmedText
-        };
-    } catch (err) {
-        console.error(`[Scraper] Failed to scrape company culture:`, err.message);
-        if (browser) {
-            try {
-                await browser.close();
-            } catch (closeErr) {
-                // ignore
-            }
-        }
-        return null;
-    }
+    // Puppeteer scraping removed. Culture context is skipped.
+    return null;
 }
 
 // Add the helper function and export it
@@ -937,14 +813,25 @@ Job Description: ${jobDescription}
         const htmlMatch = rawText.match(/<!DOCTYPE html>[\s\S]*<\/html>/i) || 
                           rawText.match(/<html[\s\S]*<\/html>/i) || 
                           rawText.match(/<body[\s\S]*<\/body>/i) || 
-                          rawText.match(/<div[\s\S]*<\/div>/i)
+                          rawText.match(/<div[\s\S]*<\/div>/i);
         
         if (htmlMatch) {
-            htmlContent = htmlMatch[0].trim()
+            htmlContent = htmlMatch[0].trim();
         } else {
-            htmlContent = rawText.replace(/```(?:html)?/g, '').trim()
+            htmlContent = rawText.replace(/```(?:html)?/g, '').trim();
         }
     }
+
+    if (htmlContent && typeof htmlContent === 'string') {
+        const currentDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        htmlContent = htmlContent
+            .replace(/\\n/g, ' ')
+            .replace(/\\r/g, '')
+            .replace(/"\s*\+\s*new Date\(\)[^"]*"\s*\+\s*"/gi, currentDate)
+            .replace(/["']\s*\+\s*new Date\(\)[^"']*["']/gi, currentDate)
+            .trim();
+    }
+
     return htmlContent;
 }
 
@@ -1066,12 +953,12 @@ Generate response JSON with "replyText" and "suggestedSnippet":
 function getAIStatus() {
     return {
         provider: isGroqHealthy ? "Groq AI" : (aiGemini ? "Gemini AI" : "OpenRouter"),
-        primaryModel: isGroqHealthy ? "GPT-OSS 120B" : (aiGemini ? "Gemini 2.5 Flash" : "Nemotron 3 120B"),
+        primaryModel: isGroqHealthy ? "Llama 3.3 70B" : (aiGemini ? "Gemini 2.5 Flash" : "Nemotron 3 120B"),
         fallbackModel: isGroqHealthy ? (aiGemini ? "Gemini 2.5 Flash" : "Nemotron 3 120B (OpenRouter)") : (aiGemini ? "Nemotron 3 120B (OpenRouter)" : "None"),
         status: "online",
-        label: isGroqHealthy ? "GPT-OSS 120B · Groq AI" : (aiGemini ? "Switched to Gemini" : "Nemotron 3 120B · OpenRouter")
+        label: isGroqHealthy ? "Llama 3.3 70B · Groq AI" : (aiGemini ? "Switched to Gemini" : "Nemotron 3 120B · OpenRouter")
     }
 }
 
-module.exports = { generateInterviewReport, generateResumePfd, generateCoverLetter, generatePfdFromHtml, generateResumeHtml, rewriteResumeSection, getAIStatus }
+module.exports = { generateInterviewReport, generateResumePfd, generateCoverLetter, generateResumeHtml, rewriteResumeSection, getAIStatus }
 

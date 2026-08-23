@@ -17,6 +17,10 @@ railway up (From Backend Folder)
 #Frontend Deployment 
 vercel --prod (From resume generator folder)
 
+
+#Create Admin
+http://localhost:5173/admin-portal-dashboard-root
+
 ```
 
 

@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams, useSearchParams } from 'react-rout
 import { getInterviewReportById } from '../services/interview.api';
 import { useInterview } from '../hooks/useInterview';
 import { useAuth } from '../../Auth/hooks/useAuth';
-import LoadingPage from '../Loading';
+import PageLoading from '../../Shared/components/PageLoading';
 import TechnicalQuestionsTab from './TechnicalQuestionsTab';
 import BehavioralQuestionsTab from './BehavioralQuestionsTab';
 import TechnicalRoadmapTab from './TechnicalRoadmapTab';
@@ -229,23 +229,7 @@ const Interview = () => {
     const normalizedReport = useMemo(() => normalizeReport(report), [report]);
 
     if (loading && !report) {
-        return (
-            <div className="interview-page">
-                <div className="interview-shell">
-                    <div className="feedback-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '2rem' }}>
-                        <div className="shimmer" style={{ gap: '12px', width: '100%', justifyContent: 'center' }}>
-                            <div className="shimmer-checkbox"></div>
-                            <div className="shimmer-text"></div>
-                        </div>
-                        <div className="shimmer" style={{ gap: '12px', width: '100%', justifyContent: 'center' }}>
-                            <div className="shimmer-checkbox"></div>
-                            <div className="shimmer-text" style={{ width: '50%' }}></div>
-                        </div>
-                        <p style={{ margin: 0, color: '#94a3b8' }}>Loading interview report...</p>
-                    </div>
-                </div>
-            </div>
-        );
+        return <main><PageLoading title="Loading Interview Report..." subtitle="Preparing detailed evaluation analytics..." /></main>;
     }
 
     if (error && !report) {
