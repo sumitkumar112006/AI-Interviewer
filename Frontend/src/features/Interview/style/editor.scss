@@ -283,11 +283,20 @@ $text-muted:     #8496b4;
     ul, ol {
         padding-left: 1.4em;
         margin: 0.4em 0 0.6em;
+        page-break-inside: avoid;
+        break-inside: avoid;
     }
 
     li {
-        margin: 0.15em 0;
+        margin: 0.2em 0;
         line-height: 1.5;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+
+    p, h1, h2, h3, h4, section, div {
+        page-break-inside: avoid;
+        break-inside: avoid;
     }
 
     blockquote {

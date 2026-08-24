@@ -342,7 +342,7 @@ function normalizeResumeHtmlDocument(htmlContent) {
     <style>
         @page {
             size: A4;
-            margin: 0;
+            margin: 12mm 16mm;
         }
         body {
             margin: 0 auto;
@@ -355,6 +355,22 @@ function normalizeResumeHtmlDocument(htmlContent) {
             background: #ffffff;
             line-height: 1.4;
             -webkit-print-color-adjust: exact;
+        }
+        li, ul, ol, p, h1, h2, h3, h4, section, .section, .experience-item, .project-item {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+        }
+        h1, h2, h3, h4 {
+            page-break-after: avoid !important;
+            break-after: avoid !important;
+        }
+        ul, ol {
+            padding-left: 1.25rem;
+            margin-top: 0.25rem;
+            margin-bottom: 0.5rem;
+        }
+        li {
+            margin-bottom: 0.35rem;
         }
     </style>
 </head>
@@ -692,21 +708,24 @@ HEADER
 SECTIONS (in order)
 Summary → Technical Skills → Soft Skills → Experience → Projects → Achievements → Education.
 - h2 for section titles: uppercase, 11 to 12pt bold, bottom border, accent or near-black.
-- Every section: page-break-inside: avoid.
+- Every section and entry block MUST have style="page-break-inside: avoid; break-inside: avoid;".
 
 CONTENT RULES
 - Summary: one dense <p>, 3 to 4 lines.
 - Skills: "<strong>Category:</strong> items" per line, tight spacing.
 - Soft Skills: one comma-separated line.
 - Experience/Projects: h3 title + dates/stack right-aligned or inline; 2 to 4 real <ul><li> bullets, action-verb-led; links (Live/GitHub) below in small text.
+- BULLET LENGTH & ORPHAN RULE: Each <li> bullet must fit within 1 or 2 complete text lines (approx 12-14 words per line). Never leave a single orphaned word wrapping onto a new line or across pages.
 - Achievements: flat bullet list.
 - Education: degree + institution one line, graduation date aligned right.
 - Never invent facts, metrics, dates, or employers not in source data.
 
-LAYOUT / ATS SAFETY
+LAYOUT / ATS SAFETY & PAGINATION
 - Strict single column, no floats/multi-column/tables-for-layout, no fixed/absolute positioning, no animations/gradients/icon fonts.
 - Real semantic h1/h2/h3/ul/li only — never typed "•" in a <p>.
 - One accent color max; everything else near-black/gray.
+- STRICT PAGE BOUNDARY RULE: All <li>, <p>, <h2>, <h3>, and section block wrappers MUST specify page-break-inside: avoid !important; break-inside: avoid !important;. Never split or cut a bullet point across a page line.
+- If content extends onto Page 2, insert an explicit clean section page break (<div style="page-break-before: always; break-before: page; margin-top: 1.5rem;"></div>) before a major section (e.g. before PROJECTS or EDUCATION) so Page 2 starts cleanly at the top with a fresh header instead of splitting a bullet list mid-way.
 - If content overflows 2 pages: tighten spacing first, then trim oldest/least relevant bullets — never cut contact info or most recent role.
 
 Candidate details:
