@@ -20,18 +20,23 @@ function normalizeOrigin(origin) {
 }
 
 const allowedOrigins = [
-    "https://resume-generator-production-2eae.up.railway.app",
+    "https://kivi-ai-production.up.railway.app",
     "https://ai-interviewer-silk.vercel.app",
     "http://localhost:5173",
+    "http://localhost:3000",
     "https://ai-interviewer-git-main-amitk839170-gmailcoms-projects.vercel.app",
     ...(process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",").map(origin => origin.trim()) : [])
 ].map(normalizeOrigin).filter(Boolean);
 
 const corsOptions = {
     origin: function (origin, callback) {
+        if (!origin) return callback(null, true);
         const normalizedOrigin = normalizeOrigin(origin);
 
-        if (!normalizedOrigin || allowedOrigins.includes(normalizedOrigin)) {
+        const isAllowed = allowedOrigins.includes(normalizedOrigin) || 
+                          normalizedOrigin.endsWith('.vercel.app');
+
+        if (isAllowed) {
             return callback(null, true);
         }
 
@@ -41,13 +46,12 @@ const corsOptions = {
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
 };
 
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
-app.use(cors(corsOptions));
-app.options(/.*/, cors(corsOptions));
 
 // Global Rate Limiter
 app.use(globalLimiter);

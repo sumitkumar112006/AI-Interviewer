@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://resume-generator-production-2eae.up.railway.app";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://kivi-ai-production.up.railway.app";
 
 const api = axios.create({
     baseURL: API_BASE_URL.replace(/\/$/, ""),
@@ -84,9 +84,9 @@ export const generateInterviewReport = async ({ jobDescription, selfDescription,
  * If not, triggers AI generation, saves it, and returns the report.
  * PDF is now generated client-side via window.print().
  */
-export const generateResumePdf = async (interviewReportId) => {
-    const response = await api.post(`/api/interview/resume/pdf/${interviewReportId}`)
-    return response.data?.interviewReport || response.data
+export const generateResumePdf = async (interviewReportId, options = {}) => {
+    const response = await api.post(`/api/interview/resume/pdf/${interviewReportId}`, options)
+    return response.data
 }
 
 export async function deleteReportById(interviewReportId) {

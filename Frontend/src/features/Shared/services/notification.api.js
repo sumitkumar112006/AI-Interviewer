@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://resume-generator-production-2eae.up.railway.app";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://kivi-ai-production.up.railway.app";
 const api = axios.create({
     baseURL: `${API_BASE_URL.replace(/\/$/, "")}/api/notifications/`,
     withCredentials: true

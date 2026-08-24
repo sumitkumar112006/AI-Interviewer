@@ -2,16 +2,9 @@ const express = require('express');
 const authMiddleware = require('../middleware/auth.middleware');
 const upload = require('../middleware/file.middleware');
 const coverLetterController = require('../controller/coverletter.controller');
-const { createRateLimiter, createTieredRateLimiter } = require('../middleware/rateLimiter.middleware');
+const { createRateLimiter, fullGenerationLimiter } = require('../middleware/rateLimiter.middleware');
 
 const coverLetterRouter = express.Router();
-
-const fullGenerationLimiter = createTieredRateLimiter({
-    prefix: 'ratelimit:full-generation',
-    windowSeconds: 86400, // 24-hour daily limit
-    limits: { free: 3, pro: 30, premium: 150 },
-    message: 'Full generation daily limit reached for your plan.'
-});
 
 const CoverLetterRewriteLimiter = createRateLimiter({
     prefix: 'ratelimit:rewrite-cover-letter',
@@ -43,10 +36,10 @@ coverLetterRouter.get('/:coverLetterId', authMiddleware.authUser, coverLetterCon
 coverLetterRouter.get('/report/:interviewReportId', authMiddleware.authUser, coverLetterController.getCoverLetterByReportIdController);
 
 // Export PDF format of cover letter
-coverLetterRouter.post('/pdf/:coverLetterId', authMiddleware.authUser, coverLetterController.generateCoverLetterPdfController);
+coverLetterRouter.post('/pdf/:coverLetterId', authMiddleware.authUser, checkCoverLetterAccess, coverLetterController.generateCoverLetterPdfController);
 
 // Update cover letter content
-coverLetterRouter.put('/:coverLetterId', authMiddleware.authUser, CoverLetterRewriteLimiter, coverLetterController.updateCoverLetterController);
+coverLetterRouter.put('/:coverLetterId', authMiddleware.authUser, checkCoverLetterAccess, CoverLetterRewriteLimiter, coverLetterController.updateCoverLetterController);
 
 // Delete cover letter
 coverLetterRouter.delete('/:coverLetterId', authMiddleware.authUser, coverLetterController.deleteCoverLetterController);

@@ -4,6 +4,7 @@ import { getInterviewReportById } from '../services/interview.api';
 import { useInterview } from '../hooks/useInterview';
 import { useAuth } from '../../Auth/hooks/useAuth';
 import PageLoading from '../../Shared/components/PageLoading';
+import ShimmerLoading from '../../Shared/components/ShimmerLoading';
 import TechnicalQuestionsTab from './TechnicalQuestionsTab';
 import BehavioralQuestionsTab from './BehavioralQuestionsTab';
 import TechnicalRoadmapTab from './TechnicalRoadmapTab';
@@ -229,7 +230,7 @@ const Interview = () => {
     const normalizedReport = useMemo(() => normalizeReport(report), [report]);
 
     if (loading && !report) {
-        return <main><PageLoading title="Loading Interview Report..." subtitle="Preparing detailed evaluation analytics..." /></main>;
+        return <main><ShimmerLoading type="workspace" title="Loading Interview Prep..." /></main>;
     }
 
     if (error && !report) {

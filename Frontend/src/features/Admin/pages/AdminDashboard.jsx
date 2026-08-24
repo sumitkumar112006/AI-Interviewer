@@ -1047,10 +1047,10 @@ export default function AdminDashboard() {
                             </div>
 
                             <div className="form-group">
-                                <label>Bonus Credits to Add</label>
+                                <label>Bonus Credits Offset (Positive to Add, Negative to Reduce)</label>
                                 <input
                                     type="number"
-                                    min="1"
+                                    min="-500"
                                     max="1000"
                                     value={creditAmount}
                                     onChange={(e) => setCreditAmount(e.target.value)}
@@ -1099,31 +1099,17 @@ export default function AdminDashboard() {
                                 <label>Target Audience Scope</label>
                                 <select
                                     value={msgForm.targetType}
-                                    onChange={(e) => setMsgForm({ ...msgForm, targetType: e.target.value, targetValue: e.target.value === 'plan' ? 'free' : '' })}
+                                    onChange={(e) => setMsgForm({ ...msgForm, targetType: e.target.value, targetValue: '' })}
                                     className="action-select"
-                                    style={{ width: '100%', padding: '0.65rem', background: '#090e17', border: '1px solid #1e293b', color: '#fff', borderRadius: '0.5rem' }}
+                                    style={{ width: '100%', padding: '0.75rem', background: '#090e17', border: '1px solid #1e293b', color: '#fff', borderRadius: '0.65rem' }}
                                 >
-                                    <option value="all">🌐 All Registered Users (Platform-wide)</option>
-                                    <option value="plan">💳 By Subscription Plan (Free / Pro / Premium)</option>
-                                    <option value="user">👤 Single Particular User (Email / ID)</option>
+                                    <option value="all">🌐 All Users (Platform-wide)</option>
+                                    <option value="free">🆓 Free Plan Users</option>
+                                    <option value="pro">⚡ Pro Plan Users</option>
+                                    <option value="premium">💎 Premium Plan Users</option>
+                                    <option value="user">👤 Individual User (By Email / User ID)</option>
                                 </select>
                             </div>
-
-                            {msgForm.targetType === 'plan' && (
-                                <div className="form-group">
-                                    <label>Select Target Plan Tier</label>
-                                    <select
-                                        value={msgForm.targetValue || 'free'}
-                                        onChange={(e) => setMsgForm({ ...msgForm, targetValue: e.target.value })}
-                                        className="action-select"
-                                        style={{ width: '100%', padding: '0.65rem', background: '#090e17', border: '1px solid #1e293b', color: '#fff', borderRadius: '0.5rem' }}
-                                    >
-                                        <option value="free">Free Tier Accounts</option>
-                                        <option value="pro">Pro Tier Accounts</option>
-                                        <option value="premium">Premium Tier Accounts</option>
-                                    </select>
-                                </div>
-                            )}
 
                             {msgForm.targetType === 'user' && (
                                 <div className="form-group">

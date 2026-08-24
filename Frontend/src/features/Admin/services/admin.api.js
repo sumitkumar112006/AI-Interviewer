@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://resume-generator-production-2eae.up.railway.app";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://kivi-ai-production.up.railway.app";
 const api = axios.create({
     baseURL: `${API_BASE_URL.replace(/\/$/, "")}/api/admin/`,
     withCredentials: true
@@ -51,8 +51,9 @@ export async function getUserById(userId) {
     return response.data;
 }
 
-export async function adjustUserCredits(userId, action, amount) {
-    const response = await api.post(`users/${userId}/credits`, { action, amount });
+export async function adjustUserCredits(userId, payload) {
+    const body = typeof payload === 'object' ? payload : { action: arguments[1], amount: arguments[2] };
+    const response = await api.post(`users/${userId}/credits`, body);
     return response.data;
 }
 

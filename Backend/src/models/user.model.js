@@ -38,6 +38,10 @@ const userSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    customAiBonusCredits: {
+        type: Number,
+        default: 0
+    },
     blockedFeatures: {
         aiAssistant: { type: Boolean, default: false },
         resumeGeneration: { type: Boolean, default: false },

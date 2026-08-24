@@ -91,6 +91,9 @@ const Layout = () => {
   } else if (path.startsWith("/cover-letter/")) {
     activeMenu = "cover-letter-builder";
     breadcrumb = "CV Generator > Cover Letter Builder";
+  } else if (path === "/reports") {
+    activeMenu = "analytics";
+    breadcrumb = "Dashboard > View Analytics";
   } else if (path === "/profile") {
     activeMenu = "profile";
     breadcrumb = "Settings > Profile";
@@ -151,6 +154,15 @@ const Layout = () => {
                 <rect x="3" y="16" width="7" height="5" />
               </svg>
               <span>Dashboard</span>
+            </Link>
+
+            <Link to="/reports" className={`sidebar-link ${activeMenu === "analytics" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
+              <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="20" x2="18" y2="10" />
+                <line x1="12" y1="20" x2="12" y2="4" />
+                <line x1="6" y1="20" x2="6" y2="14" />
+              </svg>
+              <span>View Analytics</span>
             </Link>
 
             <Link to="/coming-soon?feature=find-jobs" className={`sidebar-link ${activeMenu === "find-jobs" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
@@ -267,15 +279,15 @@ const Layout = () => {
               {/* Remaining Attempts Pills */}
               <div
                 className="usage-attempts-pill"
-                title={`Plan: ${user?.plan?.toUpperCase() || 'FREE'} | Full Generations: ${usage?.fullGenerations?.remaining ?? 3}/${usage?.fullGenerations?.limit ?? 3} left | AI Writer: ${usage?.aiAssistant?.remaining ?? 10}/${usage?.aiAssistant?.limit ?? 10} left`}
+                title={`Plan: ${user?.plan?.toUpperCase() || 'FREE'} | Full Generations (Monthly): ${usage?.fullGenerations?.remaining ?? 2}/${usage?.fullGenerations?.limit ?? 2} left | AI Assistant (Daily): ${usage?.aiAssistant?.remaining ?? 10}/${usage?.aiAssistant?.limit ?? 10} left`}
               >
                 <span className="attempts-badge plan-badge">{user?.plan?.toUpperCase() || 'FREE'}</span>
-                <span className="attempts-item" title="Full Resume & Cover Letter Generations">
-                  ⚡ {usage?.fullGenerations?.remaining ?? 3}/{usage?.fullGenerations?.limit ?? 3}<span className="attempts-unit"> Gens</span>
+                <span className="attempts-item" title="Full Resume & Cover Letter Generations (Monthly Reset)">
+                  ⚡ {usage?.fullGenerations?.remaining ?? 2}/{usage?.fullGenerations?.limit ?? 2}<span className="attempts-unit"> Gens/mo</span>
                 </span>
                 <span className="attempts-divider">|</span>
-                <span className="attempts-item" title="AI Assistant & Writer Rewrites">
-                  🤖 {usage?.aiAssistant?.remaining ?? 10}/{usage?.aiAssistant?.limit ?? 10}<span className="attempts-unit"> AI</span>
+                <span className="attempts-item" title="AI Assistant & Writer Rewrites (Daily 24h Reset)">
+                  🤖 {usage?.aiAssistant?.remaining ?? 10}/{usage?.aiAssistant?.limit ?? 10}<span className="attempts-unit"> AI/day</span>
                 </span>
               </div>
 

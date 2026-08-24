@@ -1,7 +1,6 @@
 const jwt = require("jsonwebtoken");
 const blacklistModel = require("../models/blacklist_model");
 const userModel = require("../models/user.model");
-const adminModel = require("../models/admin.model");
 const { isTokenBlacklistedInRedis } = require("../services/redis.service");
 
 async function authUser(req, res, next) {
@@ -33,28 +32,13 @@ async function authUser(req, res, next) {
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         
-        let account = null;
-        let isAdminAccount = false;
-
-        // Check admins table if decoded contains isAdmin or role admin/super_admin
-        if (decoded.isAdmin || decoded.role === 'admin' || decoded.role === 'super_admin') {
-            account = await adminModel.findById(decoded.id).select("username email role");
-            if (account) isAdminAccount = true;
-        }
-
-        // Fallback to userModel
-        if (!account) {
-            account = await userModel.findById(decoded.id).select("username email plan role isBlocked customBonusCredits blockedFeatures");
-            if (!account) {
-                // Final fallback check in adminModel just in case
-                account = await adminModel.findById(decoded.id).select("username email role");
-                if (account) isAdminAccount = true;
-            }
-        }
+        const account = await userModel.findById(decoded.id).select("username email plan role isBlocked customBonusCredits customAiBonusCredits blockedFeatures");
 
         if (!account) {
             return res.status(401).json({ message: "User account not found." });
         }
+
+        const isAdminAccount = ['admin', 'super_admin'].includes(account.role);
 
         if (!isAdminAccount && account.isBlocked) {
             return res.status(403).json({
@@ -67,10 +51,11 @@ async function authUser(req, res, next) {
             username: account.username,
             email: account.email,
             plan: account.plan || 'free',
-            role: account.role || (isAdminAccount ? 'admin' : 'user'),
-            isAdmin: isAdminAccount || ['admin', 'super_admin'].includes(account.role),
+            role: account.role || 'user',
+            isAdmin: isAdminAccount,
             isBlocked: account.isBlocked || false,
             customBonusCredits: account.customBonusCredits || 0,
+            customAiBonusCredits: account.customAiBonusCredits !== undefined ? account.customAiBonusCredits : 0,
             blockedFeatures: account.blockedFeatures || {
                 aiAssistant: false,
                 resumeGeneration: false,

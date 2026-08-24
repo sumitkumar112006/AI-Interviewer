@@ -22,7 +22,7 @@ export const NotificationBell = () => {
     const [isOpen, setIsOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
-    const [loading, setLoading] = useState(false);
+    const [selectedNotification, setSelectedNotification] = useState(null);
     const dropdownRef = useRef(null);
 
     const fetchNotificationsList = async () => {
@@ -73,6 +73,11 @@ export const NotificationBell = () => {
         }
     };
 
+    const handleItemClick = (item) => {
+        handleMarkAsRead(item._id, item.read);
+        setSelectedNotification(item);
+    };
+
     const handleMarkAllRead = async () => {
         try {
             await markAllNotificationsAsRead();
@@ -89,6 +94,9 @@ export const NotificationBell = () => {
             const res = await deleteNotification(id);
             setNotifications(prev => prev.filter(n => n._id !== id));
             setUnreadCount(res.unreadCount ?? Math.max(0, unreadCount - 1));
+            if (selectedNotification?._id === id) {
+                setSelectedNotification(null);
+            }
         } catch (err) {
             console.error('Failed to delete notification:', err);
         }
@@ -121,57 +129,95 @@ export const NotificationBell = () => {
             </button>
 
             {isOpen && (
-                <div className="notifications-popover">
-                    <div className="popover-header">
-                        <div className="header-title-group">
-                            <h4>Notifications</h4>
-                            {unreadCount > 0 && (
-                                <span className="unread-count-pill">{unreadCount} new</span>
+                <>
+                    <div className="popover-backdrop" onClick={() => setIsOpen(false)} />
+                    <div className="notifications-popover">
+                        <div className="popover-header">
+                            <div className="header-title-group">
+                                <h4>Notifications</h4>
+                                {unreadCount > 0 && (
+                                    <span className="unread-count-pill">{unreadCount} new</span>
+                                )}
+                            </div>
+                            <div className="header-actions">
+                                {unreadCount > 0 && (
+                                    <button className="mark-all-btn" onClick={handleMarkAllRead}>
+                                        Mark all read
+                                    </button>
+                                )}
+                                <button className="popover-close-btn" onClick={() => setIsOpen(false)}>✕</button>
+                            </div>
+                        </div>
+
+                        <div className="notifications-list">
+                            {notifications.length === 0 ? (
+                                <div className="empty-notifications">
+                                    <span className="empty-icon">🔕</span>
+                                    <p className="empty-text">No notifications yet</p>
+                                    <span className="empty-sub">Updates from admin will appear here</span>
+                                </div>
+                            ) : (
+                                notifications.map(item => (
+                                    <div
+                                        key={item._id}
+                                        className={`notification-item ${!item.read ? 'unread' : ''}`}
+                                        onClick={() => handleItemClick(item)}
+                                    >
+                                        <div className="item-icon-box">
+                                            {getIconForType(item.type)}
+                                        </div>
+
+                                        <div className="item-content">
+                                            <div className="item-header-row">
+                                                <h5 className="item-title">{item.title}</h5>
+                                                <span className="item-time">{formatRelativeTime(item.createdAt)}</span>
+                                            </div>
+                                            <p className="item-msg">{item.message}</p>
+                                        </div>
+
+                                        <button
+                                            className="item-delete-btn"
+                                            title="Delete notification"
+                                            onClick={(e) => handleDelete(e, item._id)}
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                ))
                             )}
                         </div>
-                        {unreadCount > 0 && (
-                            <button className="mark-all-btn" onClick={handleMarkAllRead}>
-                                Mark all as read
-                            </button>
-                        )}
                     </div>
+                </>
+            )}
 
-                    <div className="notifications-list">
-                        {notifications.length === 0 ? (
-                            <div className="empty-notifications">
-                                <span className="empty-icon">🔕</span>
-                                <p className="empty-text">No notifications yet</p>
-                                <span className="empty-sub">Updates from admin will appear here</span>
-                            </div>
-                        ) : (
-                            notifications.map(item => (
-                                <div
-                                    key={item._id}
-                                    className={`notification-item ${!item.read ? 'unread' : ''}`}
-                                    onClick={() => handleMarkAsRead(item._id, item.read)}
-                                >
-                                    <div className="item-icon-box">
-                                        {getIconForType(item.type)}
-                                    </div>
-
-                                    <div className="item-content">
-                                        <div className="item-header-row">
-                                            <h5 className="item-title">{item.title}</h5>
-                                            <span className="item-time">{formatRelativeTime(item.createdAt)}</span>
-                                        </div>
-                                        <p className="item-msg">{item.message}</p>
-                                    </div>
-
-                                    <button
-                                        className="item-delete-btn"
-                                        title="Delete notification"
-                                        onClick={(e) => handleDelete(e, item._id)}
-                                    >
-                                        ✕
-                                    </button>
+            {/* Notification Detail Modal */}
+            {selectedNotification && (
+                <div className="notification-modal-overlay" onClick={() => setSelectedNotification(null)}>
+                    <div className="notification-modal-card" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <div className="modal-title-group">
+                                <span className="modal-type-icon">{getIconForType(selectedNotification.type)}</span>
+                                <div>
+                                    <h3>{selectedNotification.title}</h3>
+                                    <span className="modal-time">{formatRelativeTime(selectedNotification.createdAt)}</span>
                                 </div>
-                            ))
-                        )}
+                            </div>
+                            <button className="modal-close-btn" onClick={() => setSelectedNotification(null)}>✕</button>
+                        </div>
+                        <div className="modal-body">
+                            <p className="modal-full-msg">{selectedNotification.message}</p>
+                        </div>
+                        <div className="modal-footer">
+                            <button
+                                className="btn-modal-delete"
+                                onClick={(e) => handleDelete(e, selectedNotification._id)}
+                            >
+                                🗑 Delete
+                            </button>
+                            <button className="btn-modal-close" onClick={() => setSelectedNotification(null)}>
+                                Close
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

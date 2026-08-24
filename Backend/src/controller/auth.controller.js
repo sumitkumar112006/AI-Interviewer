@@ -306,35 +306,7 @@ async function loginController(req, res) {
 
         const normalizedEmail = email.trim().toLowerCase();
 
-        // 1. Check adminModel first for administrator logins
-        const adminAccount = await adminModel.findOne({ email: normalizedEmail });
-        if (adminAccount) {
-            const isMatch = await bcrypt.compare(password, adminAccount.password);
-            if (!isMatch) {
-                return res.status(400).json({ message: "Invalid email or password" });
-            }
-
-            const token = JWT.sign(
-                { id: adminAccount._id, username: adminAccount.username, role: adminAccount.role, isAdmin: true },
-                process.env.JWT_SECRET,
-                { expiresIn: "1d" }
-            );
-
-            res.cookie("token", token, cookieOptions);
-
-            return res.status(200).json({
-                message: "Administrator logged in successfully",
-                user: {
-                    id: adminAccount._id,
-                    username: adminAccount.username,
-                    email: adminAccount.email,
-                    role: adminAccount.role,
-                    isAdmin: true
-                }
-            });
-        }
-
-        // 2. Check userModel for standard user logins
+        // Check userModel for user login
         const user = await userModel.findOne({ email: normalizedEmail });
 
         if (!user) {
@@ -644,32 +616,25 @@ async function getUserUsageController(req, res) {
             return res.status(404).json({ message: "User not found" });
         }
 
-        const userPlan = (user.plan || 'free').toLowerCase();
+        const { getUserGenCredits } = require('../middleware/rateLimiter.middleware');
+        const genCredits = await getUserGenCredits(user);
+        const userPlan = genCredits.plan;
         const userId = user._id.toString();
-        const bonusCredits = user.customBonusCredits || 0;
 
-        const genLimits = { free: 3, pro: 30, premium: 150 };
+        const genBonus = user.customBonusCredits || 0;
+        const aiBonus = user.customAiBonusCredits !== undefined ? user.customAiBonusCredits : (genBonus * 3);
+
         const aiLimits = { free: 10, pro: 100, premium: 500 };
+        const aiLimit = Math.max(0, (aiLimits[userPlan] || 10) + aiBonus);
 
-        const fullGenLimit = (genLimits[userPlan] || 3) + bonusCredits;
-        const aiLimit = (aiLimits[userPlan] || 10) + (bonusCredits * 3);
-
-        let fullGenUsed = 0;
         let aiUsed = 0;
 
         try {
             const { getRedisClient } = require('../config/redis');
             const redis = getRedisClient();
             if (redis && (redis.status === 'ready' || redis.status === 'connect')) {
-                const fullGenKey = `ratelimit:full-generation:${userPlan}:user:${userId}`;
                 const aiKey = `ratelimit:ai-assistant:${userPlan}:user:${userId}`;
-
-                const [genVal, aiVal] = await Promise.all([
-                    redis.get(fullGenKey),
-                    redis.get(aiKey)
-                ]);
-
-                fullGenUsed = parseInt(genVal || '0', 10);
+                const aiVal = await redis.get(aiKey);
                 aiUsed = parseInt(aiVal || '0', 10);
             }
         } catch (redisErr) {
@@ -678,10 +643,18 @@ async function getUserUsageController(req, res) {
 
         return res.status(200).json({
             userPlan,
+            customBonusCredits: genBonus,
+            customAiBonusCredits: aiBonus,
+            blockedFeatures: user.blockedFeatures || {
+                aiAssistant: false,
+                resumeGeneration: false,
+                coverLetterGeneration: false,
+                interviewReports: false
+            },
             fullGenerations: {
-                limit: fullGenLimit,
-                used: fullGenUsed,
-                remaining: Math.max(0, fullGenLimit - fullGenUsed)
+                limit: genCredits.limit,
+                used: genCredits.used,
+                remaining: genCredits.remaining
             },
             aiAssistant: {
                 limit: aiLimit,

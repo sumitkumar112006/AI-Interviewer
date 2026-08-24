@@ -67,10 +67,13 @@ const ResumeEditor = forwardRef(function ResumeEditor(
         },
     })
 
-    // When initialHtml changes externally (e.g. after fetch), update editor content
+    // When initialHtml changes externally (e.g. after fetch or AI regenerate), update editor content
     useEffect(() => {
-        if (editor && initialHtml && editor.isEmpty) {
-            editor.commands.setContent(initialHtml, false)
+        if (editor && initialHtml) {
+            const currentHtml = editor.getHTML()
+            if (editor.isEmpty || (currentHtml !== initialHtml && !editor.isFocused)) {
+                editor.commands.setContent(initialHtml, false)
+            }
         }
     }, [initialHtml, editor])
 

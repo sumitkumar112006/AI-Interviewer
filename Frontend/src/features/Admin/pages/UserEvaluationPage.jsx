@@ -17,8 +17,9 @@ const UserEvaluationPage = () => {
     const [directMsg, setDirectMsg] = useState({ title: '', message: '' });
     const [directSubmitting, setDirectSubmitting] = useState(false);
 
-    // Credit adjustment states
-    const [creditAmount, setCreditAmount] = useState(10);
+    // Separate Credit Sliders & Inputs (Supports Negative Values)
+    const [genBonusCredits, setGenBonusCredits] = useState(0);
+    const [aiBonusCredits, setAiBonusCredits] = useState(0);
     const [creditSubmitting, setCreditSubmitting] = useState(false);
 
     // Feature toggles
@@ -45,6 +46,8 @@ const UserEvaluationPage = () => {
             const data = await getUserById(userId);
             if (data?.user) {
                 setUser(data.user);
+                setGenBonusCredits(data.user.customBonusCredits || 0);
+                setAiBonusCredits(data.user.customAiBonusCredits !== undefined ? data.user.customAiBonusCredits : ((data.user.customBonusCredits || 0) * 3));
                 setFeatures(data.user.blockedFeatures || {
                     aiAssistant: false,
                     resumeGeneration: false,
@@ -61,21 +64,23 @@ const UserEvaluationPage = () => {
         }
     };
 
-    const handleCreditAdjust = async (action) => {
-        const amountNum = Number(creditAmount);
-        if (isNaN(amountNum) || amountNum <= 0) {
-            setMsg({ type: 'error', text: 'Please enter a valid credit amount greater than 0.' });
-            return;
-        }
-
+    const handleSaveCredits = async (e) => {
+        if (e) e.preventDefault();
         setCreditSubmitting(true);
         setMsg({ type: '', text: '' });
         try {
-            const res = await adjustUserCredits(userId, action, amountNum);
+            const res = await adjustUserCredits(userId, {
+                customBonusCredits: Number(genBonusCredits),
+                customAiBonusCredits: Number(aiBonusCredits)
+            });
             setMsg({ type: 'success', text: res.message });
-            setUser(prev => prev ? { ...prev, customBonusCredits: res.user.customBonusCredits } : prev);
+            setUser(prev => prev ? {
+                ...prev,
+                customBonusCredits: res.user.customBonusCredits,
+                customAiBonusCredits: res.user.customAiBonusCredits
+            } : prev);
         } catch (err) {
-            setMsg({ type: 'error', text: err?.response?.data?.message || 'Failed to adjust credits.' });
+            setMsg({ type: 'error', text: err?.response?.data?.message || 'Failed to update user credits.' });
         } finally {
             setCreditSubmitting(false);
         }
@@ -260,84 +265,124 @@ const UserEvaluationPage = () => {
                         </div>
                     </div>
 
-                    {/* ── Card 2: Interactive Credit Manager (Increaser & Reducer) ── */}
+                    {/* ── Card 2: Interactive Credit Manager (Separate Sliders with Negative Support) ── */}
                     <div className="eval-card credits-card">
                         <div className="card-header">
                             <span className="card-icon">⚡</span>
-                            <h3>Credits Reducer & Increaser</h3>
+                            <h3>Custom Credit Sliders & Limits</h3>
                         </div>
 
-                        <div className="credit-stats-row">
-                            <div className="stat-pill">
-                                <span className="pill-title">Plan Credits</span>
-                                <span className="pill-val">{planCredits}</span>
-                            </div>
-                            <div className="stat-pill">
-                                <span className="pill-title">Bonus Credits</span>
-                                <span className={`pill-val ${bonusCredits < 0 ? 'negative' : 'positive'}`}>
-                                    {bonusCredits > 0 ? `+${bonusCredits}` : bonusCredits}
-                                </span>
-                            </div>
-                            <div className="stat-pill highlight">
-                                <span className="pill-title">Total Balance</span>
-                                <span className="pill-val">{totalCredits}</span>
-                            </div>
-                        </div>
+                        <form onSubmit={handleSaveCredits} className="credits-sliders-form">
+                            {/* --- Slider 1: Full Generations Bonus --- */}
+                            <div className="credit-slider-block">
+                                <div className="slider-header">
+                                    <label className="slider-label">
+                                        ⚡ Full Generations Bonus Offset:
+                                    </label>
+                                    <div className="slider-val-badge">
+                                        <span className={`val-num ${genBonusCredits < 0 ? 'negative' : genBonusCredits > 0 ? 'positive' : 'zero'}`}>
+                                            {genBonusCredits > 0 ? `+${genBonusCredits}` : genBonusCredits}
+                                        </span>
+                                        <span className="val-unit">Gens/mo</span>
+                                    </div>
+                                </div>
 
-                        <div className="credit-action-box">
-                            <label className="input-label">Adjust Bonus Credits Amount:</label>
-                            
-                            <div className="presets-row">
-                                {[5, 10, 25, 50].map(amt => (
-                                    <button 
-                                        key={amt}
-                                        type="button" 
-                                        className="preset-pill"
-                                        onClick={() => setCreditAmount(amt)}
-                                    >
-                                        +{amt}
-                                    </button>
-                                ))}
-                            </div>
+                                <div className="slider-controls-row">
+                                    <input
+                                        type="range"
+                                        min="-25"
+                                        max="100"
+                                        step="1"
+                                        className="credit-range-slider gen-slider"
+                                        value={genBonusCredits}
+                                        onChange={(e) => setGenBonusCredits(Number(e.target.value))}
+                                    />
+                                    <input
+                                        type="number"
+                                        className="credit-number-input"
+                                        value={genBonusCredits}
+                                        onChange={(e) => setGenBonusCredits(Number(e.target.value))}
+                                    />
+                                </div>
 
-                            <div className="credit-input-group">
-                                <input
-                                    type="number"
-                                    min="1"
-                                    step="1"
-                                    className="credit-number-input"
-                                    value={creditAmount}
-                                    onChange={(e) => setCreditAmount(e.target.value)}
-                                    placeholder="Enter amount"
-                                />
-
-                                <div className="credit-btn-group">
-                                    <button
-                                        type="button"
-                                        className="eval-btn increase-btn"
-                                        onClick={() => handleCreditAdjust('increase')}
-                                        disabled={creditSubmitting}
-                                    >
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                            <path d="M12 5v14M5 12h14"/>
-                                        </svg>
-                                        Increase Credits (+)
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        className="eval-btn reduce-btn"
-                                        onClick={() => handleCreditAdjust('reduce')}
-                                        disabled={creditSubmitting}
-                                    >
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                            <path d="M5 12h14"/>
-                                        </svg>
-                                        Reduce Credits (-)
-                                    </button>
+                                <div className="presets-row">
+                                    {[-10, -5, -2, -1, 0, 5, 10, 25].map(amt => (
+                                        <button
+                                            key={amt}
+                                            type="button"
+                                            className={`preset-pill ${amt < 0 ? 'negative' : ''}`}
+                                            onClick={() => setGenBonusCredits(amt)}
+                                        >
+                                            {amt > 0 ? `+${amt}` : amt}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="net-limit-preview">
+                                    Current Available Generations: <strong>{Math.max(0, (user.plan === 'premium' ? 25 : user.plan === 'pro' ? 10 : 2) + Number(genBonusCredits))} / {user.plan === 'premium' ? 25 : user.plan === 'pro' ? 10 : 2} Gens/mo</strong>
                                 </div>
                             </div>
-                        </div>
+
+                            <hr className="slider-divider" />
+
+                            {/* --- Slider 2: AI Assistant Bonus --- */}
+                            <div className="credit-slider-block">
+                                <div className="slider-header">
+                                    <label className="slider-label">
+                                        🤖 AI Assistant & Writer Bonus Offset:
+                                    </label>
+                                    <div className="slider-val-badge">
+                                        <span className={`val-num ${aiBonusCredits < 0 ? 'negative' : aiBonusCredits > 0 ? 'positive' : 'zero'}`}>
+                                            {aiBonusCredits > 0 ? `+${aiBonusCredits}` : aiBonusCredits}
+                                        </span>
+                                        <span className="val-unit">AI/day</span>
+                                    </div>
+                                </div>
+
+                                <div className="slider-controls-row">
+                                    <input
+                                        type="range"
+                                        min="-100"
+                                        max="500"
+                                        step="5"
+                                        className="credit-range-slider ai-slider"
+                                        value={aiBonusCredits}
+                                        onChange={(e) => setAiBonusCredits(Number(e.target.value))}
+                                    />
+                                    <input
+                                        type="number"
+                                        className="credit-number-input"
+                                        value={aiBonusCredits}
+                                        onChange={(e) => setAiBonusCredits(Number(e.target.value))}
+                                    />
+                                </div>
+
+                                <div className="presets-row">
+                                    {[-50, -20, -10, 0, 20, 50, 100, 250].map(amt => (
+                                        <button
+                                            key={amt}
+                                            type="button"
+                                            className={`preset-pill ${amt < 0 ? 'negative' : ''}`}
+                                            onClick={() => setAiBonusCredits(amt)}
+                                        >
+                                            {amt > 0 ? `+${amt}` : amt}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="net-limit-preview">
+                                    Current Available AI Requests: <strong>{Math.max(0, (user.plan === 'premium' ? 500 : user.plan === 'pro' ? 100 : 10) + Number(aiBonusCredits))} / {user.plan === 'premium' ? 500 : user.plan === 'pro' ? 100 : 10} AI/day</strong>
+                                </div>
+                            </div>
+
+                            <div className="save-credits-action-row">
+                                <button
+                                    type="submit"
+                                    className="eval-btn save-credits-btn"
+                                    disabled={creditSubmitting}
+                                >
+                                    {creditSubmitting ? 'Saving Changes...' : '💾 Save Credit Changes'}
+                                </button>
+                            </div>
+                        </form>
                     </div>
 
                     {/* ── Card 3: Granular Feature Access Control Toggles ── */}

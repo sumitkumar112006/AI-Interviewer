@@ -35,7 +35,7 @@ if (!GEMINI_API_KEY) {
     console.warn('GOOGLE_GENAI_API_KEY is not set. Gemini fallback will not be available.')
 }
 
-const GROQ_MODEL = "llama-3.3-70b-versatile"
+const GROQ_MODEL = "openai/gpt-oss-120b"
 
 
 
@@ -504,7 +504,7 @@ async function callGroq(systemPrompt, userPrompt) {
                     { role: "user", content: userPrompt }
                 ],
                 temperature: 0.7,
-                max_completion_tokens: 8192,
+                max_completion_tokens: 4096,
                 top_p: 1,
                 stream: false,
                 stop: null
@@ -953,10 +953,10 @@ Generate response JSON with "replyText" and "suggestedSnippet":
 function getAIStatus() {
     return {
         provider: isGroqHealthy ? "Groq AI" : (aiGemini ? "Gemini AI" : "OpenRouter"),
-        primaryModel: isGroqHealthy ? "Llama 3.3 70B" : (aiGemini ? "Gemini 2.5 Flash" : "Nemotron 3 120B"),
+        primaryModel: isGroqHealthy ? "GPT-OSS 120B" : (aiGemini ? "Gemini 2.5 Flash" : "Nemotron 3 120B"),
         fallbackModel: isGroqHealthy ? (aiGemini ? "Gemini 2.5 Flash" : "Nemotron 3 120B (OpenRouter)") : (aiGemini ? "Nemotron 3 120B (OpenRouter)" : "None"),
         status: "online",
-        label: isGroqHealthy ? "Llama 3.3 70B · Groq AI" : (aiGemini ? "Switched to Gemini" : "Nemotron 3 120B · OpenRouter")
+        label: isGroqHealthy ? "GPT-OSS 120B · Groq AI" : (aiGemini ? "Switched to Gemini" : "Nemotron 3 120B · OpenRouter")
     }
 }
 

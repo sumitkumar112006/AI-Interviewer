@@ -48,6 +48,9 @@ const Home = () => {
     const { user } = useAuth()
     const { loading, report, generateReport, reports, getReports, deleteReport } = useInterview()
     const isReportsBlocked = Boolean(user?.blockedFeatures?.interviewReports)
+    const isResumeBlocked = Boolean(user?.blockedFeatures?.resumeGeneration)
+    const isGenerationBlocked = isReportsBlocked || isResumeBlocked
+
     const [formData, setFormData] = useState({ jobDescription: '', selfDescription: '' })
     const [selectedFileName, setSelectedFileName] = useState('')
     const [isDragOver, setIsDragOver] = useState(false)
@@ -99,6 +102,7 @@ const Home = () => {
     }
 
     const handleGenerateReport = async () => {
+        if (isGenerationBlocked) return
         try {
             const resumeFile = resumeInputRef.current.files[0]
             if (!resumeFile) { alert('Please upload a resume PDF file.'); return }
@@ -338,12 +342,12 @@ const Home = () => {
                         <button
                             onClick={handleGenerateReport}
                             className='generate-btn'
-                            disabled={loading || isReportsBlocked}
-                            style={isReportsBlocked ? { background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.4)', color: '#f87171', cursor: 'not-allowed' } : {}}
-                            title={isReportsBlocked ? "Disabled by Administrator" : ""}
+                            disabled={loading || isGenerationBlocked}
+                            style={isGenerationBlocked ? { background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.4)', color: '#f87171', cursor: 'not-allowed' } : {}}
+                            title={isGenerationBlocked ? "Disabled by Administrator" : ""}
                         >
-                            {isReportsBlocked ? (
-                                <span>❌ Disabled by Admin</span>
+                            {isGenerationBlocked ? (
+                                <span>🔒 Locked by Admin</span>
                             ) : loading ? (
                                 <><span className="btn-spinner" /> <span>Generating...</span></>
                             ) : (

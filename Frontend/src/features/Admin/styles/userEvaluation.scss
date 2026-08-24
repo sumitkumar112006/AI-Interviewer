@@ -297,70 +297,174 @@
     }
 }
 
-.credit-action-box {
+.credits-sliders-form {
     display: flex;
     flex-direction: column;
-    gap: 0.85rem;
+    gap: 1.25rem;
 
-    .input-label {
-        font-size: 0.82rem;
-        font-weight: 600;
-        color: #cbd5e1;
+    .slider-divider {
+        border: 0;
+        height: 1px;
+        background: rgba(255, 255, 255, 0.08);
+        margin: 0.25rem 0;
     }
 
-    .presets-row {
-        display: flex;
-        gap: 0.5rem;
-
-        .preset-pill {
-            flex: 1;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #e2e8f0;
-            padding: 0.4rem 0.5rem;
-            border-radius: 0.5rem;
-            font-size: 0.8rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.2s ease;
-
-            &:hover {
-                background: rgba(99, 102, 241, 0.2);
-                border-color: #6366f1;
-                color: #818cf8;
-            }
-        }
-    }
-
-    .credit-input-group {
+    .credit-slider-block {
         display: flex;
         flex-direction: column;
         gap: 0.75rem;
 
-        .credit-number-input {
-            width: 100%;
-            background: #090e17;
-            border: 1px solid #1e293b;
-            color: #ffffff;
-            padding: 0.75rem 1rem;
-            border-radius: 0.65rem;
-            font-size: 1rem;
-            font-weight: 700;
-            outline: none;
-            box-sizing: border-box;
+        .slider-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
 
-            &:focus {
-                border-color: #38bdf8;
+            .slider-label {
+                font-size: 0.85rem;
+                font-weight: 700;
+                color: #e2e8f0;
+            }
+
+            .slider-val-badge {
+                display: flex;
+                align-items: center;
+                gap: 0.3rem;
+                background: rgba(15, 23, 42, 0.9);
+                border: 1px solid #1e293b;
+                padding: 0.2rem 0.6rem;
+                border-radius: 999px;
+                font-size: 0.8rem;
+
+                .val-num {
+                    font-weight: 800;
+
+                    &.positive { color: #34d399; }
+                    &.negative { color: #f87171; }
+                    &.zero { color: #94a3b8; }
+                }
+
+                .val-unit {
+                    color: #64748b;
+                    font-size: 0.72rem;
+                }
             }
         }
 
-        .credit-btn-group {
+        .slider-controls-row {
             display: flex;
+            align-items: center;
             gap: 0.75rem;
 
-            .eval-btn {
+            .credit-range-slider {
                 flex: 1;
-                justify-content: center;
+                height: 8px;
+                border-radius: 4px;
+                background: #1e293b;
+                outline: none;
+                accent-color: #6366f1;
+                cursor: pointer;
+
+                &.gen-slider {
+                    accent-color: #38bdf8;
+                }
+
+                &.ai-slider {
+                    accent-color: #a855f7;
+                }
+            }
+
+            .credit-number-input {
+                width: 75px;
+                background: #090e17;
+                border: 1px solid #1e293b;
+                color: #ffffff;
+                padding: 0.4rem 0.5rem;
+                border-radius: 0.5rem;
+                font-size: 0.9rem;
+                font-weight: 700;
+                text-align: center;
+                outline: none;
+
+                &:focus {
+                    border-color: #38bdf8;
+                }
+            }
+        }
+
+        .presets-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+
+            .preset-pill {
+                flex: 1;
+                min-width: 42px;
+                background: rgba(255, 255, 255, 0.04);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                color: #cbd5e1;
+                padding: 0.3rem 0.4rem;
+                border-radius: 0.45rem;
+                font-size: 0.75rem;
+                font-weight: 700;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                text-align: center;
+
+                &:hover {
+                    background: rgba(99, 102, 241, 0.2);
+                    border-color: #6366f1;
+                    color: #ffffff;
+                }
+
+                &.negative {
+                    &:hover {
+                        background: rgba(239, 68, 68, 0.2);
+                        border-color: #ef4444;
+                        color: #f87171;
+                    }
+                }
+            }
+        }
+
+        .net-limit-preview {
+            font-size: 0.78rem;
+            color: #94a3b8;
+            background: rgba(255, 255, 255, 0.02);
+            padding: 0.4rem 0.75rem;
+            border-radius: 0.5rem;
+            border: 1px dashed rgba(255, 255, 255, 0.06);
+
+            strong {
+                color: #38bdf8;
+            }
+        }
+    }
+
+    .save-credits-action-row {
+        margin-top: 0.5rem;
+
+        .save-credits-btn {
+            width: 100%;
+            justify-content: center;
+            padding: 0.75rem;
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            color: #ffffff;
+            font-size: 0.92rem;
+            font-weight: 700;
+            border: none;
+            border-radius: 0.65rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+
+            &:hover:not(:disabled) {
+                box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+                transform: translateY(-1px);
+            }
+
+            &:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
             }
         }
     }

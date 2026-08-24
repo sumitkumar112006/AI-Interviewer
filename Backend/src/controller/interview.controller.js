@@ -6,6 +6,7 @@ const interviewReportModle = require('../models/interviewReport.model')
 const interviewReportModel = require('../models/interviewReport.model')
 const { getCache, setCache, deleteCache } = require('../services/redis.service')
 const { processReportSkills, aggregateSkillAnalytics } = require('../services/skills.service')
+const { getUserGenCredits } = require('../middleware/rateLimiter.middleware')
 
 async function generateInterviewReportController(req, res, next) {
     try {
@@ -37,8 +38,11 @@ async function generateInterviewReportController(req, res, next) {
             ...interviewReportByAI
         })
 
+        const userIdStr = req.user.id || req.user._id?.toString()
+        const userObjectId = mongoose.Types.ObjectId.isValid(userIdStr) ? new mongoose.Types.ObjectId(userIdStr) : userIdStr
+
         const interviewReport = await interviewReportModle.create({
-            user: req.user.id,
+            user: userObjectId,
             resume: resumeContent.text,
             selfDescription,
             jobDescription,
@@ -47,11 +51,13 @@ async function generateInterviewReportController(req, res, next) {
         })
 
         // Invalidate user reports cache
-        await deleteCache(`cache:reports:user:${req.user.id}`)
+        await deleteCache(`cache:reports:user:${userIdStr}`)
+        if (req.user.id) await deleteCache(`cache:reports:user:${req.user.id}`)
 
         res.status(201).json({
             message: "Interview Report Generated Successfully !",
-            interviewReport
+            interviewReport,
+            genCredits: req.genCredits
         })
     } catch (error) {
         next(error)
@@ -61,6 +67,8 @@ async function generateInterviewReportController(req, res, next) {
 async function getInterviewReportByIdController(req, res, next) {
     try {
         const { interviewId } = req.params
+        const userIdStr = req.user.id || req.user._id?.toString()
+        const userObjectId = mongoose.Types.ObjectId.isValid(userIdStr) ? new mongoose.Types.ObjectId(userIdStr) : userIdStr
 
         if (!mongoose.isValidObjectId(interviewId)) {
             return res.status(400).json({
@@ -68,7 +76,7 @@ async function getInterviewReportByIdController(req, res, next) {
             })
         }
 
-        const cacheKey = `cache:report:${interviewId}:${req.user.id}`
+        const cacheKey = `cache:report:${interviewId}:${userIdStr}`
         const cachedReport = await getCache(cacheKey)
 
         if (cachedReport) {
@@ -79,7 +87,10 @@ async function getInterviewReportByIdController(req, res, next) {
 
         const interviewReport = await interviewReportModle.findOne({
             _id: interviewId,
-            user: req.user.id
+            $or: [
+                { user: userObjectId },
+                { user: userIdStr }
+            ]
         })
 
         if (!interviewReport) {
@@ -100,15 +111,25 @@ async function getInterviewReportByIdController(req, res, next) {
 
 async function getAllInterviewReportController(req, res, next) {
     try {
-        const cacheKey = `cache:reports:user:${req.user.id}`
-        const cachedSummary = await getCache(cacheKey)
+        const userIdStr = req.user.id || req.user._id?.toString()
+        const userObjectId = mongoose.Types.ObjectId.isValid(userIdStr) ? new mongoose.Types.ObjectId(userIdStr) : userIdStr
+        const cacheKey = `cache:reports:user:${userIdStr}`
+        const forceRefresh = req.query.refresh === 'true'
 
-        if (cachedSummary) {
-            return res.status(200).json(cachedSummary)
+        if (!forceRefresh) {
+            const cachedSummary = await getCache(cacheKey)
+            if (cachedSummary && Array.isArray(cachedSummary.interviewReports) && cachedSummary.interviewReports.length > 0) {
+                return res.status(200).json(cachedSummary)
+            }
         }
 
         const interviewReports = await interviewReportModle
-            .find({ user: req.user.id })
+            .find({
+                $or: [
+                    { user: userObjectId },
+                    { user: userIdStr }
+                ]
+            })
             .sort({ createdAt: -1 })
 
         const reportsWithHash = interviewReports.map(report => {
@@ -133,7 +154,6 @@ async function getAllInterviewReportController(req, res, next) {
         })
 
         const uniqueResumes = new Set(reportsWithHash.map(r => r.resumeHash))
-
         const skillAnalytics = aggregateSkillAnalytics(interviewReports)
 
         const responseData = {
@@ -143,7 +163,11 @@ async function getAllInterviewReportController(req, res, next) {
             interviewReports: reportsWithHash
         }
 
-        await setCache(cacheKey, responseData, 600)
+        if (reportsWithHash.length > 0) {
+            await setCache(cacheKey, responseData, 600)
+        } else {
+            await deleteCache(cacheKey)
+        }
 
         res.status(200).json(responseData)
     } catch (error) {
@@ -153,8 +177,16 @@ async function getAllInterviewReportController(req, res, next) {
 
 async function getSkillAnalyticsController(req, res, next) {
     try {
+        const userIdStr = req.user.id || req.user._id?.toString()
+        const userObjectId = mongoose.Types.ObjectId.isValid(userIdStr) ? new mongoose.Types.ObjectId(userIdStr) : userIdStr
+
         const interviewReports = await interviewReportModle
-            .find({ user: req.user.id })
+            .find({
+                $or: [
+                    { user: userObjectId },
+                    { user: userIdStr }
+                ]
+            })
             .sort({ createdAt: -1 })
 
         const skillAnalytics = aggregateSkillAnalytics(interviewReports)
@@ -171,6 +203,7 @@ async function getSkillAnalyticsController(req, res, next) {
 async function generateResumePdfController(req, res, next) {
     try {
         const { interviewReportId } = req.params
+        const forceRegenerate = req.query.force === 'true' || req.body?.force === true
 
         if (!mongoose.isValidObjectId(interviewReportId)) {
             return res.status(400).json({
@@ -189,14 +222,25 @@ async function generateResumePdfController(req, res, next) {
             })
         }
 
-        // If HTML already exists, return the report as-is
-        if (interviewReport.generatedResumeHtml) {
-            return res.status(200).json({ interviewReport })
+        // If HTML already exists and force regeneration is not requested, return saved report as-is
+        if (interviewReport.generatedResumeHtml && !forceRegenerate) {
+            return res.status(200).json({ interviewReport, genCredits: req.genCredits })
         }
 
-        // Generate resume HTML from AI and persist it
-        const { resume, selfDescription, jobDescription } = interviewReport
-        const generatedHtml = await generateResumeHtml({ resume, selfDescription, jobDescription })
+        // Sanitize resume text — if it's an ObjectId string, clear it so prompt doesn't render raw ID
+        let resumeText = (interviewReport.resume || '').trim()
+        if (/^[a-f0-9]{24}$/i.test(resumeText)) {
+            resumeText = ''
+        }
+
+        // Generate fresh resume HTML from AI and persist it
+        const { selfDescription, jobDescription } = interviewReport
+        const generatedHtml = await generateResumeHtml({
+            resume: resumeText || selfDescription || jobDescription,
+            selfDescription,
+            jobDescription
+        })
+
         interviewReport.generatedResumeHtml = generatedHtml
         await interviewReport.save()
 
@@ -204,7 +248,7 @@ async function generateResumePdfController(req, res, next) {
         const cacheKey = `cache:report:${interviewReportId}:${req.user.id}`
         await deleteCache(cacheKey)
 
-        res.status(200).json({ interviewReport })
+        res.status(200).json({ interviewReport, genCredits: req.genCredits })
     } catch (error) {
         console.error("generateResumePdfController error:", error)
         next(error)
@@ -331,7 +375,11 @@ async function rewriteResumeSectionController(req, res, next) {
 
 async function getAiModelInfoController(req, res, next) {
     try {
-        res.status(200).json(getAIStatus());
+        const genCredits = await getUserGenCredits(req.user);
+        res.status(200).json({
+            ...getAIStatus(),
+            genCredits
+        });
     } catch (error) {
         next(error);
     }

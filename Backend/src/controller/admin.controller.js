@@ -1,5 +1,4 @@
 const userModel = require("../models/user.model");
-const adminModel = require("../models/admin.model");
 const interviewReportModel = require("../models/interviewReport.model");
 const coverLetterModel = require("../models/coverLetter.model");
 const mongoose = require("mongoose");
@@ -15,7 +14,7 @@ async function getAdminStatsController(req, res) {
     try {
         const [totalUsers, totalAdmins, totalReports, totalCoverLetters, blockedUsers] = await Promise.all([
             userModel.countDocuments(),
-            adminModel.countDocuments(),
+            userModel.countDocuments({ role: { $in: ['admin', 'super_admin'] } }),
             interviewReportModel.countDocuments(),
             coverLetterModel.countDocuments(),
             userModel.countDocuments({ isBlocked: true })
@@ -104,6 +103,10 @@ async function getAdminUsersController(req, res) {
             query.plan = plan.toLowerCase();
         }
 
+        if (role) {
+            query.role = role.toLowerCase();
+        }
+
         if (blocked !== "") {
             query.isBlocked = blocked === "true";
         }
@@ -112,31 +115,10 @@ async function getAdminUsersController(req, res) {
         const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10)));
         const skip = (pageNum - 1) * limitNum;
 
-        let accounts = [];
-        let total = 0;
-
-        if (role === 'admin' || role === 'super_admin') {
-            // Query dedicated admins collection
-            const adminQuery = {};
-            if (search.trim()) {
-                const searchRegex = new RegExp(search.trim(), "i");
-                adminQuery.$or = [{ username: searchRegex }, { email: searchRegex }];
-            }
-            if (role) adminQuery.role = role.toLowerCase();
-
-            [accounts, total] = await Promise.all([
-                adminModel.find(adminQuery).select("-password").sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
-                adminModel.countDocuments(adminQuery)
-            ]);
-        } else {
-            // Query users collection
-            if (role) query.role = role.toLowerCase();
-
-            [accounts, total] = await Promise.all([
-                userModel.find(query).select("-password").sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
-                userModel.countDocuments(query)
-            ]);
-        }
+        const [accounts, total] = await Promise.all([
+            userModel.find(query).select("-password").sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
+            userModel.countDocuments(query)
+        ]);
 
         // Aggregate generated report counts for each account
         const accountIds = accounts.map(u => u._id);
@@ -181,7 +163,7 @@ async function getAdminUsersController(req, res) {
 
 /**
  * @name updateUserRoleController
- * @description Update a user's role ('user', 'admin', 'super_admin') and sync admins collection
+ * @description Update a user's role ('user', 'admin', 'super_admin')
  * @access Private (Admin Only)
  */
 async function updateUserRoleController(req, res) {
@@ -196,65 +178,20 @@ async function updateUserRoleController(req, res) {
 
         const targetRole = role.toLowerCase();
 
-        // 1. Try finding in userModel
-        let user = await userModel.findById(userId);
-        let adminDoc = await adminModel.findById(userId);
+        const user = await userModel.findByIdAndUpdate(
+            userId,
+            { role: targetRole },
+            { new: true }
+        ).select("-password");
 
-        if (!user && !adminDoc) {
-            // Lookup by ID in both
-            user = await userModel.findById(userId);
-            adminDoc = await adminModel.findById(userId);
-        }
-
-        if (!user && !adminDoc) {
+        if (!user) {
             return res.status(404).json({ message: "Account not found." });
         }
 
-        if (targetRole === 'admin' || targetRole === 'super_admin') {
-            const emailToUse = user ? user.email : adminDoc.email;
-            const usernameToUse = user ? user.username : adminDoc.username;
-            const passwordToUse = user ? user.password : adminDoc.password;
-
-            let targetAdmin = await adminModel.findOne({ email: emailToUse });
-            if (!targetAdmin) {
-                targetAdmin = new adminModel({
-                    username: usernameToUse,
-                    email: emailToUse,
-                    password: passwordToUse,
-                    role: targetRole,
-                    isVerified: true
-                });
-            } else {
-                targetAdmin.role = targetRole;
-            }
-            await targetAdmin.save();
-
-            if (user) {
-                user.role = targetRole;
-                await user.save();
-            }
-
-            return res.status(200).json({
-                message: `Account ${emailToUse} promoted to Administrator (${targetRole.toUpperCase()}) in 'admins' table.`,
-                user: targetAdmin
-            });
-        } else {
-            // Downgrade to regular user
-            if (user) {
-                user.role = 'user';
-                await user.save();
-            }
-
-            const emailToUse = user ? user.email : adminDoc?.email;
-            if (emailToUse) {
-                await adminModel.deleteMany({ email: emailToUse });
-            }
-
-            return res.status(200).json({
-                message: `Account ${emailToUse || userId} set to standard 'USER' role.`,
-                user: user || adminDoc
-            });
-        }
+        return res.status(200).json({
+            message: `User ${user.username} (${user.email}) role updated to '${targetRole.toUpperCase()}'.`,
+            user
+        });
     } catch (err) {
         return res.status(500).json({ message: err.message || "Failed to update user role." });
     }
@@ -262,7 +199,7 @@ async function updateUserRoleController(req, res) {
 
 /**
  * @name createAdminAccountController
- * @description Create a brand new Administrator account in the dedicated 'admins' table
+ * @description Create a brand new Administrator user account in users table
  * @access Private (Admin Only)
  */
 async function createAdminAccountController(req, res) {
@@ -278,24 +215,25 @@ async function createAdminAccountController(req, res) {
         }
 
         const normalizedEmail = email.trim().toLowerCase();
-        const existingAdmin = await adminModel.findOne({ email: normalizedEmail });
+        const existingUser = await userModel.findOne({ email: normalizedEmail });
 
-        if (existingAdmin) {
-            return res.status(400).json({ message: "An administrator with this email already exists." });
+        if (existingUser) {
+            return res.status(400).json({ message: "An account with this email already exists." });
         }
 
         const hash = await bcrypt.hash(password, 10);
 
-        const newAdmin = await adminModel.create({
+        const newAdmin = await userModel.create({
             username: username.trim(),
             email: normalizedEmail,
             password: hash,
             role: ['super_admin', 'admin'].includes(role.toLowerCase()) ? role.toLowerCase() : 'admin',
-            isVerified: true
+            isVerified: true,
+            plan: 'premium'
         });
 
         return res.status(201).json({
-            message: `New Administrator account '${newAdmin.username}' created successfully in 'admins' table.`,
+            message: `New Administrator account '${newAdmin.username}' created successfully.`,
             admin: {
                 id: newAdmin._id,
                 username: newAdmin.username,
@@ -518,7 +456,7 @@ async function updateUserFeatureAccessController(req, res) {
 async function getUserByIdController(req, res) {
     try {
         const { userId } = req.params;
-        const user = await userModel.findById(userId).select("username email plan role isBlocked customBonusCredits blockedFeatures createdAt");
+        const user = await userModel.findById(userId).select("username email plan role isBlocked customBonusCredits customAiBonusCredits blockedFeatures createdAt");
         if (!user) {
             return res.status(404).json({ message: "User not found." });
         }
@@ -530,51 +468,60 @@ async function getUserByIdController(req, res) {
 
 /**
  * @name adjustUserCreditsController
- * @description Increase or reduce user custom bonus credits
+ * @description Increase or reduce user custom bonus credits (Generations & AI Assistant)
  * @access Private (Admin Only)
  */
 async function adjustUserCreditsController(req, res) {
     try {
         const { userId } = req.params;
-        const { action, amount } = req.body; // action: 'increase' | 'reduce'
-
-        if (!action || !['increase', 'reduce'].includes(action) || typeof amount !== 'number' || amount <= 0) {
-            return res.status(400).json({ message: "Valid action ('increase' or 'reduce') and positive numeric amount required." });
-        }
+        const { customBonusCredits, customAiBonusCredits, target, action, amount } = req.body;
 
         const user = await userModel.findById(userId);
         if (!user) {
             return res.status(404).json({ message: "User not found." });
         }
 
-        const currentBonus = user.customBonusCredits || 0;
-        if (action === 'increase') {
-            user.customBonusCredits = currentBonus + amount;
+        // Mode 1: Direct setting via sliders / numeric values (can be negative or positive)
+        if (typeof customBonusCredits === 'number' || typeof customAiBonusCredits === 'number') {
+            if (typeof customBonusCredits === 'number') {
+                user.customBonusCredits = customBonusCredits;
+            }
+            if (typeof customAiBonusCredits === 'number') {
+                user.customAiBonusCredits = customAiBonusCredits;
+            }
+        } 
+        // Mode 2: Targeted increment / reduction
+        else if (target && action && typeof amount === 'number') {
+            const delta = action === 'increase' ? amount : -amount;
+            if (target === 'ai') {
+                user.customAiBonusCredits = (user.customAiBonusCredits || 0) + delta;
+            } else {
+                user.customBonusCredits = (user.customBonusCredits || 0) + delta;
+            }
         } else {
-            user.customBonusCredits = currentBonus - amount;
+            return res.status(400).json({ message: "Valid credit modification parameters required." });
         }
 
         await user.save();
 
         try {
-            const actionVerb = action === 'increase' ? `granted +${amount}` : `reduced -${amount}`;
             await notificationModel.create({
                 recipient: user._id,
                 sender: req.user?._id || req.user?.id,
-                title: action === 'increase' ? "Bonus Credits Added" : "Bonus Credits Adjusted",
-                message: `An administrator ${actionVerb} bonus credits on your account. Your new total bonus credits: ${user.customBonusCredits}.`,
+                title: "Credit Balance Adjusted",
+                message: `An administrator updated your bonus credits. Generation Bonus: ${user.customBonusCredits > 0 ? '+' : ''}${user.customBonusCredits}, AI Assistant Bonus: ${user.customAiBonusCredits > 0 ? '+' : ''}${user.customAiBonusCredits}.`,
                 type: "CREDIT_UPDATE"
             });
         } catch (nErr) { console.error("Notification creation failed:", nErr); }
 
-        const actionText = action === 'increase' ? `Granted +${amount}` : `Reduced -${amount}`;
         return res.status(200).json({
-            message: `Successfully ${actionText} credits for ${user.email}. New bonus credits: ${user.customBonusCredits}.`,
+            message: `Updated credits for ${user.email}. Generation Bonus: ${user.customBonusCredits}, AI Bonus: ${user.customAiBonusCredits}.`,
             user: {
                 id: user._id,
                 username: user.username,
                 email: user.email,
-                customBonusCredits: user.customBonusCredits
+                customBonusCredits: user.customBonusCredits,
+                customAiBonusCredits: user.customAiBonusCredits
             }
         });
     } catch (err) {
@@ -596,15 +543,16 @@ async function sendAdminMessageController(req, res) {
             return res.status(400).json({ message: "Both notification title and message text are required." });
         }
 
-        if (!targetType || !['user', 'plan', 'all'].includes(targetType)) {
-            return res.status(400).json({ message: "targetType must be one of 'user', 'plan', or 'all'." });
+        const validTypes = ['all', 'free', 'pro', 'premium', 'user', 'plan'];
+        if (!targetType || !validTypes.includes(targetType)) {
+            return res.status(400).json({ message: "Invalid targetType selected." });
         }
 
         let recipients = [];
 
         if (targetType === 'user') {
             if (!targetValue || !targetValue.trim()) {
-                return res.status(400).json({ message: "User email or ID required for targetType 'user'." });
+                return res.status(400).json({ message: "User email or ID required for individual user." });
             }
             let query = {};
             if (mongoose.Types.ObjectId.isValid(targetValue.trim())) {
@@ -617,11 +565,12 @@ async function sendAdminMessageController(req, res) {
                 return res.status(404).json({ message: `No user found for identifier '${targetValue}'.` });
             }
             recipients = [targetUser._id];
+        } else if (['free', 'pro', 'premium'].includes(targetType)) {
+            const matchingUsers = await userModel.find({ plan: targetType }).select('_id');
+            recipients = matchingUsers.map(u => u._id);
         } else if (targetType === 'plan') {
-            if (!targetValue || !['free', 'pro', 'premium'].includes(targetValue.toLowerCase())) {
-                return res.status(400).json({ message: "Valid plan ('free', 'pro', or 'premium') required for targetType 'plan'." });
-            }
-            const matchingUsers = await userModel.find({ plan: targetValue.toLowerCase() }).select('_id');
+            const planName = (targetValue || 'free').toLowerCase();
+            const matchingUsers = await userModel.find({ plan: planName }).select('_id');
             recipients = matchingUsers.map(u => u._id);
         } else if (targetType === 'all') {
             const allUsers = await userModel.find({}).select('_id');

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { generateResumePdf, getInterviewReportById, updateResumeHtml, rewriteResumeSection } from '../services/interview.api'
 import { useInterview } from '../hooks/useInterview'
 import { useAuth } from '../../Auth/hooks/useAuth'
+import ShimmerLoading from '../../Shared/components/ShimmerLoading'
 import Loading from '../Loading'
 import ResumeEditor from '../components/ResumeEditor'
 import { exportElementToPdf } from '../utils/exportToPdf'
@@ -21,11 +22,13 @@ function extractObjectId(value) {
 const Resume = () => {
     const { interviewId } = useParams()
     const navigate = useNavigate()
-    const { loading, setLoading, report, getReoprtById, updateNewResume } = useInterview()
-    const { fetchUsage } = useAuth()
+    const { report, loading, setLoading, getReoprtById, updateNewResume } = useInterview()
+    const { user, fetchUsage } = useAuth()
 
     const [error, setError]           = useState('')
     const [htmlContent, setHtmlContent] = useState('')
+    const [dbLoading, setDbLoading]     = useState(true)
+    const [aiGenerating, setAiGenerating] = useState(false)
     const [isDirty, setIsDirty]       = useState(false)
     const [saveLoading, setSaveLoading] = useState(false)
     const [printLoading, setPrintLoading] = useState(false)
@@ -46,7 +49,7 @@ const Resume = () => {
     useEffect(() => {
         let mounted = true
         async function init() {
-            setLoading(true)
+            setDbLoading(true)
             setError('')
             try {
                 const fetched = await getReoprtById(interviewId)
@@ -54,18 +57,25 @@ const Resume = () => {
 
                 if (fetched?.generatedResumeHtml) {
                     setHtmlContent(sanitizeResumeHtml(fetched.generatedResumeHtml))
+                    setDbLoading(false)
                 } else {
                     // Trigger AI HTML generation on backend
+                    setDbLoading(false)
+                    setAiGenerating(true)
                     await generateResumePdf(interviewId)
                     const updated = await getReoprtById(interviewId)
                     if (mounted && updated?.generatedResumeHtml) {
                         setHtmlContent(sanitizeResumeHtml(updated.generatedResumeHtml))
+                        if (fetchUsage) fetchUsage()
                     }
+                    if (mounted) setAiGenerating(false)
                 }
             } catch (err) {
                 if (mounted) setError(err?.response?.data?.message || err?.message || 'Failed to load resume.')
-            } finally {
-                if (mounted) setLoading(false)
+                if (mounted) {
+                    setDbLoading(false)
+                    setAiGenerating(false)
+                }
             }
         }
         init()
@@ -89,9 +99,10 @@ const Resume = () => {
         return () => document.removeEventListener('mouseup', onMouseUp)
     }, [])
 
-    const displayTitle = useMemo(() =>
-        report?.developerTitle || report?.Title || report?.title || 'Generated Resume'
-    , [report])
+    const displayTitle = useMemo(() => {
+        if (!report) return 'Resume'
+        return report.developerTitle || report?.Title || report?.title || 'Generated Resume'
+    }, [report])
 
     // ── Save ───────────────────────────────────────────────────────────────
     const handleSave = useCallback(async () => {
@@ -100,15 +111,17 @@ const Resume = () => {
         setError('')
         try {
             const html = editorRef.current.getHtml()
-            await updateNewResume(html)
-            setHtmlContent(html)
+            await updateResumeHtml(interviewId, html)
+            updateNewResume(interviewId, html)
+            setHtmlContent(sanitizeResumeHtml(html))
             setIsDirty(false)
+            if (fetchUsage) fetchUsage()
         } catch (err) {
-            setError(err?.response?.data?.message || err?.message || 'Failed to save.')
+            setError(err?.response?.data?.message || err?.message || 'Failed to save resume.')
         } finally {
             setSaveLoading(false)
         }
-    }, [updateNewResume])
+    }, [interviewId, updateNewResume, fetchUsage])
 
     // ── Direct 1-Click PDF Export ─────────────────────────────────────────
     const handlePrint = useCallback(async () => {
@@ -118,8 +131,8 @@ const Resume = () => {
             // Auto-save edits first if dirty
             if (isDirty && editorRef.current) {
                 const html = editorRef.current.getHtml()
-                await updateNewResume(html)
-                setHtmlContent(html)
+                await updateResumeHtml(interviewId, html)
+                updateNewResume(interviewId, html)
                 setIsDirty(false)
             }
             const el = document.querySelector('.tiptap-a4-page')
@@ -132,21 +145,36 @@ const Resume = () => {
         } finally {
             setPrintLoading(false)
         }
-    }, [isDirty, updateNewResume, displayTitle, fetchUsage])
+    }, [isDirty, interviewId, updateNewResume, displayTitle, fetchUsage])
+
+    const isResumeBlocked = Boolean(user?.blockedFeatures?.resumeGeneration)
 
     // ── Regenerate ─────────────────────────────────────────────────────────
     const handleRegenerate = useCallback(async () => {
-        if (!window.confirm('Regenerate the resume from scratch? Your edits will be discarded.')) return
-        setLoading(true)
+        if (isResumeBlocked) return
+        if (!window.confirm('Regenerate the resume from scratch with AI? Your manual edits will be discarded.')) return
+        setAiGenerating(true)
         setError('')
         try {
-            await updateNewResume('')
-            window.location.reload()
+            const response = await generateResumePdf(interviewId, { force: true })
+            const newReport = response?.interviewReport || response
+            if (newReport?.generatedResumeHtml) {
+                const sanitized = sanitizeResumeHtml(newReport.generatedResumeHtml)
+                setHtmlContent(sanitized)
+                if (editorRef.current) {
+                    editorRef.current.setContent(sanitized)
+                }
+                setIsDirty(false)
+                if (fetchUsage) fetchUsage()
+            } else {
+                throw new Error('Failed to generate fresh resume content.')
+            }
         } catch (err) {
-            setError(err?.message || 'Failed to regenerate.')
-            setLoading(false)
+            setError(err?.response?.data?.message || err?.message || 'Failed to regenerate resume.')
+        } finally {
+            setAiGenerating(false)
         }
-    }, [updateNewResume, setLoading])
+    }, [interviewId, isResumeBlocked, fetchUsage])
 
     // ── AI Copilot ─────────────────────────────────────────────────────────
     const handleSendAi = useCallback(async (e, preset = null) => {
@@ -188,7 +216,7 @@ const Resume = () => {
         } finally {
             setChatLoading(false)
         }
-    }, [chatInput, selectedText])
+    }, [chatInput, selectedText, fetchUsage])
 
     const handleApplySnippet = useCallback((snippet) => {
         if (!snippet || !editorRef.current) return
@@ -196,10 +224,27 @@ const Resume = () => {
         setIsDirty(true)
     }, [])
 
-    if (loading && !htmlContent) return <Loading />
+    const RESUME_STEPS = [
+        { id: 1, label: "Analyzing profile & technical skills" },
+        { id: 2, label: "Matching target job requirements" },
+        { id: 3, label: "Structuring ATS-compliant sections" },
+        { id: 4, label: "Polishing typography & design formatting" }
+    ];
+
+    if (aiGenerating) return <Loading steps={RESUME_STEPS} title="Resume Studio" subtitle="Drafting your document using AI..." />
+    if (dbLoading && !htmlContent) return <ShimmerLoading type="workspace" title="Loading Resume Studio..." />
 
     return (
         <div className="resume-page">
+            {Boolean(user?.blockedFeatures?.resumeGeneration) && (
+                <div className="blocked-feature-banner" style={{ margin: '1rem 1.5rem 0 1.5rem' }}>
+                    <span className="banner-icon">🔒</span>
+                    <div className="banner-text">
+                        <strong>Resume Generation Restricted</strong>
+                        <p>Resume generation has been disabled for your account by an administrator.</p>
+                    </div>
+                </div>
+            )}
             {/* ── Header bar ─────────────────────────────────────────── */}
             <header className="rp-header">
                 <div className="rp-header-left">
@@ -228,12 +273,13 @@ const Resume = () => {
 
                     <button
                         type="button"
-                        className="rp-btn rp-btn-ghost"
+                        className={`rp-btn ${isResumeBlocked ? 'rp-btn-disabled' : 'rp-btn-ghost'}`}
                         onClick={handleRegenerate}
-                        disabled={loading || saveLoading}
-                        title="Regenerate from scratch"
+                        disabled={loading || saveLoading || isResumeBlocked}
+                        style={isResumeBlocked ? { background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.4)', color: '#f87171', cursor: 'not-allowed' } : {}}
+                        title={isResumeBlocked ? "Resume generation disabled by administrator" : "Regenerate from scratch"}
                     >
-                        ↺ Regenerate
+                        {isResumeBlocked ? '🔒 Locked' : '↺ Regenerate'}
                     </button>
 
                     <button

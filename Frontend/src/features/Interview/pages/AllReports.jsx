@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useInterview } from '../hooks/useInterview'
 import PageLoading from '../../Shared/components/PageLoading'
+import ShimmerLoading from '../../Shared/components/ShimmerLoading'
 import '../style/allreports.scss'
 
 /* ─── helpers ─────────────────────────────────────────────── */
@@ -292,12 +293,14 @@ const AllReports = () => {
         items.forEach(r => {
             const dt = formatDateTime(r.createdAt)
             const key = dt.raw ? new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric' }).format(dt.raw) : 'Unknown'
-            if (!groups[key]) groups[key] = []
-            groups[key].push(r)
         })
         return groups
     }
     const timelineGroups = groupByMonth(timeline)
+
+    if (loading && reports === null) {
+        return <main><ShimmerLoading type="dashboard" title="Loading Analytics..." /></main>
+    }
 
     return (
         <div className="ar-page">

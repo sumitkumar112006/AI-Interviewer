@@ -9,13 +9,14 @@ import {
 import { useInterview } from '../hooks/useInterview'
 import { useAuth } from '../../Auth/hooks/useAuth'
 import Loading from '../Loading'
+import ShimmerLoading from '../../Shared/components/ShimmerLoading'
 import ResumeEditor from '../components/ResumeEditor'
 import { exportElementToPdf } from '../utils/exportToPdf'
 import { sanitizeResumeHtml, htmlToPlainText } from '../utils/sanitizeResumeHtml'
 import '../style/coverletter.scss'
 
 const CoverLetter = () => {
-    const { user } = useAuth()
+    const { user, fetchUsage } = useAuth()
     const { interviewId } = useParams()
     const navigate = useNavigate()
     const { report, getReoprtById } = useInterview()
@@ -75,12 +76,13 @@ const CoverLetter = () => {
             setCoverLetter(cl)
             setHtmlContent(sanitizeResumeHtml(cl.generatedContent))
             setIsDirty(false)
+            if (fetchUsage) fetchUsage()
         } catch (err) {
             setError(err?.response?.data?.message || err?.message || 'Failed to generate cover letter.')
         } finally {
             setGenLoading(false)
         }
-    }, [interviewId, companyName, roleName])
+    }, [interviewId, companyName, roleName, fetchUsage])
 
     // ── Save ──────────────────────────────────────────────────────────────
     const handleSave = useCallback(async () => {
@@ -138,13 +140,12 @@ const CoverLetter = () => {
             setHtmlContent('')
             setCompanyName('')
             setRoleName('')
-            setIsDirty(false)
         } catch (err) {
             setError(err?.message || 'Failed to delete.')
         }
     }, [coverLetter])
 
-    if (pageLoading) return <main><Loading /></main>
+    if (pageLoading) return <main><ShimmerLoading type="workspace" title="Loading Cover Letter..." /></main>
 
     const reportTitle = report?.developerTitle || 'Developer'
 

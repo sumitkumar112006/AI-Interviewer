@@ -1,6 +1,5 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 const mongoose = require('mongoose');
-const adminModel = require('../src/models/admin.model');
 const userModel = require('../src/models/user.model');
 const connectToDB = require('../src/config/database');
 
@@ -24,24 +23,10 @@ async function makeAdmin() {
             process.exit(1);
         }
 
-        let admin = await adminModel.findOne({ email: user.email });
-        if (!admin) {
-            admin = new adminModel({
-                username: user.username,
-                email: user.email,
-                password: user.password,
-                role: 'super_admin',
-                isVerified: true
-            });
-        } else {
-            admin.role = 'super_admin';
-        }
-
-        await admin.save();
         user.role = 'super_admin';
         await user.save();
 
-        console.log(`\n🎉 SUCCESS! User '${user.username}' (${user.email}) is now a SUPER ADMIN in 'admins' table!`);
+        console.log(`\n🎉 SUCCESS! User '${user.username}' (${user.email}) is now a SUPER ADMIN!`);
         console.log(`Now log in or refresh your browser, then navigate to:`);
         console.log(`http://localhost:5173/admin-portal-dashboard-root\n`);
 

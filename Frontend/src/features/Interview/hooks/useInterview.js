@@ -1,12 +1,14 @@
 import { getAllInterviewReport, getSkillAnalytics, generateInterviewReport, getInterviewReportById, generateResumePdf, deleteReportById, updateResumeHtml } from '../services/interview.api';
 import { useContext } from 'react';
 import { interviewContext } from '../interview.context';
+import { useAuth } from '../../Auth/hooks/useAuth';
 
 
 
 
 export const useInterview = () => {
     const context = useContext(interviewContext)
+    const { fetchUsage } = useAuth()
 
     if (!context) {
         throw new Error("useInterview must be used within an InterviewProvider")
@@ -34,6 +36,10 @@ export const useInterview = () => {
 
             // 2. UPDATE HISTORY LIST IN REAL-TIME (Add this line):
             setReports(prevReports => prevReports ? [response.interviewReport, ...prevReports] : [response.interviewReport])
+            
+            // 3. Refresh navbar credit limits in real-time
+            if (fetchUsage) fetchUsage()
+            
             return response.interviewReport
         } catch (err) {
             console.error('Generate report error:', err)
@@ -79,11 +85,12 @@ export const useInterview = () => {
         }
     }
 
-    const getResumePdf = async (interviewReportId) => {
+    const getResumePdf = async (interviewReportId, options = {}) => {
         setLoading(true)
 
         try {
-            const response = await generateResumePdf(interviewReportId)
+            const response = await generateResumePdf(interviewReportId, options)
+            if (fetchUsage) fetchUsage()
             return response
         } catch (error) {
             console.log(error)
