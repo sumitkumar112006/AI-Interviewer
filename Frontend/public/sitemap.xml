@@ -1,45 +1,61 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+
+  <!-- Homepage — highest priority -->
   <url>
     <loc>https://ai-interviewer-silk.vercel.app/</loc>
-    <lastmod>2026-08-23</lastmod>
+    <lastmod>2026-08-29</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://ai-interviewer-silk.vercel.app/Logo.png</image:loc>
+      <image:title>Kivi AI – Free AI Resume Builder and Mock Interview Platform</image:title>
+      <image:caption>Kivi AI helps you build ATS-optimized resumes, practice mock interviews, and generate cover letters with AI.</image:caption>
+    </image:image>
   </url>
+
+  <!-- Auth pages — public entry points for new users -->
   <url>
     <loc>https://ai-interviewer-silk.vercel.app/login</loc>
-    <lastmod>2026-08-23</lastmod>
+    <lastmod>2026-08-29</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://ai-interviewer-silk.vercel.app/register</loc>
-    <lastmod>2026-08-23</lastmod>
+    <lastmod>2026-08-29</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
+    <priority>0.9</priority>
   </url>
+
+  <!-- About & Contact — important for trust signals and E-E-A-T -->
   <url>
     <loc>https://ai-interviewer-silk.vercel.app/about-us</loc>
-    <lastmod>2026-08-23</lastmod>
+    <lastmod>2026-08-29</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://ai-interviewer-silk.vercel.app/contact-us</loc>
-    <lastmod>2026-08-23</lastmod>
+    <lastmod>2026-08-29</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
+    <priority>0.7</priority>
   </url>
+
+  <!-- Legal pages — required for trust but low crawl priority -->
   <url>
     <loc>https://ai-interviewer-silk.vercel.app/privacy-policy</loc>
-    <lastmod>2026-08-23</lastmod>
+    <lastmod>2026-08-29</lastmod>
     <changefreq>yearly</changefreq>
-    <priority>0.4</priority>
+    <priority>0.3</priority>
   </url>
   <url>
     <loc>https://ai-interviewer-silk.vercel.app/terms-of-service</loc>
-    <lastmod>2026-08-23</lastmod>
+    <lastmod>2026-08-29</lastmod>
     <changefreq>yearly</changefreq>
-    <priority>0.4</priority>
+    <priority>0.3</priority>
   </url>
+
 </urlset>

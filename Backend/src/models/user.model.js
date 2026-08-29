@@ -42,6 +42,13 @@ const userSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    generationsUsed: {
+        type: Number,
+        default: 0
+    },
+    generationsResetAt: {
+        type: Date    // synced with subscription.currentPeriodEnd
+    },
     blockedFeatures: {
         aiAssistant: { type: Boolean, default: false },
         resumeGeneration: { type: Boolean, default: false },

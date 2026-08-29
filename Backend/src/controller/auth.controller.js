@@ -2,6 +2,7 @@ const userModel = require("../models/user.model");
 const adminModel = require("../models/admin.model");
 const blacklistModel = require("../models/blacklist_model");
 const otpModel = require("../models/otp.model");
+const subscriptionModel = require("../models/subscription.model");
 const bcrypt = require('bcryptjs');
 const JWT = require('jsonwebtoken');
 const { isEmailDomainReal } = require("../utils/emailValidator");
@@ -134,12 +135,27 @@ async function registerUserController(req, res) {
         }
 
         const hash = await bcrypt.hash(password, 10);
+        const now = new Date();
         const user = await userModel.create({
             username,
             email: normalizedEmail,
             password: hash,
-            isVerified: false
+            isVerified: false,
+            generationsUsed: 0,
+            generationsResetAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) // 30 days
         });
+
+        // Create or update subscription with 30-day billing period (upsert to handle re-registration)
+        await subscriptionModel.findOneAndUpdate(
+            { userId: user._id },
+            {
+                plan: 'free',
+                status: 'active',
+                startedAt: now,
+                currentPeriodEnd: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+            },
+            { upsert: true, new: true }
+        );
 
         // Generate 6-digit OTP
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -616,6 +632,7 @@ async function getUserUsageController(req, res) {
             return res.status(404).json({ message: "User not found" });
         }
 
+        // Generation credits — now read from MongoDB
         const { getUserGenCredits } = require('../middleware/rateLimiter.middleware');
         const genCredits = await getUserGenCredits(user);
         const userPlan = genCredits.plan;
@@ -627,13 +644,15 @@ async function getUserUsageController(req, res) {
         const aiLimits = { free: 10, pro: 100, premium: 500 };
         const aiLimit = Math.max(0, (aiLimits[userPlan] || 10) + aiBonus);
 
+        // AI assistant usage — still from Redis (daily limit, key matches rate limiter)
         let aiUsed = 0;
-
         try {
             const { getRedisClient } = require('../config/redis');
             const redis = getRedisClient();
             if (redis && (redis.status === 'ready' || redis.status === 'connect')) {
-                const aiKey = `ratelimit:ai-assistant:${userPlan}:user:${userId}`;
+                // Fixed key: must match the key format used by createTieredRateLimiter
+                // Rate limiter writes to: ratelimit:ai-assistant:user:{userId}
+                const aiKey = `ratelimit:ai-assistant:user:${userId}`;
                 const aiVal = await redis.get(aiKey);
                 aiUsed = parseInt(aiVal || '0', 10);
             }

@@ -1,6 +1,7 @@
 const userModel = require("../models/user.model");
 const interviewReportModel = require("../models/interviewReport.model");
 const coverLetterModel = require("../models/coverLetter.model");
+const subscriptionModel = require("../models/subscription.model");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const notificationModel = require("../models/notification.model");
@@ -260,15 +261,37 @@ async function updateUserPlanController(req, res) {
             return res.status(400).json({ message: "Invalid plan. Allowed: 'free', 'pro', 'premium'." });
         }
 
+        const normalizedPlan = plan.toLowerCase();
+        const now = new Date();
+        const newPeriodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+        // Update user plan and reset generation credits for the new billing period
         const user = await userModel.findByIdAndUpdate(
             userId,
-            { plan: plan.toLowerCase() },
+            {
+                plan: normalizedPlan,
+                generationsUsed: 0,
+                generationsResetAt: newPeriodEnd
+            },
             { new: true }
         ).select("-password");
 
         if (!user) {
             return res.status(404).json({ message: "User not found." });
         }
+
+        // Create or update subscription document
+        await subscriptionModel.findOneAndUpdate(
+            { userId: userId },
+            {
+                plan: normalizedPlan,
+                status: 'active',
+                startedAt: now,
+                currentPeriodEnd: newPeriodEnd,
+                cancelAtPeriodEnd: false
+            },
+            { upsert: true, new: true }
+        );
 
         try {
             await notificationModel.create({

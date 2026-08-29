@@ -37,7 +37,8 @@ async function createCoverLetterController(req, res, next) {
 
         res.status(201).json({
             message: "Cover Letter created successfully!",
-            coverLetter
+            coverLetter,
+            genCredits: req.genCredits
         });
     } catch (error) {
         console.error("createCoverLetterController error:", error);
@@ -179,7 +180,8 @@ async function createCoverLetterFromReportController(req, res, next) {
 
         res.status(201).json({
             message: "Cover Letter created successfully!",
-            coverLetter
+            coverLetter,
+            genCredits: req.genCredits
         });
     } catch (error) {
         console.error("createCoverLetterFromReportController error:", error);
