@@ -89,4 +89,4 @@ Once live, test these flows:
 ## Status: READY FOR VERCEL DEPLOYMENT ✅
 
 **Backend URL:** https://ai-interviewer-kzwc.onrender.com ✅
-**Next:** Push code & deploy to Vercel
+**Next:** Push code & deploy to Vercel

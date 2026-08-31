@@ -18,6 +18,7 @@ import AdminProtected from "./features/Admin/components/AdminProtected";
 import AdminDashboard from "./features/Admin/pages/AdminDashboard";
 import AdminLogin from "./features/Admin/pages/AdminLogin";
 import UserEvaluationPage from "./features/Admin/pages/UserEvaluationPage";
+import PricingPage from "./features/Subscription/pages/PricingPage";
 
 export const router = createBrowserRouter([
 
@@ -53,6 +54,7 @@ export const router = createBrowserRouter([
         element: <Protected> <Layout /> </Protected>,
         children: [
             { index: true, element: <Home /> },
+            { path: "pricing", element: <PricingPage /> },
             { path: "profile", element: <Profile /> },
             { path: "interview/:interviewId", element: <Interview /> },
             { path: "resume/:interviewId", element: <Resume /> },
