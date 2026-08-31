@@ -5,7 +5,6 @@ const cors = require('cors');
 const multer = require('multer');
 const { createRateLimiter } = require('./middleware/rateLimiter.middleware');
 
-require('./middleware/rateLimiter.middleware');
 const globalLimiter = createRateLimiter({
     prefix: 'ratelimit:global',
     windowSeconds: 60,
@@ -46,30 +45,50 @@ const corsOptions = {
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "X-Razorpay-Signature", "X-Razorpay-Event-Id"]
 };
 
 app.use(cors(corsOptions));
-app.use(express.json());
+
+// 1. Raw Webhook Endpoint mounted BEFORE standard JSON parser to preserve exact HMAC byte buffer
+const webhookController = require('./controller/webhook.controller');
+app.post(
+    '/api/webhooks/razorpay',
+    express.raw({ type: 'application/json' }),
+    (req, res) => webhookController.handleRazorpayWebhook(req, res)
+);
+
+// 2. Global JSON and Cookie parser (with rawBody capture for any other signature checks)
+app.use(express.json({
+    verify: (req, res, buf) => {
+        req.rawBody = buf;
+    }
+}));
 app.use(cookieParser());
 
 // Global Rate Limiter
 app.use(globalLimiter);
 
 
-// Require all the routes here.
+// Require all routes
 const { authRouter } = require('./routes/auth.route');
 const interviewRouter = require('./routes/interview.route');
 const coverLetterRouter = require('./routes/coverletter.route');
 const adminRouter = require('./routes/admin.route');
 const notificationRouter = require('./routes/notification.route');
+const orderRouter = require('./routes/order.route');
+const subscriptionRouter = require('./routes/subscription.route');
+const invoiceRouter = require('./routes/invoice.route');
 
-// Use all the routes here.
+// Mount routes
 app.use("/api/auth", authRouter);
 app.use('/api/interview', interviewRouter);
 app.use('/api/cover-letter', coverLetterRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/notifications', notificationRouter);
+app.use('/api/orders', orderRouter);
+app.use('/api/subscriptions', subscriptionRouter);
+app.use('/api/invoices', invoiceRouter);
 
 
 app.use((err, req, res, next) => {
@@ -91,47 +110,27 @@ app.use((err, req, res, next) => {
         return res.status(400).json({ message: err.message });
     }
 
-
     let rawMessage = err?.message || "Internal server error";
     let statusCode = err?.status || err?.statusCode || 500;
 
-    // 1. Detect Gemini 503 / UNAVAILABLE / High Demand / Quota errors
+    // Detect Gemini 503 / UNAVAILABLE / High Demand / Quota errors
     if (
         statusCode === 503 ||
-        rawMessage.includes("503") ||
-        rawMessage.includes("UNAVAILABLE") ||
-        rawMessage.includes("high demand") ||
-        rawMessage.includes("RESOURCE_EXHAUSTED") ||
-        rawMessage.includes("QUOTA") ||
-        rawMessage.includes("overloaded")
+        rawMessage.includes("503 Service Unavailable") ||
+        rawMessage.includes("The model is overloaded") ||
+        rawMessage.includes("Resource has been exhausted") ||
+        rawMessage.includes("quota")
     ) {
-        statusCode = 503;
-        rawMessage = "AI service is currently experiencing high demand. Please try again in a few seconds.";
-    }
-    // 2. Detect Zod validation errors or Mongoose Schema validation errors
-    else if (
-        err?.name === "ZodError" ||
-        err?.name === "ValidationError" ||
-        rawMessage.trim().startsWith("[") ||
-        rawMessage.includes("too_small") ||
-        rawMessage.includes("validation failed") ||
-        rawMessage.includes("is required")
-    ) {
-        statusCode = 422;
-        rawMessage = "The AI response was not structured properly. Please click 'Generate' again.";
-    }
-    // 3. Fallback for raw JSON error strings or unexpected backend errors
-    else {
-        if (rawMessage.trim().startsWith("{") || rawMessage.trim().startsWith("[")) {
-            rawMessage = "An unexpected error occurred while generating. Please try again.";
-        }
+        return res.status(503).json({
+            message: "Our AI service is experiencing very high demand right now. Please wait a few seconds and try again.",
+            retryAfterSeconds: 5
+        });
     }
 
+    // Normal Error Response
     return res.status(statusCode).json({
         message: rawMessage
     });
-
 });
-
 
 module.exports = app;

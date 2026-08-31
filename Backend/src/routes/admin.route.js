@@ -11,7 +11,11 @@ const {
     updateUserFeatureAccessController,
     getUserByIdController,
     adjustUserCreditsController,
-    sendAdminMessageController
+    sendAdminMessageController,
+    getAdminPaymentsController,
+    getAdminSubscriptionsController,
+    getAdminAuditLogsController,
+    getAdminInvoicesController
 } = require('../controller/admin.controller');
 
 const adminRouter = express.Router();
@@ -95,5 +99,33 @@ adminRouter.post('/users/:userId/credits', adjustUserCreditsController);
  * @access Private (Admin Only)
  */
 adminRouter.post('/broadcast-message', sendAdminMessageController);
+
+/**
+ * @route GET /api/admin/payments
+ * @description Get all payments with status filtering & revenue metrics
+ * @access Private (Admin Only)
+ */
+adminRouter.get('/payments', getAdminPaymentsController);
+
+/**
+ * @route GET /api/admin/subscriptions
+ * @description Get all subscriptions with tier breakdowns
+ * @access Private (Admin Only)
+ */
+adminRouter.get('/subscriptions', getAdminSubscriptionsController);
+
+/**
+ * @route GET /api/admin/audit-logs
+ * @description Get subscription & payment audit transition events
+ * @access Private (Admin Only)
+ */
+adminRouter.get('/audit-logs', getAdminAuditLogsController);
+
+/**
+ * @route GET /api/admin/invoices
+ * @description Get all tax invoices
+ * @access Private (Admin Only)
+ */
+adminRouter.get('/invoices', getAdminInvoicesController);
 
 module.exports = adminRouter;

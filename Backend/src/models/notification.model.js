@@ -24,8 +24,20 @@ const notificationSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['FEATURE_UPDATE', 'CREDIT_UPDATE', 'ACCOUNT_STATUS', 'SYSTEM'],
+        enum: [
+            'FEATURE_UPDATE', 
+            'CREDIT_UPDATE', 
+            'ACCOUNT_STATUS', 
+            'SYSTEM',
+            'PAYMENT_SUCCESS',
+            'PAYMENT_FAILED',
+            'SUBSCRIPTION_ACTIVATED',
+            'SUBSCRIPTION_CANCELLED'
+        ],
         default: 'SYSTEM'
+    },
+    metadata: {
+        type: mongoose.Schema.Types.Mixed
     },
     read: {
         type: Boolean,
@@ -36,8 +48,8 @@ const notificationSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     }
-});
+}, { timestamps: true });
 
-const notificationModel = mongoose.model('notifications', notificationSchema);
+const notificationModel = mongoose.models.notifications || mongoose.model('notifications', notificationSchema);
 
 module.exports = notificationModel;

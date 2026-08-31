@@ -3,6 +3,7 @@ import { useAuth } from '../../Auth/hooks/useAuth';
 import { useInterview } from '../../Interview/hooks/useInterview';
 import PageLoading from '../../Shared/components/PageLoading';
 import { Link } from 'react-router-dom';
+import { InvoicesTable } from '../../Subscription/components/InvoicesTable';
 import '../style/profile.scss';
 
 // Helper functions
@@ -199,6 +200,9 @@ const Profile = () => {
                     </div>
                 )}
             </div>
+
+            {/* Invoices & Billing History Section */}
+            <InvoicesTable />
         </div>
     );
 };
