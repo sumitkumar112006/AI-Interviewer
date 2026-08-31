@@ -61,3 +61,23 @@ export async function sendAdminMessage({ targetType, targetValue, title, message
     const response = await api.post('broadcast-message', { targetType, targetValue, title, message });
     return response.data;
 }
+
+export async function getAdminPayments(params = {}) {
+    const response = await api.get('payments', { params });
+    return response.data;
+}
+
+export async function getAdminSubscriptions(params = {}) {
+    const response = await api.get('subscriptions', { params });
+    return response.data;
+}
+
+export async function getAdminAuditLogs(params = {}) {
+    const response = await api.get('audit-logs', { params });
+    return response.data;
+}
+
+export async function getAdminInvoices(params = {}) {
+    const response = await api.get('invoices', { params });
+    return response.data;
+}

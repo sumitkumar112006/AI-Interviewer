@@ -624,6 +624,216 @@ async function sendAdminMessageController(req, res) {
     }
 }
 
+/**
+ * @name getAdminPaymentsController
+ * @description Get list of payments with filtering & revenue totals
+ */
+async function getAdminPaymentsController(req, res) {
+    try {
+        const Payment = require("../models/payment.model");
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+        const status = req.query.status;
+
+        const filter = {};
+        if (status) {
+            filter.status = status.toUpperCase();
+        }
+
+        const [payments, totalCount, statsAgg] = await Promise.all([
+            Payment.find(filter)
+                .populate('userId', 'username email plan')
+                .populate('orderId', 'planKey billingCycle amount gatewayOrderId')
+                .sort({ createdAt: -1 })
+                .skip((page - 1) * limit)
+                .limit(limit)
+                .lean(),
+            Payment.countDocuments(filter),
+            Payment.aggregate([
+                {
+                    $group: {
+                        _id: '$status',
+                        count: { $sum: 1 },
+                        totalAmount: { $sum: '$amount' }
+                    }
+                }
+            ])
+        ]);
+
+        const summary = {
+            totalRevenuePaise: 0,
+            successCount: 0,
+            failedCount: 0,
+            refundedCount: 0
+        };
+
+        statsAgg.forEach(s => {
+            if (s._id === 'SUCCESS') {
+                summary.totalRevenuePaise = s.totalAmount;
+                summary.successCount = s.count;
+            } else if (s._id === 'FAILED') {
+                summary.failedCount = s.count;
+            } else if (['REFUNDED', 'PARTIALLY_REFUNDED'].includes(s._id)) {
+                summary.refundedCount += s.count;
+            }
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: payments,
+            summary: {
+                ...summary,
+                totalRevenueRupees: (summary.totalRevenuePaise / 100).toFixed(2)
+            },
+            pagination: {
+                total: totalCount,
+                page,
+                pages: Math.ceil(totalCount / limit) || 1,
+                limit
+            }
+        });
+    } catch (err) {
+        return res.status(500).json({ message: err.message || "Failed to fetch payments." });
+    }
+}
+
+/**
+ * @name getAdminSubscriptionsController
+ * @description Get all subscriptions with tier breakdowns
+ */
+async function getAdminSubscriptionsController(req, res) {
+    try {
+        const Subscription = require("../models/subscription.model");
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+        const plan = req.query.plan;
+        const status = req.query.status;
+
+        const filter = {};
+        if (plan) filter.plan = plan.toLowerCase();
+        if (status) filter.status = status.toUpperCase();
+
+        const [subscriptions, totalCount, statusAgg] = await Promise.all([
+            Subscription.find(filter)
+                .populate('userId', 'username email plan isBlocked')
+                .populate('planId', 'name price features')
+                .sort({ createdAt: -1 })
+                .skip((page - 1) * limit)
+                .limit(limit)
+                .lean(),
+            Subscription.countDocuments(filter),
+            Subscription.aggregate([
+                {
+                    $group: {
+                        _id: { plan: '$plan', status: '$status' },
+                        count: { $sum: 1 }
+                    }
+                }
+            ])
+        ]);
+
+        const tierCounts = { pro: 0, premium: 0, activeTotal: 0, cancelledTotal: 0 };
+        statusAgg.forEach(s => {
+            if (s._id.status === 'ACTIVE') {
+                tierCounts.activeTotal += s.count;
+                if (s._id.plan === 'pro') tierCounts.pro += s.count;
+                if (s._id.plan === 'premium') tierCounts.premium += s.count;
+            } else if (s._id.status === 'CANCELLED') {
+                tierCounts.cancelledTotal += s.count;
+            }
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: subscriptions,
+            tierCounts,
+            pagination: {
+                total: totalCount,
+                page,
+                pages: Math.ceil(totalCount / limit) || 1,
+                limit
+            }
+        });
+    } catch (err) {
+        return res.status(500).json({ message: err.message || "Failed to fetch subscriptions." });
+    }
+}
+
+/**
+ * @name getAdminAuditLogsController
+ * @description Get subscription and payment state transition audit logs
+ */
+async function getAdminAuditLogsController(req, res) {
+    try {
+        const SubscriptionEvent = require("../models/subscriptionEvent.model");
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+        const eventType = req.query.eventType;
+
+        const filter = {};
+        if (eventType) filter.eventType = eventType.toUpperCase();
+
+        const [events, totalCount] = await Promise.all([
+            SubscriptionEvent.find(filter)
+                .populate('userId', 'username email plan')
+                .populate('paymentOrderId', 'amount currency gatewayOrderId')
+                .sort({ createdAt: -1 })
+                .skip((page - 1) * limit)
+                .limit(limit)
+                .lean(),
+            SubscriptionEvent.countDocuments(filter)
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            data: events,
+            pagination: {
+                total: totalCount,
+                page,
+                pages: Math.ceil(totalCount / limit) || 1,
+                limit
+            }
+        });
+    } catch (err) {
+        return res.status(500).json({ message: err.message || "Failed to fetch audit logs." });
+    }
+}
+
+/**
+ * @name getAdminInvoicesController
+ * @description Get all tax invoices
+ */
+async function getAdminInvoicesController(req, res) {
+    try {
+        const { Invoice } = require("../models/invoice.model");
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+
+        const [invoices, totalCount] = await Promise.all([
+            Invoice.find()
+                .populate('userId', 'username email')
+                .sort({ issuedAt: -1 })
+                .skip((page - 1) * limit)
+                .limit(limit)
+                .lean(),
+            Invoice.countDocuments()
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            data: invoices,
+            pagination: {
+                total: totalCount,
+                page,
+                pages: Math.ceil(totalCount / limit) || 1,
+                limit
+            }
+        });
+    } catch (err) {
+        return res.status(500).json({ message: err.message || "Failed to fetch invoices." });
+    }
+}
+
 module.exports = {
     getAdminStatsController,
     getAdminUsersController,
@@ -635,5 +845,9 @@ module.exports = {
     updateUserFeatureAccessController,
     getUserByIdController,
     adjustUserCreditsController,
-    sendAdminMessageController
+    sendAdminMessageController,
+    getAdminPaymentsController,
+    getAdminSubscriptionsController,
+    getAdminAuditLogsController,
+    getAdminInvoicesController
 };

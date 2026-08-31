@@ -11,6 +11,9 @@ import {
     updateUserFeatureAccess,
     sendAdminMessage
 } from '../services/admin.api';
+import { AdminPaymentsTab } from '../components/AdminPaymentsTab';
+import { AdminSubscriptionsTab } from '../components/AdminSubscriptionsTab';
+import { AdminAuditLogsTab } from '../components/AdminAuditLogsTab';
 import '../styles/admin.scss';
 
 export default function AdminDashboard() {
@@ -322,19 +325,37 @@ export default function AdminDashboard() {
                     className={`tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
                     onClick={() => setActiveTab('overview')}
                 >
-                    <span>📊</span> Graphical Analytics & Trends
+                    <span>📊</span> Analytics
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'table' ? 'active' : ''}`}
                     onClick={() => setActiveTab('table')}
                 >
-                    <span>📋</span> User Accounts Table
+                    <span>📋</span> Users
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'payments' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('payments')}
+                >
+                    <span>💳</span> Payments & Revenue
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'subscriptions' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('subscriptions')}
+                >
+                    <span>📑</span> Subscriptions
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'audit-logs' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('audit-logs')}
+                >
+                    <span>📜</span> Audit Logs
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'summary' ? 'active' : ''}`}
                     onClick={() => setActiveTab('summary')}
                 >
-                    <span>📈</span> Tabular Metrics Summary
+                    <span>📈</span> Metrics Summary
                 </button>
             </div>
 
@@ -599,7 +620,16 @@ export default function AdminDashboard() {
                 </div>
             )}
 
-            {/* Tab 2 (or Default): User Accounts Table with Pagination */}
+            {/* Tab: Payments & Revenue */}
+            {activeTab === 'payments' && <AdminPaymentsTab />}
+
+            {/* Tab: Subscriptions & Subscribers */}
+            {activeTab === 'subscriptions' && <AdminSubscriptionsTab />}
+
+            {/* Tab: State Transition Audit Logs */}
+            {activeTab === 'audit-logs' && <AdminAuditLogsTab />}
+
+            {/* Tab: User Accounts Table with Pagination */}
             {(activeTab === 'table' || activeTab === 'overview') && (
                 <>
                     {/* Toolbar Filters */}
