@@ -5,9 +5,10 @@ import { getAiModelInfo } from "./Interview/services/interview.api";
 import { KiviAiAssistant } from "./Shared/components/KiviAiAssistant";
 import NotificationBell from "./Shared/components/NotificationBell";
 import { Outlet, useNavigate, Link, useLocation } from "react-router-dom";
+import Footer from "./Footer/components/Footer";
 import "./layout.scss";
 
-const Layout = () => {
+const Layout = ({ children }) => {
   const { user, usage, fetchUsage, handleLogout } = useAuth();
   const { reports, getReports } = useInterview();
   const navigate = useNavigate();
@@ -50,7 +51,7 @@ const Layout = () => {
 
   const onlogout = async () => {
     await handleLogout();
-    navigate("/login");
+    navigate("/landing");
   };
 
   const recentReportId = reports && reports.length > 0 ? (reports[0]._id?.$oid || reports[0]._id) : null;
@@ -373,22 +374,14 @@ const Layout = () => {
         </header>
 
         <main className="app-main-content">
-          <Outlet />
+          {children || <Outlet />}
         </main>
 
         {/* KIVI AI Assistant (Protected Route Only) */}
         <KiviAiAssistant />
 
-        {/* Global Footer */}
-        <footer className="app-footer">
-          <div className="app-footer__links">
-            <Link to="/privacy-policy">Privacy Policy</Link>
-            <Link to="/terms-of-service">Terms of Service</Link>
-            <Link to="/contact-us">Contact Us</Link>
-            <Link to="/about-us">About KIVI-AI</Link>
-          </div>
-          <p className="app-footer__copy">© 2026 KIVI-AI. All rights reserved.</p>
-        </footer>
+        {/* Global Rich Footer */}
+        <Footer theme="dark" />
       </div>
     </div>
   );

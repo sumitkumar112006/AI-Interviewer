@@ -26,26 +26,24 @@ class RazorpayService {
    * @param {Object} params.notes Additional metadata
    */
   async createRazorpayOrder({ amount, currency = 'INR', receipt, notes = {} }) {
-    const isProduction = process.env.NODE_ENV === 'production';
-
-    // Hard-fail in production if credentials are missing
+    // Fail closed if credentials are missing unless explicitly allowed in test/mock mode
     if (!this.keyId || !this.keySecret) {
-      if (isProduction) {
-        throw new Error('FATAL: RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET environment variables are missing in production.');
+      if (process.env.ALLOW_MOCK_PAYMENTS === 'true') {
+        console.warn('⚠️ [RazorpayService] ALLOW_MOCK_PAYMENTS is enabled with missing credentials. Using simulated mock order ID.');
+        return {
+          id: `order_mock_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+          entity: 'order',
+          amount,
+          amount_paid: 0,
+          amount_due: amount,
+          currency,
+          receipt,
+          status: 'created',
+          notes
+        };
       }
 
-      console.warn('⚠️ [RazorpayService] RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET not set in development/test env. Using simulated mock order ID.');
-      return {
-        id: `order_mock_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-        entity: 'order',
-        amount,
-        amount_paid: 0,
-        amount_due: amount,
-        currency,
-        receipt,
-        status: 'created',
-        notes
-      };
+      throw new Error('FATAL: RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET environment variables are missing.');
     }
 
     try {
@@ -81,10 +79,10 @@ class RazorpayService {
    */
   async fetchRazorpayOrder(gatewayOrderId) {
     if (!this.keyId || !this.keySecret) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('FATAL: Razorpay credentials missing in production during order fetch.');
+      if (process.env.ALLOW_MOCK_PAYMENTS === 'true') {
+        return { id: gatewayOrderId, status: 'created', amount_paid: 0 };
       }
-      return { id: gatewayOrderId, status: 'created', amount_paid: 0 };
+      throw new Error('FATAL: Razorpay credentials missing during order fetch.');
     }
 
     try {
@@ -95,7 +93,7 @@ class RazorpayService {
       return response.data;
     } catch (error) {
       const status = error.response?.status;
-      if (status === 404) {
+      if (status === 404 || status === 400) {
         return null;
       }
       throw error;
@@ -108,10 +106,10 @@ class RazorpayService {
    */
   async fetchOrderPayments(gatewayOrderId) {
     if (!this.keyId || !this.keySecret) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('FATAL: Razorpay credentials missing in production during payment fetch.');
+      if (process.env.ALLOW_MOCK_PAYMENTS === 'true') {
+        return { items: [] };
       }
-      return { items: [] };
+      throw new Error('FATAL: Razorpay credentials missing during payment fetch.');
     }
 
     try {
@@ -122,7 +120,7 @@ class RazorpayService {
       return response.data;
     } catch (error) {
       console.error('❌ [RazorpayService] Error fetching order payments:', error.message);
-      return { items: [] };
+      throw new Error(`Razorpay Payment Fetch Failed: ${error.response?.data?.error?.description || error.message}`);
     }
   }
 

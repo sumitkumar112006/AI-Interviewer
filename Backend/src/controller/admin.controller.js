@@ -121,16 +121,20 @@ async function getAdminUsersController(req, res) {
             userModel.countDocuments(query)
         ]);
 
-        // Aggregate generated report counts for each account
+        // Aggregate generated report, resume, and cover letter counts for each account
         const accountIds = accounts.map(u => u._id);
 
-        const [reportCounts, coverLetterCounts] = await Promise.all([
+        const [reportCounts, coverLetterCounts, resumeCounts] = await Promise.all([
             interviewReportModel.aggregate([
                 { $match: { user: { $in: accountIds } } },
                 { $group: { _id: "$user", count: { $sum: 1 } } }
             ]),
             coverLetterModel.aggregate([
                 { $match: { user: { $in: accountIds } } },
+                { $group: { _id: "$user", count: { $sum: 1 } } }
+            ]),
+            interviewReportModel.aggregate([
+                { $match: { user: { $in: accountIds }, $or: [{ generatedResumeHtml: { $exists: true, $ne: "" } }, { resume: { $exists: true, $ne: "" } }] } },
                 { $group: { _id: "$user", count: { $sum: 1 } } }
             ])
         ]);
@@ -141,10 +145,13 @@ async function getAdminUsersController(req, res) {
         const coverLetterMap = {};
         coverLetterCounts.forEach(c => { coverLetterMap[c._id.toString()] = c.count; });
 
+        const resumeMap = {};
+        resumeCounts.forEach(res => { resumeMap[res._id.toString()] = res.count; });
+
         const enrichedUsers = accounts.map(u => ({
             ...u,
             totalReports: reportMap[u._id.toString()] || 0,
-            totalCoverLetters: coverLetterMap[u._id.toString()] || 0
+            totalResumes: resumeMap[u._id.toString()] || 0, totalCoverLetters: coverLetterMap[u._id.toString()] || 0
         }));
 
         return res.status(200).json({
@@ -182,7 +189,7 @@ async function updateUserRoleController(req, res) {
         const user = await userModel.findByIdAndUpdate(
             userId,
             { role: targetRole },
-            { new: true }
+            { returnDocument: 'after' }
         ).select("-password");
 
         if (!user) {
@@ -273,7 +280,7 @@ async function updateUserPlanController(req, res) {
                 generationsUsed: 0,
                 generationsResetAt: newPeriodEnd
             },
-            { new: true }
+            { returnDocument: 'after' }
         ).select("-password");
 
         if (!user) {
@@ -290,7 +297,7 @@ async function updateUserPlanController(req, res) {
                 currentPeriodEnd: newPeriodEnd,
                 cancelAtPeriodEnd: false
             },
-            { upsert: true, new: true }
+            { upsert: true, returnDocument: 'after' }
         );
 
         try {
@@ -329,7 +336,7 @@ async function toggleUserBlockController(req, res) {
         const user = await userModel.findByIdAndUpdate(
             userId,
             { isBlocked },
-            { new: true }
+            { returnDocument: 'after' }
         ).select("-password");
 
         if (!user) {
@@ -341,8 +348,8 @@ async function toggleUserBlockController(req, res) {
                 recipient: user._id,
                 sender: req.user?._id || req.user?.id,
                 title: isBlocked ? "Account Access Restricted" : "Account Access Restored",
-                message: isBlocked 
-                    ? "Your account access has been restricted by an administrator." 
+                message: isBlocked
+                    ? "Your account access has been restricted by an administrator."
                     : "Your account access has been restored.",
                 type: "ACCOUNT_STATUS"
             });
@@ -444,8 +451,8 @@ async function updateUserFeatureAccessController(req, res) {
             if (user.blockedFeatures.coverLetterGeneration) blockedList.push("Cover Letter Generator");
             if (user.blockedFeatures.interviewReports) blockedList.push("Interview Reports");
 
-            const details = blockedList.length > 0 
-                ? `Restricted features: ${blockedList.join(", ")}.` 
+            const details = blockedList.length > 0
+                ? `Restricted features: ${blockedList.join(", ")}.`
                 : "All features are now fully enabled.";
 
             await notificationModel.create({
@@ -479,11 +486,44 @@ async function updateUserFeatureAccessController(req, res) {
 async function getUserByIdController(req, res) {
     try {
         const { userId } = req.params;
-        const user = await userModel.findById(userId).select("username email plan role isBlocked customBonusCredits customAiBonusCredits blockedFeatures createdAt");
+
+        const [user, reports, coverLetters] = await Promise.all([
+            userModel.findById(userId).select("username email plan role isBlocked customBonusCredits customAiBonusCredits blockedFeatures createdAt").lean(),
+            interviewReportModel.find({ user: userId })
+                .select("_id developerTitle matchScore createdAt generatedResumeHtml resume jobDescription")
+                .sort({ createdAt: -1 })
+                .lean(),
+            coverLetterModel.find({ user: userId })
+                .select("_id roleName companyName generatedContent createdAt interviewReport")
+                .sort({ createdAt: -1 })
+                .lean()
+        ]);
+
         if (!user) {
             return res.status(404).json({ message: "User not found." });
         }
-        return res.status(200).json({ user });
+
+        const totalReports = reports.length;
+        const totalCoverLetters = coverLetters.length;
+        const resumes = reports.filter(r => (r.generatedResumeHtml && r.generatedResumeHtml.trim() !== '') || (r.resume && r.resume.trim() !== ''));
+        const totalResumes = resumes.length;
+
+        return res.status(200).json({
+            user: {
+                ...user,
+                totalReports,
+                totalResumes,
+                totalCoverLetters
+            },
+            reports,
+            resumes,
+            coverLetters,
+            stats: {
+                totalReports,
+                totalResumes,
+                totalCoverLetters
+            }
+        });
     } catch (err) {
         return res.status(500).json({ message: err.message || "Failed to fetch user details." });
     }
@@ -512,7 +552,7 @@ async function adjustUserCreditsController(req, res) {
             if (typeof customAiBonusCredits === 'number') {
                 user.customAiBonusCredits = customAiBonusCredits;
             }
-        } 
+        }
         // Mode 2: Targeted increment / reduction
         else if (target && action && typeof amount === 'number') {
             const delta = action === 'increase' ? amount : -amount;
@@ -834,6 +874,71 @@ async function getAdminInvoicesController(req, res) {
     }
 }
 
+/**
+ * @name deleteUserController
+ * @description Completely delete a user account and all associated data
+ * @access Private (Admin Only)
+ */
+async function deleteUserController(req, res) {
+    try {
+        const { userId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({ message: "Invalid user ID." });
+        }
+
+        // Prevent admin from deleting themselves
+        if (req.user && (req.user._id?.toString() === userId.toString() || req.user.id?.toString() === userId.toString())) {
+            return res.status(400).json({ message: "You cannot delete your own admin account while logged in." });
+        }
+
+        const user = await userModel.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: "User account not found." });
+        }
+
+        // Clean up all related user data
+        const { deleteCachePattern } = require("../services/redis.service");
+        const Payment = require("../models/payment.model");
+        const PaymentOrder = require("../models/paymentOrder.model");
+        const { Invoice } = require("../models/invoice.model");
+        const UsageTracking = require("../models/usageTracking.model");
+        const SubscriptionEvent = require("../models/subscriptionEvent.model");
+
+        const results = await Promise.allSettled([
+            interviewReportModel.deleteMany({ user: userId }),
+            coverLetterModel.deleteMany({ user: userId }),
+            subscriptionModel.deleteMany({ userId }),
+            Payment.deleteMany({ userId }),
+            PaymentOrder.deleteMany({ userId }),
+            Invoice.deleteMany({ userId }),
+            UsageTracking.deleteMany({ userId }),
+            SubscriptionEvent.deleteMany({ userId }),
+            notificationModel.deleteMany({ recipient: userId }),
+            deleteCachePattern(`*${userId}*`)
+        ]);
+
+        const failures = results.filter(r => r.status === 'rejected');
+        if (failures.length > 0) {
+            failures.forEach(f => console.error("deleteUserController cleanup failure:", f.reason));
+            return res.status(500).json({
+                message: `Deletion of "${user.username}" was incomplete. ${failures.length} cleanup step(s) failed.`
+            });
+        }
+
+        // Delete user document last so failure leaves the account recoverable
+        await userModel.findByIdAndDelete(userId);
+
+        return res.status(200).json({
+            success: true,
+            message: `User account "${user.username}" and all related data deleted successfully.`
+        });
+    } catch (err) {
+        console.error("deleteUserController error:", err);
+        return res.status(500).json({ message: err.message || "Failed to delete user." });
+    }
+}
+
 module.exports = {
     getAdminStatsController,
     getAdminUsersController,
@@ -849,5 +954,6 @@ module.exports = {
     getAdminPaymentsController,
     getAdminSubscriptionsController,
     getAdminAuditLogsController,
-    getAdminInvoicesController
+    getAdminInvoicesController,
+    deleteUserController
 };

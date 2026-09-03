@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import PageLoading from '../../Shared/components/PageLoading'
 import InteractiveAuthMascot from '../components/InteractiveAuthMascot'
+import GoogleAuthButton from '../components/GoogleAuthButton'
 import '../styles/auth.scss'
 
 /* ── Eye icons ── */
@@ -124,6 +125,13 @@ const Register = () => {
                             <p className="auth-subtitle">
                                 Join InterviewAI to generate resumes and practice mock interviews.
                             </p>
+                        </div>
+
+                        {/* ── Google Sign-Up ── */}
+                        <GoogleAuthButton onError={setError} text="Sign up with Google" />
+
+                        <div className="auth-oauth-divider">
+                            <span>or register with email</span>
                         </div>
 
                         {/* ── Progress indicator ── */}

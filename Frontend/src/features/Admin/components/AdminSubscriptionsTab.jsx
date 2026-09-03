@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { getAdminSubscriptions } from '../services/admin.api';
+import { Users, Zap, Crown, UserMinus } from 'lucide-react';
 
 export const AdminSubscriptionsTab = () => {
   const [subscriptions, setSubscriptions] = useState([]);
@@ -37,7 +38,6 @@ export const AdminSubscriptionsTab = () => {
         <div className="stat-card">
           <div className="stat-header">
             <span className="stat-title">Active Subscribers</span>
-            <div className="stat-icon-wrapper" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#34d399' }}>👥</div>
           </div>
           <div className="stat-value" style={{ color: '#34d399' }}>{tierCounts.activeTotal}</div>
           <div className="stat-sub">Across All Paid Tiers</div>
@@ -46,25 +46,22 @@ export const AdminSubscriptionsTab = () => {
         <div className="stat-card">
           <div className="stat-header">
             <span className="stat-title">Pro Tier</span>
-            <div className="stat-icon-wrapper" style={{ background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8' }}>⚡</div>
           </div>
           <div className="stat-value">{tierCounts.pro}</div>
-          <div className="stat-sub">₹199/mo Subscribers</div>
+          <div className="stat-sub">₹99/mo Subscribers</div>
         </div>
 
         <div className="stat-card">
           <div className="stat-header">
             <span className="stat-title">Premium Tier</span>
-            <div className="stat-icon-wrapper" style={{ background: 'rgba(192, 132, 252, 0.15)', color: '#c084fc' }}>👑</div>
           </div>
           <div className="stat-value">{tierCounts.premium}</div>
-          <div className="stat-sub">₹349/mo Subscribers</div>
+          <div className="stat-sub">₹199/mo Subscribers</div>
         </div>
 
         <div className="stat-card">
           <div className="stat-header">
             <span className="stat-title">Cancelled / Churned</span>
-            <div className="stat-icon-wrapper" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f87171' }}>📉</div>
           </div>
           <div className="stat-value" style={{ color: '#f87171' }}>{tierCounts.cancelledTotal}</div>
           <div className="stat-sub">Inactive Subscriptions</div>

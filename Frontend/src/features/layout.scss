@@ -52,7 +52,7 @@ body {
   align-items: center;
   gap: 0.75rem;
   text-decoration: none;
-  margin-bottom: 2.5rem;
+  margin-bottom: 1.5rem;
   padding: 0.25rem;
 }
 
@@ -87,7 +87,7 @@ body {
 }
 
 .sidebar-section {
-  margin-bottom: 2rem;
+  margin-bottom: 1.25rem;
 }
 
 .sidebar-section-title {
@@ -157,43 +157,49 @@ body {
 /* Upgrade to Pro Card */
 .upgrade-card {
   margin-top: auto;
+  margin-bottom: 0.5rem;
   background-color: #0f1525;
   border: 1px solid var(--border-color);
   border-radius: 1rem;
-  padding: 1.25rem;
+  padding: 1.15rem 1rem;
   text-align: center;
   position: relative;
-  overflow: hidden;
+  flex-shrink: 0;
+  box-sizing: border-box;
 
   .upgrade-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
     background: rgba(99, 102, 241, 0.15);
     color: #a855f7;
     border-radius: 50%;
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.5rem;
   }
 
   h3 {
     font-size: 0.95rem;
     font-weight: 700;
     color: #ffffff;
-    margin: 0 0 0.4rem 0;
+    margin: 0 0 0.35rem 0;
   }
 
   p {
     font-size: 0.78rem;
     color: var(--text-secondary);
-    line-height: 1.4;
-    margin: 0 0 1rem 0;
+    line-height: 1.35;
+    margin: 0 0 0.85rem 0;
   }
 
   .upgrade-btn {
+    display: block;
     width: 100%;
-    padding: 0.6rem;
+    box-sizing: border-box;
+    text-decoration: none;
+    text-align: center;
+    padding: 0.6rem 0.8rem;
     background: var(--accent-gradient);
     border: none;
     border-radius: 0.5rem;
@@ -206,6 +212,7 @@ body {
     &:hover {
       transform: translateY(-1px);
       box-shadow: 0 8px 16px rgba(99, 102, 241, 0.25);
+      color: #ffffff;
     }
   }
 }

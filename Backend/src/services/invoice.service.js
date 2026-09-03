@@ -74,7 +74,7 @@ class InvoiceService {
 
     const taxRate = 18; // 18% GST standard
     const taxAmount = Math.round(order.amount * (taxRate / (100 + taxRate))); // back-calculated
-    const subtotal = order.amount;
+    const subtotal = order.amount - taxAmount; // net of inclusive GST
     const totalAmount = order.amount;
 
     const newInvoice = new Invoice({

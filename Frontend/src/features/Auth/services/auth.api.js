@@ -102,3 +102,17 @@ export async function getUserUsage() {
         return null;
     }
 }
+
+export async function loginWithGoogleSupabase({ accessToken }) {
+    try {
+        const response = await api.post('google-supabase', {
+            accessToken
+        }, {
+            withCredentials: true
+        });
+        return response.data;
+    } catch (err) {
+        throw err;
+    }
+}
+

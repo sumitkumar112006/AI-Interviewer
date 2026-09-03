@@ -46,9 +46,10 @@ export const InvoicesTable = () => {
                     })}
                   </td>
                   <td>
-                    <span className="badge-paid">PAID</span>
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
+                    <span className={`badge-${(inv.status || 'paid').toLowerCase()}`}>
+                      {(inv.status || 'PAID').toUpperCase()}
+                    </span>
+                  </td>                  <td style={{ textAlign: 'right' }}>
                     <a
                       href={getInvoicePdfUrl(inv._id)}
                       target="_blank"

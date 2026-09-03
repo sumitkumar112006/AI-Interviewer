@@ -148,7 +148,9 @@ export function useSubscription() {
 
       const rzp = new window.Razorpay(options);
       rzp.on('payment.failed', function (response) {
-        console.warn('Payment failed on gateway:', response.error);
+        if (import.meta.env.DEV) {
+          console.warn('Payment failed on gateway:', response.error);
+        }
         setCheckoutLoading(false);
         const failMsg = response.error?.description || 'Payment was unsuccessful. Please retry.';
         setError(failMsg);

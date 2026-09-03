@@ -29,10 +29,10 @@ const PLANS = {
     planKey: 'pro',
     name: 'Pro',
     rank: 1,
-    price: 19900, // ₹199 in paise
-    priceMonthly: 19900,
-    priceYearly: 199000, // ₹1990 / year (2 months discount)
-    priceInRupees: 199,
+    price: 9900, // ₹99 in paise
+    priceMonthly: 9900,
+    priceYearly: 99000, // ₹990 / year (2 months discount)
+    priceInRupees: 99,
     currency: 'INR',
     billingCycle: 'MONTHLY',
     generationLimit: 10,
@@ -52,10 +52,10 @@ const PLANS = {
     planKey: 'premium',
     name: 'Premium',
     rank: 2,
-    price: 34900, // ₹349 in paise
-    priceMonthly: 34900,
-    priceYearly: 349000, // ₹3490 / year (2 months discount)
-    priceInRupees: 349,
+    price: 19900, // ₹199 in paise
+    priceMonthly: 19900,
+    priceYearly: 199000, // ₹1990 / year (2 months discount)
+    priceInRupees: 199,
     currency: 'INR',
     billingCycle: 'MONTHLY',
     generationLimit: 25,

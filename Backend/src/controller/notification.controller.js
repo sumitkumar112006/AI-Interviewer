@@ -41,7 +41,7 @@ async function markAsReadController(req, res) {
         const notification = await notificationModel.findOneAndUpdate(
             { _id: id, recipient: recipientId },
             { read: true },
-            { new: true }
+            { returnDocument: 'after' }
         );
 
         if (!notification) {

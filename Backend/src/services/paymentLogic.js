@@ -100,6 +100,10 @@ function decideWebhookAction({ webhookEventAlreadyExists, order, eventType }) {
  * @returns {{subtotal: number, taxAmount: number, discountAmount: number, totalAmount: number}}
  */
 function computeInvoiceTotals(items = [], taxRate = 0, discountAmount = 0) {
+  if (!Number.isSafeInteger(discountAmount) || discountAmount < 0) {
+    throw new Error('INVALID_DISCOUNT');
+  }
+
   const subtotal = items.reduce((sum, item) => sum + (item.amount || 0), 0);
   const taxAmount = taxRate > 0 ? Math.round(subtotal * (taxRate / 100)) : 0;
   const totalAmount = subtotal - discountAmount + taxAmount;

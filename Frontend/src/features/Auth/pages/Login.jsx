@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import PageLoading from '../../Shared/components/PageLoading'
 import InteractiveAuthMascot from '../components/InteractiveAuthMascot'
+import GoogleAuthButton from '../components/GoogleAuthButton'
 import '../styles/auth.scss'
 
 /* ── Eye icons ── */
@@ -177,6 +178,13 @@ const Login = () => {
                             <p className="auth-subtitle">
                                 Welcome back! Enter your credentials to access your account.
                             </p>
+                        </div>
+
+                        {/* ── Google Sign-In ── */}
+                        <GoogleAuthButton onError={setError} text="Continue with Google" />
+
+                        <div className="auth-oauth-divider">
+                            <span>or sign in with email</span>
                         </div>
 
                         {/* ── Error / Validation messages ── */}

@@ -10,3 +10,8 @@ Backend/.cache/
 Frontend/.cache/
 DEPLOYMENT_GUIDE.md
 .vercel
+request_handling_architecture.md
+.agents
+Backend/test-groq-keys.js
+Backend/test-openrouter-keys.js
+Backend/test-anthropic-keys.js

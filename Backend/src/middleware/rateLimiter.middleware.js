@@ -214,11 +214,12 @@ function createTieredRateLimiter(options = {}) {
             }
 
             const freshPlan = (user.plan || 'free').toLowerCase();
-            const freshBase = limits[freshPlan] !== undefined ? limits[freshPlan] : (limits.free || 2);
+            const freshBase = limits[freshPlan] !== undefined ? limits[freshPlan] : (limits.free || 3);
             const freshBonus = user.customBonusCredits || 0;
             const currentMaxRequests = Math.max(0, freshBase + freshBonus);
 
             const currentCount = user.generationsUsed;
+            const reservationResetAt = user.generationsResetAt;
             const ttlMs = user.generationsResetAt.getTime() - now.getTime();
             const ttlSeconds = Math.max(0, Math.ceil(ttlMs / 1000));
 
@@ -227,7 +228,7 @@ function createTieredRateLimiter(options = {}) {
             const updatedUser = await userModel.findOneAndUpdate(
                 { _id: userId, generationsUsed: { $lt: currentMaxRequests } },
                 { $inc: { generationsUsed: 1 } },
-                { new: true }
+                { returnDocument: 'after' }
             );
 
             const remaining = updatedUser
@@ -258,6 +259,17 @@ function createTieredRateLimiter(options = {}) {
                 remaining
             };
 
+            // Inject an idempotent refund function scoped to the reservation period
+            let refunded = false;
+            req.refundGeneration = async () => {
+                if (refunded) return;
+                refunded = true;
+                await userModel.updateOne(
+                    { _id: userId, generationsResetAt: reservationResetAt, generationsUsed: { $gt: 0 } },
+                    { $inc: { generationsUsed: -1 } }
+                );
+            };
+
             next();
         } catch (err) {
             console.error('Tiered rate limiter error:', err.message);
@@ -270,10 +282,16 @@ function createTieredRateLimiter(options = {}) {
  * Shared Generation Credit Limiter (Unified across Report, Resume, & Cover Letter Generation)
  * Now backed by MongoDB (user.generationsUsed) instead of Redis
  */
+const { PLANS } = require('../constants/plans.constants');
+
 const fullGenerationLimiter = createTieredRateLimiter({
     prefix: 'ratelimit:full-generation',
     windowSeconds: 2592000, // 30-day monthly limit
-    limits: { free: 2, pro: 10, premium: 25 },
+    limits: {
+        free: PLANS?.FREE?.generationLimit || 3,
+        pro: PLANS?.PRO?.generationLimit || 10,
+        premium: PLANS?.PREMIUM?.generationLimit || 25
+    },
     message: 'Generation credit limit reached for your plan.'
 });
 

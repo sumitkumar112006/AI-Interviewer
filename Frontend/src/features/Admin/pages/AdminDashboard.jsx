@@ -6,6 +6,7 @@ import {
     updateUserRole,
     updateUserPlan,
     toggleUserBlock,
+    deleteUser,
     grantUserCredits,
     createAdminAccount,
     updateUserFeatureAccess,
@@ -14,6 +15,8 @@ import {
 import { AdminPaymentsTab } from '../components/AdminPaymentsTab';
 import { AdminSubscriptionsTab } from '../components/AdminSubscriptionsTab';
 import { AdminAuditLogsTab } from '../components/AdminAuditLogsTab';
+import ConfirmModal from '../../Shared/components/ConfirmModal';
+import { Trash2 } from 'lucide-react';
 import '../styles/admin.scss';
 
 export default function AdminDashboard() {
@@ -102,39 +105,163 @@ export default function AdminDashboard() {
         return () => clearTimeout(timer);
     }, [fetchUsersList]);
 
-    const handleRoleChange = async (userId, newRole) => {
-        try {
-            await updateUserRole(userId, newRole);
-            setUsers(prev => prev.map(u => u._id === userId ? { ...u, role: newRole } : u));
-            fetchStats();
-            fetchUsersList(pagination.page);
-        } catch (err) {
-            alert(err?.response?.data?.message || "Failed to update role");
-        }
+    // Confirmation Action Modal State
+    const [confirmModal, setConfirmModal] = useState({
+        isOpen: false,
+        title: '',
+        message: '',
+        details: null,
+        confirmText: 'Confirm',
+        cancelText: 'Cancel',
+        type: 'warning',
+        loading: false,
+        onConfirm: null
+    });
+
+    const requestRoleChange = (userObj, newRole) => {
+        if (userObj.role === newRole) return;
+        setConfirmModal({
+            isOpen: true,
+            title: 'Confirm Security Role Change',
+            message: `Are you sure you want to change the role for "${userObj.username}"?`,
+            details: (
+                <div className="change-preview-row">
+                    <span className="change-label">Role Update:</span>
+                    <span className="change-value">
+                        <span className="old-val">{userObj.role?.toUpperCase() || 'USER'}</span>
+                        <span className="arrow">→</span>
+                        <span className="new-val" style={{ color: ['admin', 'super_admin'].includes(newRole) ? '#f87171' : '#38bdf8' }}>
+                            {newRole.toUpperCase()}
+                        </span>
+                    </span>
+                </div>
+            ),
+            confirmText: 'Update Role',
+            cancelText: 'Cancel',
+            type: ['admin', 'super_admin'].includes(newRole) ? 'danger' : 'warning',
+            loading: false,
+            onConfirm: async () => {
+                setConfirmModal(prev => ({ ...prev, loading: true }));
+                try {
+                    await updateUserRole(userObj._id, newRole);
+                    setUsers(prev => prev.map(u => u._id === userObj._id ? { ...u, role: newRole } : u));
+                    fetchStats();
+                    fetchUsersList(pagination.page);
+                    setConfirmModal(prev => ({ ...prev, isOpen: false, loading: false }));
+                } catch (err) {
+                    alert(err?.response?.data?.message || "Failed to update role");
+                    setConfirmModal(prev => ({ ...prev, loading: false }));
+                }
+            }
+        });
     };
 
-    const handlePlanChange = async (userId, newPlan) => {
-        try {
-            await updateUserPlan(userId, newPlan);
-            setUsers(prev => prev.map(u => u._id === userId ? { ...u, plan: newPlan } : u));
-            fetchStats();
-        } catch (err) {
-            alert(err?.response?.data?.message || "Failed to update plan");
-        }
+    const requestPlanChange = (userObj, newPlan) => {
+        if (userObj.plan === newPlan) return;
+        setConfirmModal({
+            isOpen: true,
+            title: 'Confirm Subscription Plan Change',
+            message: `Are you sure you want to change the subscription plan for "${userObj.username}"?`,
+            details: (
+                <div className="change-preview-row">
+                    <span className="change-label">Plan Update:</span>
+                    <span className="change-value">
+                        <span className="old-val">{userObj.plan?.toUpperCase() || 'FREE'}</span>
+                        <span className="arrow">→</span>
+                        <span className="new-val" style={{ color: '#818cf8' }}>{newPlan.toUpperCase()}</span>
+                    </span>
+                </div>
+            ),
+            confirmText: 'Change Plan',
+            cancelText: 'Cancel',
+            type: newPlan === 'free' ? 'warning' : 'info',
+            loading: false,
+            onConfirm: async () => {
+                setConfirmModal(prev => ({ ...prev, loading: true }));
+                try {
+                    await updateUserPlan(userObj._id, newPlan);
+                    setUsers(prev => prev.map(u => u._id === userObj._id ? { ...u, plan: newPlan } : u));
+                    fetchStats();
+                    setConfirmModal(prev => ({ ...prev, isOpen: false, loading: false }));
+                } catch (err) {
+                    alert(err?.response?.data?.message || "Failed to update plan");
+                    setConfirmModal(prev => ({ ...prev, loading: false }));
+                }
+            }
+        });
     };
 
-    const handleToggleBlock = async (userId, currentBlockedState) => {
-        const nextState = !currentBlockedState;
-        const confirmText = nextState ? "Are you sure you want to BLOCK this user?" : "Unblock this user?";
-        if (!window.confirm(confirmText)) return;
+    const requestToggleBlock = (userObj) => {
+        const nextState = !userObj.isBlocked;
+        setConfirmModal({
+            isOpen: true,
+            title: nextState ? 'Confirm Account Block' : 'Confirm Account Unblock',
+            message: nextState
+                ? `Are you sure you want to BLOCK "${userObj.username}"? They will lose access to interview practice and generations.`
+                : `Are you sure you want to UNBLOCK "${userObj.username}"? Their full platform access will be restored.`,
+            details: (
+                <div className="change-preview-row">
+                    <span className="change-label">Account Status:</span>
+                    <span className="change-value">
+                        <span className="old-val">{userObj.isBlocked ? 'BLOCKED' : 'ACTIVE'}</span>
+                        <span className="arrow">→</span>
+                        <span className="new-val" style={{ color: nextState ? '#ef4444' : '#22c55e' }}>
+                            {nextState ? 'BLOCKED' : 'ACTIVE'}
+                        </span>
+                    </span>
+                </div>
+            ),
+            confirmText: nextState ? 'Yes, Block Account' : 'Yes, Unblock Account',
+            cancelText: 'Cancel',
+            type: nextState ? 'danger' : 'success',
+            loading: false,
+            onConfirm: async () => {
+                setConfirmModal(prev => ({ ...prev, loading: true }));
+                try {
+                    await toggleUserBlock(userObj._id, nextState);
+                    setUsers(prev => prev.map(u => u._id === userObj._id ? { ...u, isBlocked: nextState } : u));
+                    fetchStats();
+                    setConfirmModal(prev => ({ ...prev, isOpen: false, loading: false }));
+                } catch (err) {
+                    alert(err?.response?.data?.message || "Failed to toggle block status");
+                    setConfirmModal(prev => ({ ...prev, loading: false }));
+                }
+            }
+        });
+    };
 
-        try {
-            await toggleUserBlock(userId, nextState);
-            setUsers(prev => prev.map(u => u._id === userId ? { ...u, isBlocked: nextState } : u));
-            fetchStats();
-        } catch (err) {
-            alert(err?.response?.data?.message || "Failed to toggle block status");
-        }
+    const requestDeleteUser = (userObj) => {
+        setConfirmModal({
+            isOpen: true,
+            title: 'Delete User Account Permanently',
+            message: `Are you sure you want to permanently delete user "${userObj.username}" (${userObj.email})? This action CANNOT be undone and will permanently purge all their interview reports, resumes, cover letters, and subscriptions.`,
+            details: (
+                <div className="change-preview-row">
+                    <span className="change-label">Purge Target:</span>
+                    <span className="change-value">
+                        <span className="new-val" style={{ color: '#ef4444' }}>{userObj.username}</span>
+                        <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}> ({userObj.email})</span>
+                    </span>
+                </div>
+            ),
+            confirmText: 'Yes, Delete Permanently',
+            cancelText: 'Cancel',
+            type: 'danger',
+            loading: false,
+            onConfirm: async () => {
+                setConfirmModal(prev => ({ ...prev, loading: true }));
+                try {
+                    await deleteUser(userObj._id);
+                    setUsers(prev => prev.filter(u => u._id !== userObj._id));
+                    fetchStats();
+                    fetchUsersList(pagination.page);
+                    setConfirmModal(prev => ({ ...prev, isOpen: false, loading: false }));
+                } catch (err) {
+                    alert(err?.response?.data?.message || "Failed to delete user");
+                    setConfirmModal(prev => ({ ...prev, loading: false }));
+                }
+            }
+        });
     };
 
     const handleGrantCreditsSubmit = async (e) => {
@@ -263,13 +390,13 @@ export default function AdminDashboard() {
 
                 <div className="admin-top-actions">
                     <button className="credit-btn" style={{ background: 'linear-gradient(135deg, #0284c7, #2563eb)' }} onClick={() => { setIsMsgModalOpen(true); setMsgResult({ type: '', text: '' }); }}>
-                        <span>📢</span> Send Broadcast / Message
+                        Send Broadcast / Message
                     </button>
                     <button className="credit-btn" style={{ background: 'linear-gradient(135deg, #ec4899, #8b5cf6)' }} onClick={() => { setIsAdminModalOpen(true); setAdminMsg({ type: '', text: '' }); }}>
-                        <span>👑</span> Create New Admin
+                        Create New Admin
                     </button>
                     <button className="credit-btn" onClick={() => { setIsCreditModalOpen(true); setCreditMsg({ type: '', text: '' }); }}>
-                        <span>⚡</span> Grant Bonus Credits
+                        Grant Bonus Credits
                     </button>
                     <Link to="/" className="exit-app-btn">
                         Exit to Main App ↗
@@ -282,7 +409,6 @@ export default function AdminDashboard() {
                 <div className="stat-card">
                     <div className="stat-header">
                         <span className="stat-title">Total Users</span>
-                        <div className="stat-icon-wrapper" style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8' }}>👥</div>
                     </div>
                     <div className="stat-value">{stats?.totalUsers ?? '...'}</div>
                     <div className="stat-sub">Authenticated Accounts</div>
@@ -291,7 +417,6 @@ export default function AdminDashboard() {
                 <div className="stat-card">
                     <div className="stat-header">
                         <span className="stat-title">Total Admins</span>
-                        <div className="stat-icon-wrapper" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f87171' }}>👑</div>
                     </div>
                     <div className="stat-value">{stats?.totalAdmins ?? '...'}</div>
                     <div className="stat-sub">Platform Administrators</div>
@@ -300,7 +425,6 @@ export default function AdminDashboard() {
                 <div className="stat-card">
                     <div className="stat-header">
                         <span className="stat-title">Interview Reports</span>
-                        <div className="stat-icon-wrapper" style={{ background: 'rgba(129, 140, 248, 0.15)', color: '#818cf8' }}>📄</div>
                     </div>
                     <div className="stat-value">{stats?.totalReports ?? '...'}</div>
                     <div className="stat-sub">AI Interview Analyses</div>
@@ -309,7 +433,6 @@ export default function AdminDashboard() {
                 <div className="stat-card">
                     <div className="stat-header">
                         <span className="stat-title">Plan Tiers</span>
-                        <div className="stat-icon-wrapper" style={{ background: 'rgba(192, 132, 252, 0.15)', color: '#c084fc' }}>💳</div>
                     </div>
                     <div className="stat-value-pills">
                         <span className="tier-pill pro-pill">{stats?.plans?.pro || 0} Pro</span>
@@ -325,37 +448,37 @@ export default function AdminDashboard() {
                     className={`tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
                     onClick={() => setActiveTab('overview')}
                 >
-                    <span>📊</span> Analytics
+                    Analytics
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'table' ? 'active' : ''}`}
                     onClick={() => setActiveTab('table')}
                 >
-                    <span>📋</span> Users
+                    Users
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'payments' ? 'active' : ''}`}
                     onClick={() => setActiveTab('payments')}
                 >
-                    <span>💳</span> Payments & Revenue
+                    Payments & Revenue
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'subscriptions' ? 'active' : ''}`}
                     onClick={() => setActiveTab('subscriptions')}
                 >
-                    <span>📑</span> Subscriptions
+                    Subscriptions
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'audit-logs' ? 'active' : ''}`}
                     onClick={() => setActiveTab('audit-logs')}
                 >
-                    <span>📜</span> Audit Logs
+                    Audit Logs
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'summary' ? 'active' : ''}`}
                     onClick={() => setActiveTab('summary')}
                 >
-                    <span>📈</span> Metrics Summary
+                    Metrics Summary
                 </button>
             </div>
 
@@ -675,7 +798,8 @@ export default function AdminDashboard() {
                                     <th>Role & Table</th>
                                     <th>Current Plan</th>
                                     <th>Reports</th>
-                                    <th>Cover Letters</th>
+                                    <th>Resumes</th>
+                                    <th>Cover Letters / CV</th>
                                     <th>Bonus Credits</th>
                                     <th>Status</th>
                                     <th>Actions</th>
@@ -684,13 +808,13 @@ export default function AdminDashboard() {
                             <tbody>
                                 {loading ? (
                                     <tr>
-                                        <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                                        <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
                                             Loading accounts...
                                         </td>
                                     </tr>
                                 ) : users.length === 0 ? (
                                     <tr>
-                                        <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                                        <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
                                             No accounts matching the filters.
                                         </td>
                                     </tr>
@@ -712,7 +836,7 @@ export default function AdminDashboard() {
                                                 <select
                                                     className="action-select"
                                                     value={u.role || 'user'}
-                                                    onChange={(e) => handleRoleChange(u._id, e.target.value)}
+                                                    onChange={(e) => requestRoleChange(u, e.target.value)}
                                                 >
                                                     <option value="user">User (users table)</option>
                                                     <option value="admin">Admin (admins table)</option>
@@ -723,7 +847,7 @@ export default function AdminDashboard() {
                                                 <select
                                                     className="action-select"
                                                     value={(u.plan || 'free').toLowerCase()}
-                                                    onChange={(e) => handlePlanChange(u._id, e.target.value)}
+                                                    onChange={(e) => requestPlanChange(u, e.target.value)}
                                                 >
                                                     <option value="free">Free</option>
                                                     <option value="pro">Pro</option>
@@ -734,7 +858,10 @@ export default function AdminDashboard() {
                                                 <strong>{u.totalReports || 0}</strong>
                                             </td>
                                             <td>
-                                                <strong>{u.totalCoverLetters || 0}</strong>
+                                                <strong style={{ color: '#34d399' }}>{u.totalResumes || 0}</strong>
+                                            </td>
+                                            <td>
+                                                <strong style={{ color: '#c084fc' }}>{u.totalCoverLetters || 0}</strong>
                                             </td>
                                             <td>
                                                 <span style={{ color: u.customBonusCredits ? '#818cf8' : '#94a3b8', fontWeight: u.customBonusCredits ? 700 : 400 }}>
@@ -747,20 +874,28 @@ export default function AdminDashboard() {
                                                 </span>
                                             </td>
                                             <td>
-                                                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                                                     <Link
                                                         to={`/admin-portal-dashboard-root/user-evaluation/${u._id}`}
                                                         className="credit-btn"
                                                         style={{ padding: '0.35rem 0.65rem', fontSize: '0.78rem', background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(99, 102, 241, 0.4)', color: '#818cf8', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
                                                     >
-                                                        ⚙️ Evaluate Account
+                                                        Evaluate Account
                                                     </Link>
                                                     <button
                                                         type="button"
                                                         className={`block-btn ${u.isBlocked ? 'unblock' : 'block'}`}
-                                                        onClick={() => handleToggleBlock(u._id, u.isBlocked)}
+                                                        onClick={() => requestToggleBlock(u)}
                                                     >
                                                         {u.isBlocked ? 'Unblock' : 'Block'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="delete-btn"
+                                                        onClick={() => requestDeleteUser(u)}
+                                                        title="Permanently Delete User Account"
+                                                    >
+                                                        Delete
                                                     </button>
                                                 </div>
                                             </td>
@@ -814,7 +949,7 @@ export default function AdminDashboard() {
                         </div>
 
                         {/* Account Quick Metrics */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem', marginBottom: '1.25rem', background: 'rgba(255, 255, 255, 0.03)', padding: '0.75rem', borderRadius: '10px', textAlign: 'center' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.5rem', marginBottom: '1.25rem', background: 'rgba(255, 255, 255, 0.03)', padding: '0.75rem', borderRadius: '10px', textAlign: 'center' }}>
                             <div>
                                 <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>PLAN</div>
                                 <div style={{ fontWeight: 800, color: '#38bdf8', fontSize: '0.9rem' }}>{(evalUser.plan || 'free').toUpperCase()}</div>
@@ -824,7 +959,11 @@ export default function AdminDashboard() {
                                 <div style={{ fontWeight: 800, color: '#818cf8', fontSize: '0.9rem' }}>{evalUser.totalReports || 0}</div>
                             </div>
                             <div>
-                                <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>COVER LETTERS</div>
+                                <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>RESUMES</div>
+                                <div style={{ fontWeight: 800, color: '#34d399', fontSize: '0.9rem' }}>{evalUser.totalResumes || 0}</div>
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>COVER LETTERS / CV</div>
                                 <div style={{ fontWeight: 800, color: '#c084fc', fontSize: '0.9rem' }}>{evalUser.totalCoverLetters || 0}</div>
                             </div>
                             <div>
@@ -849,14 +988,14 @@ export default function AdminDashboard() {
 
                         <form onSubmit={handleSaveFeatureAccess}>
                             <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#e2e8f0', marginBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.4rem' }}>
-                                🔒 Granular Feature Access Permissions
+                                Granular Feature Access Permissions
                             </h3>
 
                             <div className="feature-toggle-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
                                 {/* AI Assistant Access */}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15, 23, 42, 0.6)', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
                                     <div>
-                                        <div style={{ fontWeight: 700, color: '#ffffff', fontSize: '0.9rem' }}>🤖 AI Assistant & Section Writer</div>
+                                        <div style={{ fontWeight: 700, color: '#ffffff', fontSize: '0.9rem' }}>AI Assistant & Section Writer</div>
                                         <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>AI resume section rewriter and optimization assistant</div>
                                     </div>
                                     <button
@@ -873,14 +1012,14 @@ export default function AdminDashboard() {
                                         }}
                                         onClick={() => setEvalFeatures(prev => ({ ...prev, aiAssistant: !prev.aiAssistant }))}
                                     >
-                                        {evalFeatures.aiAssistant ? '❌ BLOCKED' : '✅ ALLOWED'}
+                                        {evalFeatures.aiAssistant ? 'BLOCKED' : 'ALLOWED'}
                                     </button>
                                 </div>
 
                                 {/* Mock Interview & Report Access */}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15, 23, 42, 0.6)', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
                                     <div>
-                                        <div style={{ fontWeight: 700, color: '#ffffff', fontSize: '0.9rem' }}>📄 Mock Interview & Report Generation</div>
+                                        <div style={{ fontWeight: 700, color: '#ffffff', fontSize: '0.9rem' }}>Mock Interview & Report Generation</div>
                                         <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Full AI mock interview questions and score analysis</div>
                                     </div>
                                     <button
@@ -897,14 +1036,14 @@ export default function AdminDashboard() {
                                         }}
                                         onClick={() => setEvalFeatures(prev => ({ ...prev, interviewReports: !prev.interviewReports }))}
                                     >
-                                        {evalFeatures.interviewReports ? '❌ BLOCKED' : '✅ ALLOWED'}
+                                        {evalFeatures.interviewReports ? 'BLOCKED' : 'ALLOWED'}
                                     </button>
                                 </div>
 
                                 {/* Cover Letter & CV Access */}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15, 23, 42, 0.6)', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
                                     <div>
-                                        <div style={{ fontWeight: 700, color: '#ffffff', fontSize: '0.9rem' }}>✍️ Cover Letter & CV Generation</div>
+                                        <div style={{ fontWeight: 700, color: '#ffffff', fontSize: '0.9rem' }}>Cover Letter & CV Generation</div>
                                         <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Tailored job application cover letters</div>
                                     </div>
                                     <button
@@ -921,14 +1060,14 @@ export default function AdminDashboard() {
                                         }}
                                         onClick={() => setEvalFeatures(prev => ({ ...prev, coverLetterGeneration: !prev.coverLetterGeneration }))}
                                     >
-                                        {evalFeatures.coverLetterGeneration ? '❌ BLOCKED' : '✅ ALLOWED'}
+                                        {evalFeatures.coverLetterGeneration ? 'BLOCKED' : 'ALLOWED'}
                                     </button>
                                 </div>
 
                                 {/* Resume Generation Access */}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15, 23, 42, 0.6)', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
                                     <div>
-                                        <div style={{ fontWeight: 700, color: '#ffffff', fontSize: '0.9rem' }}>📝 Resume Builder & PDF Generation</div>
+                                        <div style={{ fontWeight: 700, color: '#ffffff', fontSize: '0.9rem' }}>Resume Builder & PDF Generation</div>
                                         <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Resume creation, template editing, and PDF download</div>
                                     </div>
                                     <button
@@ -945,7 +1084,7 @@ export default function AdminDashboard() {
                                         }}
                                         onClick={() => setEvalFeatures(prev => ({ ...prev, resumeGeneration: !prev.resumeGeneration }))}
                                     >
-                                        {evalFeatures.resumeGeneration ? '❌ BLOCKED' : '✅ ALLOWED'}
+                                        {evalFeatures.resumeGeneration ? 'BLOCKED' : 'ALLOWED'}
                                     </button>
                                 </div>
                             </div>
@@ -967,7 +1106,7 @@ export default function AdminDashboard() {
             {isAdminModalOpen && (
                 <div className="modal-overlay" onClick={() => setIsAdminModalOpen(false)}>
                     <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-                        <h2>👑 Create New Admin Account</h2>
+                        <h2>Create New Admin Account</h2>
                         <p>Directly register a new administrator in the dedicated <code>admins</code> collection.</p>
 
                         {adminMsg.text && (
@@ -1047,7 +1186,7 @@ export default function AdminDashboard() {
             {isCreditModalOpen && (
                 <div className="modal-overlay" onClick={() => setIsCreditModalOpen(false)}>
                     <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-                        <h2>⚡ Grant Custom Bonus Credits</h2>
+                        <h2>Grant Custom Bonus Credits</h2>
                         <p>Increase generation attempt limit for a specific user by Email or User ID.</p>
 
                         {creditMsg.text && (
@@ -1106,7 +1245,7 @@ export default function AdminDashboard() {
                 <div className="admin-modal-overlay" onClick={() => setIsMsgModalOpen(false)}>
                     <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h3>📢 Send Admin Broadcast / Message</h3>
+                            <h3>Send Admin Broadcast / Message</h3>
                             <button className="close-btn" onClick={() => setIsMsgModalOpen(false)}>✕</button>
                         </div>
 
@@ -1182,13 +1321,19 @@ export default function AdminDashboard() {
                                     Close
                                 </button>
                                 <button type="submit" className="btn-submit" disabled={msgSubmitting}>
-                                    {msgSubmitting ? 'Sending...' : '🚀 Send Message'}
+                                    {msgSubmitting ? 'Sending...' : 'Send Message'}
                                 </button>
                             </div>
                         </form>
                     </div>
                 </div>
             )}
+
+            {/* Action Confirmation Modal */}
+            <ConfirmModal
+                {...confirmModal}
+                onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+            />
         </div>
     );
 }

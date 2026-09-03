@@ -52,13 +52,17 @@ class InvoiceController {
 
       const invoice = await invoiceService.getInvoiceById(invoiceId, userId, isAdmin);
 
+      const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      ));
+
       // Return structured printable HTML view
       const html = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Invoice #${invoice.invoiceNumber}</title>
+  <title>Invoice #${esc(invoice.invoiceNumber)}</title>
   <style>
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1e293b; margin: 40px; background: #fff; }
     .invoice-card { max-width: 700px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; padding: 36px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
@@ -88,7 +92,7 @@ class InvoiceController {
       </div>
       <div>
         <div class="inv-title">TAX INVOICE</div>
-        <p style="margin: 4px 0 0 0; font-size: 13px; color: #64748b; text-align: right;">${invoice.invoiceNumber}</p>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #64748b; text-align: right;">${esc(invoice.invoiceNumber)}</p>
         <div style="text-align: right; margin-top: 6px;"><span class="badge">PAID</span></div>
       </div>
     </div>
@@ -96,13 +100,13 @@ class InvoiceController {
     <div class="meta-grid">
       <div class="meta-box">
         <h4>Billed To</h4>
-        <p><strong>${invoice.billTo?.name || 'Customer'}</strong></p>
-        <p>${invoice.billTo?.email || ''}</p>
+        <p><strong>${esc(invoice.billTo?.name || 'Customer')}</strong></p>
+        <p>${esc(invoice.billTo?.email || '')}</p>
       </div>
       <div class="meta-box" style="text-align: right;">
         <h4>Invoice Details</h4>
         <p><strong>Date:</strong> ${new Date(invoice.issuedAt).toLocaleDateString('en-IN')}</p>
-        <p><strong>Currency:</strong> ${invoice.currency}</p>
+        <p><strong>Currency:</strong> ${esc(invoice.currency)}</p>
       </div>
     </div>
 
@@ -118,8 +122,8 @@ class InvoiceController {
       <tbody>
         ${invoice.items.map(item => `
           <tr>
-            <td><strong>${item.description}</strong></td>
-            <td style="text-align: center;">${item.quantity}</td>
+            <td><strong>${esc(item.description)}</strong></td>
+            <td style="text-align: center;">${esc(item.quantity)}</td>
             <td style="text-align: right;">₹${(item.unitAmount / 100).toFixed(2)}</td>
             <td style="text-align: right;">₹${(item.amount / 100).toFixed(2)}</td>
           </tr>

@@ -2,7 +2,8 @@ import React, { useEffect, useMemo } from 'react';
 import { useAuth } from '../../Auth/hooks/useAuth';
 import { useInterview } from '../../Interview/hooks/useInterview';
 import PageLoading from '../../Shared/components/PageLoading';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { LogOut } from 'lucide-react';
 import { InvoicesTable } from '../../Subscription/components/InvoicesTable';
 import '../style/profile.scss';
 
@@ -55,8 +56,14 @@ function getScoreColorClass(score) {
 }
 
 const Profile = () => {
-    const { user, loading: authLoading } = useAuth();
+    const { user, loading: authLoading, handleLogout } = useAuth();
     const { loading: reportsLoading, reports, getReports } = useInterview();
+    const navigate = useNavigate();
+
+    const onProfileLogout = async () => {
+        await handleLogout();
+        navigate('/landing');
+    };
 
     useEffect(() => {
         if (reports === null) {
@@ -119,6 +126,17 @@ const Profile = () => {
                             <span className="item-value">August 2026</span>
                         </div>
                     </div>
+
+                    <button 
+                        type="button" 
+                        onClick={onProfileLogout} 
+                        className="profile-logout-btn" 
+                        id="profile-signout-btn"
+                        title="Sign out of your account"
+                    >
+                        <LogOut size={15} />
+                        <span>Sign Out</span>
+                    </button>
                 </div>
 
                 {/* Key Statistics Dashboard */}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../Auth/hooks/useAuth';
 import { useSubscription } from '../hooks/useSubscription';
+import ConfirmModal from '../../Shared/components/ConfirmModal';
 
 const PLANS_CONFIG = [
   {
@@ -9,6 +10,9 @@ const PLANS_CONFIG = [
     desc: 'Perfect for getting started and trying out AI mock interviews.',
     priceMonthly: 0,
     priceYearly: 0,
+    originalPriceMonthly: null,
+    originalPriceYearly: null,
+    discountBadge: null,
     features: [
       '3 AI Mock Interviews / month',
       '20 AI Credits',
@@ -22,8 +26,11 @@ const PLANS_CONFIG = [
     planKey: 'pro',
     name: 'Pro',
     desc: 'Best for active job seekers looking for targeted interview prep.',
-    priceMonthly: 199,
-    priceYearly: 1990, // 2 months free
+    priceMonthly: 99,
+    priceYearly: 990, // 2 months free
+    originalPriceMonthly: 199,
+    originalPriceYearly: 1990,
+    discountBadge: '50% OFF',
     features: [
       '10 AI Mock Interviews / month',
       '50 AI Credits',
@@ -39,8 +46,11 @@ const PLANS_CONFIG = [
     planKey: 'premium',
     name: 'Premium',
     desc: 'Full power for power candidates, career switchers & deep practice.',
-    priceMonthly: 349,
-    priceYearly: 3490, // 2 months free
+    priceMonthly: 199,
+    priceYearly: 1990, // 2 months free
+    originalPriceMonthly: 399,
+    originalPriceYearly: 3990,
+    discountBadge: '50% OFF',
     features: [
       '25 AI Mock Interviews / month',
       '100 AI Credits',
@@ -60,12 +70,45 @@ export const PricingCards = ({ onUpgradeSuccess }) => {
   const [billingCycle, setBillingCycle] = useState('MONTHLY');
   const [successModal, setSuccessModal] = useState(null);
   const [activePlanKeyProcessing, setActivePlanKeyProcessing] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(300); // 5 mins in seconds (0:5:0)
+
+  // Plan Upgrade Confirmation Modal
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    details: null,
+    confirmText: 'Proceed to Checkout',
+    cancelText: 'Cancel',
+    type: 'info',
+    loading: false,
+    onConfirm: null
+  });
+
+  // 5-minute looping countdown timer
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          return 300; // Automatically restart back to 5 minutes
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatCountdown = (totalSeconds) => {
+    const h = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+    const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+    const s = String(totalSeconds % 60).padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  };
 
   const currentPlan = subscriptionData?.plan || user?.plan || 'free';
 
-  const handleSelectPlan = (planKey) => {
-    if (planKey === 'free' || planKey === currentPlan) return;
-
+  const executeCheckout = (planKey) => {
     setActivePlanKeyProcessing(planKey);
     initiateCheckout({
       planKey,
@@ -84,7 +127,40 @@ export const PricingCards = ({ onUpgradeSuccess }) => {
       },
       onFailure: (errMsg) => {
         setActivePlanKeyProcessing(null);
-        console.warn('Checkout cancelled or failed:', errMsg);
+        if (import.meta.env.DEV) {
+          console.warn('Checkout cancelled or failed:', errMsg);
+        }
+      }
+    });
+  };
+
+  const handleSelectPlan = (planKey) => {
+    if (planKey === 'free' || planKey === currentPlan) return;
+
+    const selectedPlanConfig = PLANS_CONFIG.find(p => p.planKey === planKey);
+    const price = billingCycle === 'YEARLY' ? selectedPlanConfig.priceYearly : selectedPlanConfig.priceMonthly;
+    const cycleLabel = billingCycle === 'YEARLY' ? '/ year (2 months free)' : '/ month';
+
+    setConfirmModal({
+      isOpen: true,
+      title: `Confirm Plan Change to ${selectedPlanConfig.name}`,
+      message: `Are you sure you want to switch your account plan from ${currentPlan.toUpperCase()} to ${selectedPlanConfig.name.toUpperCase()}?`,
+      details: (
+        <div className="change-preview-row">
+          <span className="change-label">Investment:</span>
+          <span className="change-value">
+            <span className="new-val" style={{ color: '#818cf8', fontSize: '1.05rem' }}>₹{price}</span>
+            <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}> {cycleLabel}</span>
+          </span>
+        </div>
+      ),
+      confirmText: 'Yes, Proceed to Payment',
+      cancelText: 'Cancel',
+      type: 'info',
+      loading: false,
+      onConfirm: () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        executeCheckout(planKey);
       }
     });
   };
@@ -102,8 +178,15 @@ export const PricingCards = ({ onUpgradeSuccess }) => {
         <div
           className={`toggle-switch ${billingCycle === 'YEARLY' ? 'yearly' : ''}`}
           onClick={() => setBillingCycle(billingCycle === 'MONTHLY' ? 'YEARLY' : 'MONTHLY')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setBillingCycle(prev => prev === 'MONTHLY' ? 'YEARLY' : 'MONTHLY');
+            }
+          }}
           role="button"
           tabIndex={0}
+          aria-label="Toggle billing cycle between monthly and yearly"
         >
           <div className="switch-thumb" />
         </div>
@@ -116,11 +199,22 @@ export const PricingCards = ({ onUpgradeSuccess }) => {
         <span className="discount-pill">2 Months Free 🎉</span>
       </div>
 
+      {/* Special Limited Offer Countdown Timer Banner (Red) */}
+      <div className="special-offer-timer-banner">
+        <span className="timer-icon">🔥</span>
+        <span className="timer-label">LIMITED TIME DISCOUNT ENDS IN:</span>
+        <span className="timer-countdown">
+          {formatCountdown(timeLeft)}
+        </span>
+        <span className="timer-badge">FLASH 50% OFF</span>
+      </div>
+
       {/* Pricing Cards Grid */}
-      <div className="pricing-grid" style={{ marginTop: '36px' }}>
+      <div className="pricing-grid" style={{ marginTop: '28px' }}>
         {PLANS_CONFIG.map((plan) => {
           const isCurrent = currentPlan.toLowerCase() === plan.planKey;
           const displayPrice = billingCycle === 'YEARLY' ? plan.priceYearly : plan.priceMonthly;
+          const displayOriginalPrice = billingCycle === 'YEARLY' ? plan.originalPriceYearly : plan.originalPriceMonthly;
           const isProcessing = checkoutLoading && activePlanKeyProcessing === plan.planKey;
 
           return (
@@ -132,11 +226,23 @@ export const PricingCards = ({ onUpgradeSuccess }) => {
 
               <div>
                 <div className="card-header">
-                  <h3 className="card-plan-name">{plan.name}</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <h3 className="card-plan-name" style={{ margin: 0 }}>{plan.name}</h3>
+                    {plan.discountBadge && (
+                      <span className="card-discount-tag">{plan.discountBadge}</span>
+                    )}
+                  </div>
                   <p className="card-plan-desc">{plan.desc}</p>
                 </div>
 
                 <div className="card-price-section">
+                  {displayOriginalPrice && (
+                    <div className="original-price-row">
+                      <span className="strike-price">₹{displayOriginalPrice}</span>
+                      <span className="save-badge">Save ₹{displayOriginalPrice - displayPrice}</span>
+                    </div>
+                  )}
+
                   <div className="price-row">
                     <span className="currency-sym">₹</span>
                     <span className="price-digits">{displayPrice}</span>
@@ -258,6 +364,12 @@ export const PricingCards = ({ onUpgradeSuccess }) => {
           </div>
         </div>
       )}
+
+      {/* Plan Upgrade / Change Confirmation Modal */}
+      <ConfirmModal
+        {...confirmModal}
+        onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </>
   );
 };

@@ -7,6 +7,8 @@ const bcrypt = require('bcryptjs');
 const JWT = require('jsonwebtoken');
 const { isEmailDomainReal } = require("../utils/emailValidator");
 const { sendOtpEmail } = require("../services/email.service");
+const crypto = require("crypto");
+const { supabase } = require("../config/supabase.config");
 const {
     blacklistTokenInRedis,
     isTokenBlacklistedInRedis
@@ -154,7 +156,7 @@ async function registerUserController(req, res) {
                 startedAt: now,
                 currentPeriodEnd: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
             },
-            { upsert: true, new: true }
+            { upsert: true, returnDocument: 'after' }
         );
 
         // Generate 6-digit OTP
@@ -686,6 +688,117 @@ async function getUserUsageController(req, res) {
     }
 }
 
+/**
+ * @name googleSupabaseAuthController
+ * @description Authenticate user via Supabase Google OAuth token
+ * @access public
+ */
+async function googleSupabaseAuthController(req, res) {
+    const { accessToken } = req.body;
+    try {
+        if (!accessToken) {
+            return res.status(400).json({
+                message: "Supabase access token is required."
+            });
+        }
+
+        if (!supabase) {
+            return res.status(500).json({
+                message: "Supabase is not configured on the server."
+            });
+        }
+
+        // Verify token directly with Supabase Auth
+        const { data: { user: sbUser }, error: sbError } = await supabase.auth.getUser(accessToken);
+
+        if (sbError || !sbUser || !sbUser.email) {
+            return res.status(401).json({
+                message: "Invalid or expired Google authentication session. Please try again."
+            });
+        }
+
+        const normalizedEmail = sbUser.email.trim().toLowerCase();
+
+        // Check if user already exists
+        let user = await userModel.findOne({ email: normalizedEmail });
+
+        if (user) {
+            // If user is suspended/blocked
+            if (user.isBlocked) {
+                return res.status(403).json({
+                    message: "Your account has been suspended by an administrator. Please contact support."
+                });
+            }
+
+            // If user exists but was unverified, mark verified because Google verified their email
+            if (!user.isVerified) {
+                user.isVerified = true;
+                await user.save();
+            }
+        } else {
+            // New user registration via Google OAuth
+            // Generate a clean, unique username
+            const rawName = (sbUser.user_metadata?.full_name || sbUser.user_metadata?.name || normalizedEmail.split('@')[0])
+                .replace(/[^a-zA-Z0-9_]/g, '')
+                .slice(0, 20) || 'user';
+            
+            let uniqueUsername = rawName;
+            let counter = 1;
+            while (await userModel.findOne({ username: uniqueUsername })) {
+                const randomSuffix = Math.floor(100 + Math.random() * 900);
+                uniqueUsername = `${rawName}_${randomSuffix}`.slice(0, 25);
+                counter++;
+                if (counter > 10) {
+                    uniqueUsername = `user_${Date.now().toString().slice(-6)}`;
+                    break;
+                }
+            }
+
+            // Secure random password hash
+            const randomPassword = crypto.randomBytes(32).toString('hex');
+            const hashedPassword = await bcrypt.hash(randomPassword, 10);
+
+            user = await userModel.create({
+                username: uniqueUsername,
+                email: normalizedEmail,
+                password: hashedPassword,
+                isVerified: true,
+                plan: 'free',
+                role: 'user'
+            });
+        }
+
+        // Generate application JWT
+        const token = JWT.sign(
+            {
+                id: user._id,
+                username: user.username,
+                plan: user.plan || 'free',
+                role: user.role || 'user',
+                isAdmin: ['admin', 'super_admin'].includes(user.role)
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: "1d" }
+        );
+
+        res.cookie("token", token, cookieOptions);
+
+        return res.status(200).json({
+            message: "Authenticated successfully with Google",
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                plan: user.plan || 'free',
+                role: user.role || 'user',
+                isAdmin: ['admin', 'super_admin'].includes(user.role)
+            }
+        });
+    } catch (err) {
+        return handleAuthControllerError(res, err);
+    }
+}
+
 module.exports = {
     registerUserController,
     verifyOtpController,
@@ -695,5 +808,6 @@ module.exports = {
     getMeController,
     forgotPasswordController,
     resetPasswordController,
-    getUserUsageController
+    getUserUsageController,
+    googleSupabaseAuthController
 };
