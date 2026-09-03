@@ -35,6 +35,7 @@ import mobileLight from '../../../assets/landing/landing-mobile-light.png';
 
 const SIMULATOR_DATA = {
   fullstack: {
+    shortLabel: "Full Stack",
     role: "Full Stack Engineer (Node + React)",
     question: "How do you optimize server-side database query bottlenecks during peak traffic?",
     sampleAnswer: "I profile slow queries using EXPLAIN ANALYZE, implement Redis caching for high-read endpoints, configure connection pooling, and use database indexing on high-cardinality search columns.",
@@ -43,6 +44,7 @@ const SIMULATOR_DATA = {
     radar: { tech: 95, comm: 90, sysDesign: 92 }
   },
   frontend: {
+    shortLabel: "Frontend",
     role: "Senior React Developer",
     question: "How do you diagnose and eliminate unnecessary re-renders in large React applications?",
     sampleAnswer: "I utilize React DevTools Profiler to identify culprit components, wrap computationally expensive calculations in useMemo, stabilize callback references with useCallback, and split monolithic contexts into atomic state slices.",
@@ -51,6 +53,7 @@ const SIMULATOR_DATA = {
     radar: { tech: 94, comm: 91, sysDesign: 88 }
   },
   ai: {
+    shortLabel: "AI / LLM",
     role: "AI / LLM Engineer",
     question: "What strategies do you use to mitigate hallucination in retrieval-augmented generation (RAG) pipelines?",
     sampleAnswer: "I use hybrid semantic & keyword search (BM25 + vector embeddings), strict chunk re-ranking via Cross-Encoders, context citation constraints in the prompt schema, and automated ground-truth evaluation metrics.",
@@ -59,6 +62,7 @@ const SIMULATOR_DATA = {
     radar: { tech: 97, comm: 94, sysDesign: 95 }
   },
   devops: {
+    shortLabel: "DevOps & Cloud",
     role: "DevOps & Cloud Engineer",
     question: "How do you design a zero-downtime canary deployment pipeline in Kubernetes?",
     sampleAnswer: "I configure ArgoCD with progressive traffic splitting using Istio Service Mesh, monitor Prometheus error rates and latency SLOs, and trigger automated rollbacks if threshold anomalies occur.",
@@ -422,7 +426,7 @@ const LandingPage = () => {
                   className={`role-pill ${activeRoleKey === key ? 'active' : ''}`}
                   onClick={() => setActiveRoleKey(key)}
                 >
-                  {SIMULATOR_DATA[key].role.split(' ')[0]} {SIMULATOR_DATA[key].role.split(' ')[1]}
+                  {SIMULATOR_DATA[key].shortLabel || SIMULATOR_DATA[key].role}
                 </button>
               ))}
             </div>

@@ -58,14 +58,25 @@ const Footer = ({ theme = 'dark' }) => {
 
   const handleSubscribe = (e) => {
     e.preventDefault();
-    if (!email || !email.includes('@')) return;
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) return;
     
     setSubmitting(true);
-    setTimeout(() => {
-      setSubmitting(false);
+    try {
+      const existing = JSON.parse(localStorage.getItem('kivi_newsletter_subscribers') || '[]');
+      if (!existing.includes(cleanEmail)) {
+        existing.push(cleanEmail);
+        localStorage.setItem('kivi_newsletter_subscribers', JSON.stringify(existing));
+      }
       setSubscribed(true);
       setEmail('');
-    }, 600);
+    } catch (err) {
+      console.warn('Newsletter subscription storage:', err);
+      setSubscribed(true);
+      setEmail('');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const scrollToTop = () => {

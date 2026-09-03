@@ -100,9 +100,9 @@ export const PricingCards = ({ onUpgradeSuccess }) => {
   }, []);
 
   const formatCountdown = (totalSeconds) => {
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    const s = totalSeconds % 60;
+    const h = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+    const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+    const s = String(totalSeconds % 60).padStart(2, '0');
     return `${h}:${m}:${s}`;
   };
 
@@ -178,8 +178,15 @@ export const PricingCards = ({ onUpgradeSuccess }) => {
         <div
           className={`toggle-switch ${billingCycle === 'YEARLY' ? 'yearly' : ''}`}
           onClick={() => setBillingCycle(billingCycle === 'MONTHLY' ? 'YEARLY' : 'MONTHLY')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setBillingCycle(prev => prev === 'MONTHLY' ? 'YEARLY' : 'MONTHLY');
+            }
+          }}
           role="button"
           tabIndex={0}
+          aria-label="Toggle billing cycle between monthly and yearly"
         >
           <div className="switch-thumb" />
         </div>

@@ -7,12 +7,23 @@ class ReconciliationService {
    * Expire stale orders that have been in CREATED or PENDING status for > 30 minutes
    */
   async expireStaleOrders() {
-    const cutoff = new Date(Date.now() - 30 * 60 * 1000); // 30 minutes ago
+    const thirtyMinCutoff = new Date(Date.now() - 30 * 60 * 1000);
+    const oneDayCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
     try {
+      // 1. Abandoned orders that never generated a gatewayOrderId can be expired after 30 mins
+      // 2. Orders with gatewayOrderId that remain pending/unpaid after the 24h reconciliation window can be expired
       const result = await PaymentOrder.updateMany(
         {
           status: { $in: ['CREATED', 'PENDING'] },
-          createdAt: { $lte: cutoff }
+          $or: [
+            {
+              $or: [{ gatewayOrderId: { $exists: false } }, { gatewayOrderId: null }, { gatewayOrderId: '' }],
+              createdAt: { $lte: thirtyMinCutoff }
+            },
+            {
+              createdAt: { $lte: oneDayCutoff }
+            }
+          ]
         },
         {
           $set: { status: 'EXPIRED' }
@@ -20,7 +31,7 @@ class ReconciliationService {
       );
 
       if (result.modifiedCount > 0) {
-        console.log(`🧹 [OrderExpiryJob] Expired ${result.modifiedCount} abandoned orders older than 30 minutes.`);
+        console.log(`🧹 [OrderExpiryJob] Expired ${result.modifiedCount} abandoned orders.`);
       }
       return { expiredCount: result.modifiedCount };
     } catch (err) {

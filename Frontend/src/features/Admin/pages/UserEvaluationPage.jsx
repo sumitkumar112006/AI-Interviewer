@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import DOMPurify from 'dompurify';
 import { getUserById, adjustUserCredits, updateUserFeatureAccess, updateUserPlan, toggleUserBlock, deleteUser, sendAdminMessage } from '../services/admin.api';
 import PageLoading from '../../Shared/components/PageLoading';
 import ConfirmModal from '../../Shared/components/ConfirmModal';
@@ -296,7 +297,7 @@ const UserEvaluationPage = () => {
                     <div className="header-left">
                         <Link to="/admin-portal-dashboard-root" className="back-link">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M19 12H5M12 19l-7-7 7-7"/>
+                                <path d="M19 12H5M12 19l-7-7 7-7" />
                             </svg>
                             Back to Admin Dashboard
                         </Link>
@@ -370,7 +371,7 @@ const UserEvaluationPage = () => {
                         <div className="profile-fields-list">
                             <div className="profile-field">
                                 <span className="field-label">Current Subscription Plan:</span>
-                                <select 
+                                <select
                                     className="plan-select-input"
                                     value={user.plan}
                                     onChange={(e) => requestPlanChange(e.target.value)}
@@ -679,22 +680,22 @@ const UserEvaluationPage = () => {
                             </div>
 
                             <div className="docs-nav-tabs">
-                                <button 
-                                    type="button" 
+                                <button
+                                    type="button"
                                     className={`doc-nav-tab ${activeDocTab === 'reports' ? 'active' : ''}`}
                                     onClick={() => setActiveDocTab('reports')}
                                 >
                                     Interview Reports ({reports.length})
                                 </button>
-                                <button 
-                                    type="button" 
+                                <button
+                                    type="button"
                                     className={`doc-nav-tab ${activeDocTab === 'resumes' ? 'active' : ''}`}
                                     onClick={() => setActiveDocTab('resumes')}
                                 >
                                     Resumes ({resumes.length})
                                 </button>
-                                <button 
-                                    type="button" 
+                                <button
+                                    type="button"
                                     className={`doc-nav-tab ${activeDocTab === 'coverLetters' ? 'active' : ''}`}
                                     onClick={() => setActiveDocTab('coverLetters')}
                                 >
@@ -716,7 +717,7 @@ const UserEvaluationPage = () => {
                                     <div className="docs-table-wrapper">
                                         <table className="eval-docs-table">
                                             <thead>
-                                              <tr>
+                                                <tr>
                                                     <th>Developer / Job Role</th>
                                                     <th>Match Score</th>
                                                     <th>Generated Date</th>
@@ -745,9 +746,9 @@ const UserEvaluationPage = () => {
                                                             </div>
                                                         </td>
                                                         <td>
-                                                            <Link 
-                                                                to={`/interview/${r._id}`} 
-                                                                target="_blank" 
+                                                            <Link
+                                                                to={`/interview/${r._id}`}
+                                                                target="_blank"
                                                                 rel="noreferrer"
                                                                 className="doc-action-btn view-btn"
                                                             >
@@ -806,17 +807,17 @@ const UserEvaluationPage = () => {
                                                         </td>
                                                         <td>
                                                             <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                                                <Link 
-                                                                    to={`/resume/${res._id}`} 
-                                                                    target="_blank" 
+                                                                <Link
+                                                                    to={`/resume/${res._id}`}
+                                                                    target="_blank"
                                                                     rel="noreferrer"
                                                                     className="doc-action-btn view-btn"
                                                                 >
                                                                     ATS Live Editor ↗
                                                                 </Link>
                                                                 {(res.generatedResumeHtml || res.resume) && (
-                                                                    <button 
-                                                                        type="button" 
+                                                                    <button
+                                                                        type="button"
                                                                         className="doc-action-btn preview-btn"
                                                                         onClick={() => setPreviewModal({
                                                                             type: 'resume',
@@ -881,8 +882,8 @@ const UserEvaluationPage = () => {
                                                             </div>
                                                         </td>
                                                         <td>
-                                                            <button 
-                                                                type="button" 
+                                                            <button
+                                                                type="button"
                                                                 className="doc-action-btn preview-btn"
                                                                 onClick={() => setPreviewModal({
                                                                     type: 'coverLetter',
@@ -920,21 +921,21 @@ const UserEvaluationPage = () => {
 
                         <div style={{ flexGrow: 1, overflowY: 'auto', background: '#090d16', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '1.25rem', color: '#e2e8f0', fontSize: '0.9rem', lineHeight: 1.6, whiteSpace: previewModal.isHtml ? 'normal' : 'pre-wrap' }}>
                             {previewModal.isHtml ? (
-                                <div dangerouslySetInnerHTML={{ __html: previewModal.content }} />
+                                <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewModal.content) }} />
                             ) : (
                                 previewModal.content
                             )}
                         </div>
 
                         <div style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                            <button 
-                                type="button" 
-                                className="eval-btn secondary" 
+                            <button
+                                type="button"
+                                className="eval-btn secondary"
                                 onClick={() => {
-                                    navigator.clipboard.writeText(previewModal.content);
-                                    setMsg({ type: 'success', text: 'Document content copied to clipboard!' });
-                                }}
-                            >
+                                    navigator.clipboard.writeText(previewModal.content)
+                                        .then(() => setMsg({ type: 'success', text: 'Document content copied to clipboard!' }))
+                                        .catch(() => setMsg({ type: 'error', text: 'Unable to copy content to the clipboard.' }));
+                                }}                            >
                                 Copy Content
                             </button>
                             <button type="button" className="eval-btn primary" onClick={() => setPreviewModal(null)}>

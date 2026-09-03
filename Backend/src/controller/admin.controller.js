@@ -151,8 +151,7 @@ async function getAdminUsersController(req, res) {
         const enrichedUsers = accounts.map(u => ({
             ...u,
             totalReports: reportMap[u._id.toString()] || 0,
-            totalResumes: resumeMap[u._id.toString()] || (reportMap[u._id.toString()] || 0),
-            totalCoverLetters: coverLetterMap[u._id.toString()] || 0
+            totalResumes: resumeMap[u._id.toString()] || 0, totalCoverLetters: coverLetterMap[u._id.toString()] || 0
         }));
 
         return res.status(200).json({
@@ -349,8 +348,8 @@ async function toggleUserBlockController(req, res) {
                 recipient: user._id,
                 sender: req.user?._id || req.user?.id,
                 title: isBlocked ? "Account Access Restricted" : "Account Access Restored",
-                message: isBlocked 
-                    ? "Your account access has been restricted by an administrator." 
+                message: isBlocked
+                    ? "Your account access has been restricted by an administrator."
                     : "Your account access has been restored.",
                 type: "ACCOUNT_STATUS"
             });
@@ -452,8 +451,8 @@ async function updateUserFeatureAccessController(req, res) {
             if (user.blockedFeatures.coverLetterGeneration) blockedList.push("Cover Letter Generator");
             if (user.blockedFeatures.interviewReports) blockedList.push("Interview Reports");
 
-            const details = blockedList.length > 0 
-                ? `Restricted features: ${blockedList.join(", ")}.` 
+            const details = blockedList.length > 0
+                ? `Restricted features: ${blockedList.join(", ")}.`
                 : "All features are now fully enabled.";
 
             await notificationModel.create({
@@ -553,7 +552,7 @@ async function adjustUserCreditsController(req, res) {
             if (typeof customAiBonusCredits === 'number') {
                 user.customAiBonusCredits = customAiBonusCredits;
             }
-        } 
+        }
         // Mode 2: Targeted increment / reduction
         else if (target && action && typeof amount === 'number') {
             const delta = action === 'increase' ? amount : -amount;
@@ -906,7 +905,7 @@ async function deleteUserController(req, res) {
         const UsageTracking = require("../models/usageTracking.model");
         const SubscriptionEvent = require("../models/subscriptionEvent.model");
 
-        await Promise.allSettled([
+        const results = await Promise.allSettled([
             interviewReportModel.deleteMany({ user: userId }),
             coverLetterModel.deleteMany({ user: userId }),
             subscriptionModel.deleteMany({ userId }),
@@ -916,9 +915,19 @@ async function deleteUserController(req, res) {
             UsageTracking.deleteMany({ userId }),
             SubscriptionEvent.deleteMany({ userId }),
             notificationModel.deleteMany({ recipient: userId }),
-            userModel.findByIdAndDelete(userId),
             deleteCachePattern(`*${userId}*`)
         ]);
+
+        const failures = results.filter(r => r.status === 'rejected');
+        if (failures.length > 0) {
+            failures.forEach(f => console.error("deleteUserController cleanup failure:", f.reason));
+            return res.status(500).json({
+                message: `Deletion of "${user.username}" was incomplete. ${failures.length} cleanup step(s) failed.`
+            });
+        }
+
+        // Delete user document last so failure leaves the account recoverable
+        await userModel.findByIdAndDelete(userId);
 
         return res.status(200).json({
             success: true,

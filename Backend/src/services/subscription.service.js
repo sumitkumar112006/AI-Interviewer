@@ -71,11 +71,17 @@ class SubscriptionService {
         if (sess) subQ.session(sess);
         const existingSub = await subQ;
 
+        const { Invoice } = require('../models/invoice.model');
+        const invQ = Invoice.findOne({ orderId: order._id });
+        if (sess) invQ.session(sess);
+        const existingInv = await invQ;
+
         return {
           alreadyProcessed: true,
           order,
           payment: existingPayment,
-          subscription: existingSub
+          subscription: existingSub,
+          invoice: existingInv
         };
       }
 
@@ -380,12 +386,12 @@ class SubscriptionService {
         currentPeriodEnd: user?.generationsResetAt || null
       },
       usage: {
-        interviewsUsed: usage?.interviewsUsed || user?.generationsUsed || 0,
-        interviewsLimit: usage?.interviewsLimit || generationLimit,
-        aiCreditsUsed: usage?.aiCreditsUsed || 0,
-        aiCreditsLimit: usage?.aiCreditsLimit || aiCreditsLimit,
-        bonusCredits: user?.customBonusCredits || 0,
-        aiBonusCredits: user?.customAiBonusCredits || 0
+        interviewsUsed: usage?.interviewsUsed ?? user?.generationsUsed ?? 0,
+        interviewsLimit: usage?.interviewsLimit ?? generationLimit,
+        aiCreditsUsed: usage?.aiCreditsUsed ?? 0,
+        aiCreditsLimit: usage?.aiCreditsLimit ?? aiCreditsLimit,
+        bonusCredits: user?.customBonusCredits ?? 0,
+        aiBonusCredits: user?.customAiBonusCredits ?? 0
       }
     };
   }

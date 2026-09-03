@@ -85,6 +85,13 @@
       color: #059669;
     }
 
+    .kivi-footer__brand-col .brand-title {
+      background: linear-gradient(90deg, #1e293b 0%, #4f46e5 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
     .kivi-footer__brand-sub {
       color: #64748b;
     }

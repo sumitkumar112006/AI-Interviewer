@@ -233,7 +233,8 @@ class OrderService {
       throw { status: 404, message: 'Order not found.' };
     }
 
-    if (!isAdmin && order.userId._id.toString() !== userId.toString()) {
+    const ownerId = order.userId?._id || order.userId;
+    if (!isAdmin && (!ownerId || ownerId.toString() !== userId.toString())) {
       throw { status: 403, message: 'Access denied to this order.' };
     }
 

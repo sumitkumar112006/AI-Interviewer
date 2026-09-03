@@ -51,7 +51,7 @@ class SubscriptionController {
         });
       }
 
-      // 2. Find matching order
+      // 2. Find matching order strictly bound to razorpay_order_id
       let order = null;
       if (orderId) {
         order = await PaymentOrder.findById(orderId);
@@ -67,6 +67,14 @@ class SubscriptionController {
         });
       }
 
+      // Assert that order.gatewayOrderId strictly matches the verified razorpay_order_id
+      if (order.gatewayOrderId !== razorpay_order_id) {
+        return res.status(400).json({
+          success: false,
+          message: 'Gateway order ID does not match the specified order.'
+        });
+      }
+
       // Verify user ownership
       if (order.userId.toString() !== userId.toString()) {
         return res.status(403).json({
@@ -75,7 +83,7 @@ class SubscriptionController {
         });
       }
 
-      // 3. Atomically activate subscription
+      // 3. Atomically activate subscription (handles idempotent replay safely)
       const result = await subscriptionService.activate({
         orderId: order._id,
         gatewayPaymentId: razorpay_payment_id,
