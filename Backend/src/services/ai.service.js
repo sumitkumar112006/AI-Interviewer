@@ -10,35 +10,75 @@ const fs = require('fs')
 const axios = require('axios');
 
 
-// Initialize Groq client
-const ai = new Groq({ apiKey: process.env.GROQ_API_KEY })
+const { 
+    getModelForProvider, 
+    getMaxTokensForProvider, 
+    getTemperatureForPlan 
+} = require('../config/aiModels.config');
+const { getManagedGroqPool, getManagedGeminiPool } = require('../config/aiKeys.config');
 
-if (!process.env.GROQ_API_KEY) {
-    console.warn('GROQ_API_KEY is not set. AI calls will likely fail.')
+// Multi-Key Groq State for Priority Waterfall and Rate Limiting
+const groqKeys = getManagedGroqPool();
+const geminiKeys = getManagedGeminiPool();
+
+if (groqKeys.length === 0) {
+    console.warn('No active Groq keys found in aiKeys.config.js. Groq AI calls will fall back.');
+}
+if (geminiKeys.length === 0) {
+    console.warn('No active Gemini keys found in aiKeys.config.js. Gemini fallback will be skipped.');
+}
+
+/**
+ * Get the highest-priority available Groq key (Key 1 -> Key 2 -> Key 3).
+ * Returns null if all keys are currently cooling down.
+ */
+function getAvailableGroqKey() {
+    const now = Date.now();
+    return groqKeys.find(k => now >= k.cooldownUntil) || null;
+}
+
+/**
+ * Parses the rate limit header and sets the cooldown timestamp for the failing key.
+ */
+function handleGroqRateLimit(keyId, err) {
+    // Attempt to safely extract retry-after from the Groq SDK error object
+    const retryAfterSeconds = parseInt(
+        err?.headers?.['retry-after'] ??
+        err?.response?.headers?.['retry-after'] ??
+        '60',
+        10
+    );
+
+    const keyState = groqKeys.find(k => k.id === keyId);
+    if (keyState) {
+        keyState.cooldownUntil = Date.now() + (retryAfterSeconds * 1000);
+        console.warn(`[AI] Groq Key ${keyId} rate-limited. Cooling down for ${retryAfterSeconds}s.`);
+    }
 }
 
 // OpenRouter fallback config (OpenAI-compatible API)
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
-const OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free" // Free 120B model on OpenRouter
 
 if (!OPENROUTER_API_KEY) {
     console.warn('OPENROUTER_API_KEY is not set. OpenRouter fallback will not be available.')
 }
 
 // Gemini config
-const { GoogleGenAI } = require('@google/genai')
-const GEMINI_API_KEY = process.env.GOOGLE_GENAI_API_KEY
-const aiGemini = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null
+const { GoogleGenAI } = require('@google/genai');
 
-if (!GEMINI_API_KEY) {
-    console.warn('GOOGLE_GENAI_API_KEY is not set. Gemini fallback will not be available.')
+/**
+ * Handle Gemini rate limit / quota error and set cooldown.
+ */
+function handleGeminiRateLimit(keyId, err) {
+    const keyState = geminiKeys.find(k => k.id === keyId);
+    if (keyState) {
+        keyState.cooldownUntil = Date.now() + 60000; // 60s cooldown
+        console.warn(`[AI] Gemini Key ${keyId} rate-limited/exhausted. Cooling down for 60s.`);
+    }
 }
 
-const GROQ_MODEL = "openai/gpt-oss-120b"
-
-
-
+// Removed static GROQ_MODEL and OPENROUTER_MODEL. Now resolved dynamically via aiModels.config.js
 
 const questionSchema = z.object({
     question: z
@@ -449,21 +489,25 @@ function isGroqRateLimitError(err) {
  * Call OpenRouter as a fallback (OpenAI-compatible API).
  * Supports many free and paid models via https://openrouter.ai
  */
-async function callOpenRouter(systemPrompt, userPrompt) {
+async function callOpenRouter(systemPrompt, userPrompt, plan = "free", isAssistant = false) {
     if (!OPENROUTER_API_KEY) {
-        throw new Error('OPENROUTER_API_KEY is not configured. Cannot use OpenRouter as fallback.')
+        throw new Error("OPENROUTER_API_KEY not configured");
     }
-    console.log('[AI] Switched to OpenRouter fallback.')
+    const model = getModelForProvider(plan, "openrouter", isAssistant);
+    const maxTokens = getMaxTokensForProvider(plan, "openrouter", isAssistant);
+    const temperature = getTemperatureForPlan(plan, isAssistant);
+
+    console.log(`[AI] Switched to OpenRouter fallback (Model: ${model}).`)
     const response = await axios.post(
         OPENROUTER_BASE_URL,
         {
-            model: OPENROUTER_MODEL,
+            model: model,
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userPrompt }
             ],
-            temperature: 0.7,
-            max_tokens: 8192,
+            temperature: temperature,
+            max_tokens: maxTokens,
         },
         {
             headers: {
@@ -478,76 +522,120 @@ async function callOpenRouter(systemPrompt, userPrompt) {
 }
 
 /**
- * Call Gemini (Google GenAI SDK) as the primary provider.
+ * Call Gemini (Google GenAI SDK) as the fallback provider.
+ * Supports multi-key priority failover across all keys in GEMINI_API_KEYS.
  */
-async function callGemini(systemPrompt, userPrompt) {
-    if (!aiGemini) {
-        throw new Error('Gemini API is not configured.')
+async function callGemini(systemPrompt, userPrompt, plan = "free", isAssistant = false) {
+    if (geminiKeys.length === 0) {
+        throw new Error("Gemini AI not configured (no keys in aiKeys.config.js)");
     }
-    const response = await aiGemini.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-            { role: 'user', parts: [{ text: `${systemPrompt}\n\nUser request:\n${userPrompt}` }] }
-        ],
-        config: {
-            temperature: 0.7,
+
+    const model = getModelForProvider(plan, "gemini", isAssistant);
+    const maxTokens = getMaxTokensForProvider(plan, "gemini", isAssistant);
+    const temperature = getTemperatureForPlan(plan, isAssistant);
+    const now = Date.now();
+
+    for (const keyState of geminiKeys) {
+        if (now < keyState.cooldownUntil) {
+            const remainingSec = Math.max(1, Math.ceil((keyState.cooldownUntil - now) / 1000));
+            console.log(`[AI] Gemini Key ${keyState.id} cooling down (${remainingSec}s remaining). Trying next Gemini key...`);
+            continue;
         }
-    })
-    return response.text
+
+        try {
+            console.log(`[AI] Attempting Gemini with Key ${keyState.id} (Model: ${model})...`);
+            const client = new GoogleGenAI({ apiKey: keyState.key });
+            const response = await client.models.generateContent({
+                model: model,
+                contents: [
+                    { role: 'user', parts: [{ text: `${systemPrompt}\n\nUser request:\n${userPrompt}` }] }
+                ],
+                config: {
+                    temperature: temperature,
+                }
+            });
+            return response.text;
+        } catch (geminiErr) {
+            const msg = (geminiErr?.message || "").toLowerCase();
+            const isRateLimit = msg.includes("quota") || msg.includes("resource has been exhausted") || msg.includes("429") || msg.includes("503");
+            if (isRateLimit) {
+                handleGeminiRateLimit(keyState.id, geminiErr);
+                console.warn(`[AI] Gemini Key ${keyState.id} hit quota. Failing over to next Gemini key in same request...`);
+            } else {
+                console.warn(`[AI] Gemini Key ${keyState.id} error: ${geminiErr.message}. Trying next Gemini key...`);
+            }
+        }
+    }
+
+    throw new Error("All Gemini keys failed or are currently cooling down.");
 }
 
-let isGroqHealthy = true;
-let groqLastFailureTime = 0;
-const GROQ_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes cooldown
-
 /**
- * Primary AI call dispatcher: tries Groq first (if healthy), then falls back to Gemini, then OpenRouter.
+ * Primary AI call dispatcher:
+ * 1. Tries Groq keys in Priority Order (Key 1 -> Key 2 -> Key 3) with instant failover on rate limits.
+ * 2. If all Groq keys fail or are on cooldown -> Falls back to Gemini.
+ * 3. If Gemini fails -> Falls back to OpenRouter (Nemotron 120B).
  */
-async function callGroq(systemPrompt, userPrompt) {
-    // Check if Groq has recovered from cooldown
-    if (!isGroqHealthy && (Date.now() - groqLastFailureTime > GROQ_COOLDOWN_MS)) {
-        console.log('[AI] Groq cooldown period passed. Attempting to use Groq again.');
-        isGroqHealthy = true;
-    }
+async function callGroq(systemPrompt, userPrompt, plan = "free", isAssistant = false) {
+    const model = getModelForProvider(plan, "groq", isAssistant);
+    const maxTokens = getMaxTokensForProvider(plan, "groq", isAssistant);
+    const temperature = getTemperatureForPlan(plan, isAssistant);
+    const now = Date.now();
 
-    // 1. Try Groq if healthy
-    if (isGroqHealthy) {
+    // 1. Try each Groq key in Priority Order (Key 1 -> Key 2 -> Key 3)
+    for (const keyState of groqKeys) {
+        // Skip key if it is currently in its cooldown window
+        if (now < keyState.cooldownUntil) {
+            const remainingSec = Math.max(1, Math.ceil((keyState.cooldownUntil - now) / 1000));
+            console.log(`[AI] Groq Key ${keyState.id} cooling down (${remainingSec}s remaining). Trying next priority key...`);
+            continue;
+        }
+
         try {
-            const completion = await ai.chat.completions.create({
-                model: GROQ_MODEL,
+            console.log(`[AI] Attempting Groq with Key ${keyState.id} (Model: ${model})...`);
+            const client = new Groq({ apiKey: keyState.key });
+            const completion = await client.chat.completions.create({
+                model: model,
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userPrompt }
                 ],
-                temperature: 0.7,
-                max_completion_tokens: 4096,
+                temperature: temperature,
+                max_tokens: maxTokens,
                 top_p: 1,
                 stream: false,
                 stop: null
             });
-            return completion.choices[0].message.content;
+
+            return completion.choices[0].message.content; // Successfully returned
         } catch (err) {
-            console.warn(`[AI] Groq call failed (${err?.status ?? err?.statusCode ?? err?.message}). Setting Groq to unhealthy status.`);
-            isGroqHealthy = false;
-            groqLastFailureTime = Date.now();
-            // Fall through to other providers
+            if (isGroqRateLimitError(err)) {
+                handleGroqRateLimit(keyState.id, err);
+                console.warn(`[AI] Groq Key ${keyState.id} rate-limited. Failing over to next key immediately in same request...`);
+                // Loop continues to next key!
+            } else {
+                console.warn(`[AI] Groq call failed on Key ${keyState.id}: ${err?.message}. Trying next priority key...`);
+            }
         }
     }
 
-    // 2. Try Gemini fallback if configured
-    if (aiGemini) {
+    console.warn('[AI] All Groq keys exhausted or cooling down. Falling back to secondary providers...');
+
+    // Fallback 1: Gemini (Multi-Key)
+    if (geminiKeys.length > 0) {
         try {
-            return await callGemini(systemPrompt, userPrompt);
+            console.log(`[AI] Attempting Gemini fallback (Model: ${getModelForProvider(plan, "gemini", isAssistant)})...`);
+            return await callGemini(systemPrompt, userPrompt, plan, isAssistant);
         } catch (geminiErr) {
-            console.error('[AI] Gemini fallback failed:', geminiErr.message);
-            // Fall through to OpenRouter
+            console.warn('[AI] Gemini fallback failed:', geminiErr.message);
         }
     }
 
-    // 3. Try OpenRouter fallback if configured
+    // Fallback 2: OpenRouter
     if (OPENROUTER_API_KEY) {
         try {
-            return await callOpenRouter(systemPrompt, userPrompt);
+            console.log(`[AI] Attempting OpenRouter fallback (Model: ${getModelForProvider(plan, "openrouter", isAssistant)})...`);
+            return await callOpenRouter(systemPrompt, userPrompt, plan, isAssistant);
         } catch (orErr) {
             console.error('[AI] OpenRouter fallback failed:', orErr.message);
             throw orErr;
@@ -563,7 +651,8 @@ async function generateInterviewReport({
     selfDescription,
     jobDescription,
     selfDescribe,
-    jobDescribe
+    jobDescribe,
+    plan = "free"
 }) {
     const candidateSummary = selfDescription ?? selfDescribe
     const roleDescription = jobDescription ?? jobDescribe
@@ -661,7 +750,7 @@ Self Description: ${candidateSummary}
 Job Description: ${roleDescription}
 `
 
-    const rawText = await callGroq(systemPrompt, userPrompt)
+    const rawText = await callGroq(systemPrompt, userPrompt, plan)
     const jsonText = extractJsonFromText(rawText)
     const parsedResponse = JSON.parse(jsonText)
     const normalizedResponse = normalizeInterviewReport(parsedResponse)
@@ -677,13 +766,14 @@ Job Description: ${roleDescription}
 // generatePfdFromHtml removed — PDF is now generated client-side via window.print() + @media print CSS
 
 
-async function generateResumeHtml({ resume, selfDescription, jobDescription }) {
+async function generateResumeHtml({ resume, selfDescription, jobDescription, plan = "free" }) {
     const systemPrompt = `You are an expert resume writer. You MUST respond ONLY with valid JSON — no markdown, no explanation. The JSON must have exactly one key: "html", whose value is a complete HTML string for a professional resume. Never wrap the JSON in code fences.`
 
     const userPrompt = `
 Generate a professional one-two page resume in valid JSON only.
 
 Rules:
+- Missing Keyword Injection (ATS Optimization): Deeply analyze the provided Job Description for major required skills, technologies, frameworks, and keywords (e.g., AWS, Kubernetes, Geospatial stack, etc.). If any major keywords are missing from the candidate's details, seamlessly inject them into the 'Skills' section. Furthermore, naturally weave these missing keywords into at least 1 or 2 relevant bullet points in the 'Experience' or 'Projects' sections so it passes ATS screening organically.
 - Use exactly one top-level key: "html".
 - The "html" value must be a string.
 - The string must contain complete printable HTML for an A4 resume.
@@ -739,20 +829,20 @@ Job Description: ${jobDescription}
 - Every link should be varified and real in you are not able to verify then leave it blank.
 `
 
-    const rawText = await callGroq(systemPrompt, userPrompt)
+    const rawText = await callGroq(systemPrompt, userPrompt, plan)
     const jsonText = extractJsonFromText(rawText)
-    
+
     let htmlContent = ""
     try {
         const jsonContent = JSON.parse(jsonText)
         htmlContent = extractResumeHtmlContent(jsonContent)
     } catch (parseError) {
         console.warn("[AI] JSON parsing failed in generateResumeHtml. Falling back to direct HTML extraction. Error:", parseError.message)
-        const htmlMatch = rawText.match(/<!DOCTYPE html>[\s\S]*<\/html>/i) || 
-                          rawText.match(/<html[\s\S]*<\/html>/i) || 
-                          rawText.match(/<body[\s\S]*<\/body>/i) || 
-                          rawText.match(/<div[\s\S]*<\/div>/i)
-        
+        const htmlMatch = rawText.match(/<!DOCTYPE html>[\s\S]*<\/html>/i) ||
+            rawText.match(/<html[\s\S]*<\/html>/i) ||
+            rawText.match(/<body[\s\S]*<\/body>/i) ||
+            rawText.match(/<div[\s\S]*<\/div>/i)
+
         if (htmlMatch) {
             htmlContent = htmlMatch[0].trim()
         } else {
@@ -766,8 +856,7 @@ Job Description: ${jobDescription}
 
 async function generateResumePfd({ resume, selfDescription, jobDescription }) {
     const normalizedHtmlDocument = await generateResumeHtml({ resume, selfDescription, jobDescription })
-    const pdfBuffer = await generatePfdFromHtml(normalizedHtmlDocument)
-    return pdfBuffer
+    return normalizedHtmlDocument
 }
 
 
@@ -822,18 +911,18 @@ Job Description: ${jobDescription}
 
     const rawText = await callGroq(systemPrompt, userPrompt);
     const jsonText = extractJsonFromText(rawText);
-    
+
     let htmlContent = "";
     try {
         const jsonContent = JSON.parse(jsonText);
         htmlContent = jsonContent.html;
     } catch (parseError) {
         console.warn("[AI] JSON parsing failed in generateCoverLetter. Falling back to direct HTML extraction. Error:", parseError.message);
-        const htmlMatch = rawText.match(/<!DOCTYPE html>[\s\S]*<\/html>/i) || 
-                          rawText.match(/<html[\s\S]*<\/html>/i) || 
-                          rawText.match(/<body[\s\S]*<\/body>/i) || 
-                          rawText.match(/<div[\s\S]*<\/div>/i);
-        
+        const htmlMatch = rawText.match(/<!DOCTYPE html>[\s\S]*<\/html>/i) ||
+            rawText.match(/<html[\s\S]*<\/html>/i) ||
+            rawText.match(/<body[\s\S]*<\/body>/i) ||
+            rawText.match(/<div[\s\S]*<\/div>/i);
+
         if (htmlMatch) {
             htmlContent = htmlMatch[0].trim();
         } else {
@@ -947,12 +1036,13 @@ Generate response JSON with "replyText" and "suggestedSnippet":
 `;
 
     try {
-        const rawText = await callGroq(systemPrompt, userPrompt);
+        // Call AI with isAssistant flag = true
+        const rawText = await callGroq(systemPrompt, userPrompt, "free", true);
         const jsonText = extractJsonFromText(rawText);
         const parsed = JSON.parse(jsonText);
 
-        const snippetResult = (isGeneralInfoOrJobQuery || !parsed.suggestedSnippet || parsed.suggestedSnippet === "null") 
-            ? null 
+        const snippetResult = (isGeneralInfoOrJobQuery || !parsed.suggestedSnippet || parsed.suggestedSnippet === "null")
+            ? null
             : parsed.suggestedSnippet;
 
         return {
@@ -961,8 +1051,8 @@ Generate response JSON with "replyText" and "suggestedSnippet":
         };
     } catch (err) {
         return {
-            replyText: isAskingAboutProject 
-                ? "KIVI-AI is an end-to-end AI platform featuring AI Mock Interviews, detailed technical reports, and an automated ATS Resume Studio with live 1:1 A4 PDF export!" 
+            replyText: isAskingAboutProject
+                ? "KIVI-AI is an end-to-end AI platform featuring AI Mock Interviews, detailed technical reports, and an automated ATS Resume Studio with live 1:1 A4 PDF export!"
                 : "Here is information to assist you.",
             suggestedSnippet: (isGeneralInfoOrJobQuery || !selectedText) ? null : selectedText.trim()
         };
@@ -970,12 +1060,16 @@ Generate response JSON with "replyText" and "suggestedSnippet":
 }
 
 function getAIStatus() {
+    // Check if any Groq key is currently NOT on cooldown
+    const isGroqHealthy = getAvailableGroqKey() !== null;
+    const isGeminiHealthy = geminiKeys.some(k => Date.now() >= k.cooldownUntil);
+    
     return {
-        provider: isGroqHealthy ? "Groq AI" : (aiGemini ? "Gemini AI" : "OpenRouter"),
-        primaryModel: isGroqHealthy ? "GPT-OSS 120B" : (aiGemini ? "Gemini 2.5 Flash" : "Nemotron 3 120B"),
-        fallbackModel: isGroqHealthy ? (aiGemini ? "Gemini 2.5 Flash" : "Nemotron 3 120B (OpenRouter)") : (aiGemini ? "Nemotron 3 120B (OpenRouter)" : "None"),
+        provider: isGroqHealthy ? "Groq AI" : (isGeminiHealthy ? "Gemini AI" : "OpenRouter"),
+        primaryModel: isGroqHealthy ? "Tier-Based Model" : (isGeminiHealthy ? "Gemini 2.5 Flash" : "Nemotron 3 120B"),
+        fallbackModel: isGroqHealthy ? (isGeminiHealthy ? "Gemini 2.5 Flash" : "Nemotron 3 120B (OpenRouter)") : (isGeminiHealthy ? "Nemotron 3 120B (OpenRouter)" : "None"),
         status: "online",
-        label: isGroqHealthy ? "GPT-OSS 120B · Groq AI" : (aiGemini ? "Switched to Gemini" : "Nemotron 3 120B · OpenRouter")
+        label: isGroqHealthy ? "AI Cluster Online" : (isGeminiHealthy ? "Switched to Gemini" : "Nemotron 3 120B · OpenRouter")
     }
 }
 

@@ -15,13 +15,21 @@ const {
     getAdminPaymentsController,
     getAdminSubscriptionsController,
     getAdminAuditLogsController,
-    getAdminInvoicesController
+    getAdminInvoicesController,
+    deleteUserController
 } = require('../controller/admin.controller');
 
 const adminRouter = express.Router();
 
 // Apply authUser & requireAdmin to all admin endpoints
 adminRouter.use(authUser, requireAdmin);
+
+/**
+ * @route DELETE /api/admin/users/:userId
+ * @description Completely delete a user account and their records
+ * @access Private (Admin Only)
+ */
+adminRouter.delete('/users/:userId', deleteUserController);
 
 /**
  * @route GET /api/admin/stats

@@ -63,15 +63,12 @@ class OrderService {
       throw { status: 400, message: 'Invalid subscription plan for purchase. Allowed plans: pro, premium.' };
     }
 
-    // 1. Fetch Plan from Database (Source of Truth)
-    let dbPlan = await SubscriptionPlan.findOne({ planKey: normalizedPlanKey, isActive: true });
+    // 1. Fetch Plan from Database (Source of Truth) and keep pricing synced
     const planConfig = PLANS[upperPlanKey];
-
-    if (!dbPlan) {
-      // Auto-upsert plan definition in DB if not seeded yet
-      dbPlan = await SubscriptionPlan.findOneAndUpdate(
-        { planKey: normalizedPlanKey },
-        {
+    let dbPlan = await SubscriptionPlan.findOneAndUpdate(
+      { planKey: normalizedPlanKey },
+      {
+        $set: {
           name: planConfig.name,
           planKey: planConfig.planKey,
           rank: planConfig.rank,
@@ -79,16 +76,15 @@ class OrderService {
           priceMonthly: planConfig.priceMonthly,
           priceYearly: planConfig.priceYearly,
           currency: planConfig.currency,
-          billingCycle: normalizedCycle,
           generationLimit: planConfig.generationLimit,
           aiCreditsLimit: planConfig.aiCreditsLimit,
           features: planConfig.features,
           isActive: true,
           isPopular: planConfig.isPopular
-        },
-        { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
-      );
-    }
+        }
+      },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+    );
 
     // Compute price strictly from DB document with proper monthly & yearly support
     const amount = computeOrderAmount(dbPlan, normalizedCycle);

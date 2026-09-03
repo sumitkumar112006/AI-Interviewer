@@ -50,7 +50,7 @@ async function runTests() {
   );
   await SubscriptionPlan.findOneAndUpdate(
     { planKey: 'premium' },
-    { name: 'Premium', planKey: 'premium', rank: 2, price: 34900, priceMonthly: 34900, priceYearly: 349000, generationLimit: 25, aiCreditsLimit: 100, isActive: true },
+    { name: 'Premium', planKey: 'premium', rank: 2, price: 39900, priceMonthly: 39900, priceYearly: 399000, generationLimit: 25, aiCreditsLimit: 100, isActive: true },
     { upsert: true, returnDocument: 'after' }
   );
 
@@ -99,9 +99,9 @@ async function runTests() {
       order1.order._id.toString() === order2.order._id.toString() &&
       order2.isExisting === true &&
       order1.order.amount === 19900 &&
-      yearlyOrder.order.amount === 349000
+      yearlyOrder.order.amount === 399000
     ) {
-      console.log('✅ PASS: Duplicate order calls collapsed to same document, and Yearly order computed ₹3,490 (349000 paise).');
+      console.log('✅ PASS: Duplicate order calls collapsed to same document, and Yearly order computed ₹3,990 (399000 paise).');
       testsPassed++;
     } else {
       console.error('❌ FAIL: Order idempotency or yearly price calculation failed.');
@@ -229,7 +229,7 @@ async function runTests() {
     const failOrder = await PaymentOrder.create({
       userId,
       planKey: 'premium',
-      amount: 34900,
+      amount: 39900,
       currency: 'INR',
       status: 'PENDING',
       gateway: 'RAZORPAY',
@@ -270,7 +270,7 @@ async function runTests() {
     const missedOrder = await PaymentOrder.create({
       userId,
       planKey: 'premium',
-      amount: 34900,
+      amount: 39900,
       currency: 'INR',
       status: 'PENDING',
       gateway: 'RAZORPAY',
@@ -285,7 +285,7 @@ async function runTests() {
 
     razorpayService.fetchRazorpayOrder = async (orderId) => {
       if (orderId === missedOrder.gatewayOrderId) {
-        return { id: orderId, status: 'paid', amount_paid: 34900 };
+        return { id: orderId, status: 'paid', amount_paid: 39900 };
       }
       return null;
     };

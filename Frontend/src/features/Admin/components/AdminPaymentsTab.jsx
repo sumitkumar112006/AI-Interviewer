@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { getAdminPayments } from '../services/admin.api';
+import { TrendingUp, CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react';
 
 export const AdminPaymentsTab = () => {
   const [payments, setPayments] = useState([]);
@@ -36,7 +37,6 @@ export const AdminPaymentsTab = () => {
         <div className="stat-card">
           <div className="stat-header">
             <span className="stat-title">Total Revenue</span>
-            <div className="stat-icon-wrapper" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#34d399' }}>💰</div>
           </div>
           <div className="stat-value" style={{ color: '#34d399' }}>
             ₹{summary ? summary.totalRevenueRupees : '0.00'}
@@ -47,7 +47,6 @@ export const AdminPaymentsTab = () => {
         <div className="stat-card">
           <div className="stat-header">
             <span className="stat-title">Successful Payments</span>
-            <div className="stat-icon-wrapper" style={{ background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8' }}>✅</div>
           </div>
           <div className="stat-value">{summary?.successCount || 0}</div>
           <div className="stat-sub">Captured & Verified</div>
@@ -56,7 +55,6 @@ export const AdminPaymentsTab = () => {
         <div className="stat-card">
           <div className="stat-header">
             <span className="stat-title">Failed Payments</span>
-            <div className="stat-icon-wrapper" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f87171' }}>⚠️</div>
           </div>
           <div className="stat-value" style={{ color: '#f87171' }}>{summary?.failedCount || 0}</div>
           <div className="stat-sub">Gateway Abandoned/Declined</div>
@@ -65,7 +63,6 @@ export const AdminPaymentsTab = () => {
         <div className="stat-card">
           <div className="stat-header">
             <span className="stat-title">Refunds</span>
-            <div className="stat-icon-wrapper" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24' }}>💸</div>
           </div>
           <div className="stat-value">{summary?.refundedCount || 0}</div>
           <div className="stat-sub">Processed Refunds</div>

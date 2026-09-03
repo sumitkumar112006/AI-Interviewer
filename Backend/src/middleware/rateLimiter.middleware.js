@@ -227,7 +227,7 @@ function createTieredRateLimiter(options = {}) {
             const updatedUser = await userModel.findOneAndUpdate(
                 { _id: userId, generationsUsed: { $lt: currentMaxRequests } },
                 { $inc: { generationsUsed: 1 } },
-                { new: true }
+                { returnDocument: 'after' }
             );
 
             const remaining = updatedUser
@@ -256,6 +256,14 @@ function createTieredRateLimiter(options = {}) {
                 limit: currentMaxRequests,
                 used: updatedUser.generationsUsed,
                 remaining
+            };
+
+            // Inject a refund function so controllers can return the credit if AI fails
+            req.refundGeneration = async () => {
+                await userModel.updateOne(
+                    { _id: userId, generationsUsed: { $gt: 0 } },
+                    { $inc: { generationsUsed: -1 } }
+                );
             };
 
             next();

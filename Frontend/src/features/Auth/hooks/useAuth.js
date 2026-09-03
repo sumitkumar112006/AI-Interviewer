@@ -1,10 +1,26 @@
 import { useContext } from 'react';
 import { AuthContext } from '../auth.context';
-import { login, register, verifyOtp, resendOtp, logout, forgotPassword, resetPassword } from '../services/auth.api';
+import { supabase } from '../services/supabase';
+import { login, register, verifyOtp, resendOtp, logout, forgotPassword, resetPassword, loginWithGoogleSupabase } from '../services/auth.api';
 
 export const useAuth = () => {
     const context = useContext(AuthContext)
     const { user, setUser, loading, setLoading, usage, setUsage, fetchUsage } = context
+
+    const handleGoogleAuth = async ({ accessToken }) => {
+        setLoading(true)
+        try {
+            const data = await loginWithGoogleSupabase({ accessToken })
+            setUser(data?.user || null)
+            if (fetchUsage) await fetchUsage()
+            return data
+        } catch (error) {
+            setUser(null)
+            throw error
+        } finally {
+            setLoading(false)
+        }
+    }
 
     const handleLogin = async ({ email, password }) => {
         setLoading(true)
@@ -88,6 +104,13 @@ export const useAuth = () => {
     const handleLogout = async () => {
         setLoading(true)
         try {
+            if (supabase) {
+                try {
+                    await supabase.auth.signOut()
+                } catch (sbErr) {
+                    console.warn("Supabase signOut error:", sbErr)
+                }
+            }
             await logout()
             setUser(null)
             if (setUsage) setUsage(null)
@@ -100,16 +123,19 @@ export const useAuth = () => {
 
     return { 
         user, 
+        setUser,
         loading, 
-        usage,
-        setUsage,
-        fetchUsage,
+        setLoading,
+        usage, 
+        setUsage, 
+        fetchUsage, 
+        handleGoogleAuth,
         handleLogin, 
         handleRegister, 
         handleVerifyOtp, 
         handleResendOtp, 
-        handleForgotPassword,
-        handleResetPassword,
+        handleForgotPassword, 
+        handleResetPassword, 
         handleLogout 
     }
 }

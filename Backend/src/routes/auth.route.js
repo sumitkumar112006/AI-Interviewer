@@ -8,7 +8,8 @@ const {
     getMeController,
     forgotPasswordController,
     resetPasswordController,
-    getUserUsageController
+    getUserUsageController,
+    googleSupabaseAuthController
 } = require("../controller/auth.controller");
 
 const { createRateLimiter } = require("../middleware/rateLimiter.middleware")
@@ -48,7 +49,21 @@ const resetPasswordLimiter = createRateLimiter({
     message: 'Too many reset attempts. Please wait a minute before trying again.'
 });
 
+const googleAuthLimiter = createRateLimiter({
+    prefix: 'ratelimit:auth:google',
+    windowSeconds: 60,
+    maxRequests: 10,
+    message: 'Too many Google sign-in attempts. Please wait a minute.'
+});
+
 const authRouter = Router();
+
+/**
+ * @route POST /api/auth/google-supabase
+ * @description authenticate user using Supabase Google OAuth access token
+ * @access Public
+ */
+authRouter.post("/google-supabase", googleAuthLimiter, googleSupabaseAuthController);
 
 /**
  * @route POST /api/auth/register

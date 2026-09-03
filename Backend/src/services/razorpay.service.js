@@ -95,7 +95,7 @@ class RazorpayService {
       return response.data;
     } catch (error) {
       const status = error.response?.status;
-      if (status === 404) {
+      if (status === 404 || status === 400) {
         return null;
       }
       throw error;

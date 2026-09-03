@@ -1,6 +1,6 @@
 const pdfParse = require('pdf-parse');
 const mongoose = require('mongoose');
-const { generateCoverLetter, generatePfdFromHtml } = require('../services/ai.service');
+const { generateCoverLetter } = require('../services/ai.service');
 const coverLetterModel = require('../models/coverLetter.model');
 const interviewReportModel = require('../models/interviewReport.model');
 
@@ -99,14 +99,10 @@ async function generateCoverLetterPdfController(req, res, next) {
             return res.status(404).json({ message: "Cover Letter not found" });
         }
 
-        const pdfBuffer = await generatePfdFromHtml(coverLetter.generatedContent);
-
-        res.set({
-            "Content-Type": "application/pdf",
-            "Content-Disposition": `inline; filename=cover_letter_${coverLetterId}.pdf`
+        res.status(200).json({
+            message: "Cover letter retrieved successfully",
+            coverLetter
         });
-
-        res.send(pdfBuffer);
     } catch (error) {
         next(error);
     }

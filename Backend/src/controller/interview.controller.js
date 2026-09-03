@@ -25,10 +25,13 @@ async function generateInterviewReportController(req, res, next) {
         const resumeContent = await (new pdfParse.PDFParse(Uint8Array.from(req.file.buffer))).getText()
         const { selfDescription, jobDescription } = req.body
 
+        const userPlan = (req.user?.plan || "free").toLowerCase();
+
         const interviewReportByAI = await generateInterviewReport({
             resume: resumeContent.text,
             selfDescription,
-            jobDescription
+            jobDescription,
+            plan: userPlan
         })
 
         const detectedSkills = processReportSkills({
@@ -60,6 +63,14 @@ async function generateInterviewReportController(req, res, next) {
             genCredits: req.genCredits
         })
     } catch (error) {
+        console.error("generateInterviewReportController error:", error.message);
+        if (req.refundGeneration) {
+            try {
+                await req.refundGeneration();
+            } catch (refundErr) {
+                console.error("Failed to refund generation credit:", refundErr.message);
+            }
+        }
         next(error)
     }
 }
@@ -235,10 +246,12 @@ async function generateResumePdfController(req, res, next) {
 
         // Generate fresh resume HTML from AI and persist it
         const { selfDescription, jobDescription } = interviewReport
+        const userPlan = (req.user?.plan || "free").toLowerCase();
         const generatedHtml = await generateResumeHtml({
             resume: resumeText || selfDescription || jobDescription,
             selfDescription,
-            jobDescription
+            jobDescription,
+            plan: userPlan
         })
 
         interviewReport.generatedResumeHtml = generatedHtml
@@ -250,7 +263,14 @@ async function generateResumePdfController(req, res, next) {
 
         res.status(200).json({ interviewReport, genCredits: req.genCredits })
     } catch (error) {
-        console.error("generateResumePdfController error:", error)
+        console.error("generateResumePdfController error:", error);
+        if (req.refundGeneration) {
+            try {
+                await req.refundGeneration();
+            } catch (refundErr) {
+                console.error("Failed to refund generation credit:", refundErr.message);
+            }
+        }
         next(error)
     }
 }
