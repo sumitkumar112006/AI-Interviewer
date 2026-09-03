@@ -379,8 +379,9 @@ async function updateInterviewProgressController(req, res, next) {
 async function rewriteResumeSectionController(req, res, next) {
     try {
         const { selectedText, instruction, action, message } = req.body;
+        const plan = (req.user?.plan || 'free').toLowerCase();
 
-        const aiResponse = await rewriteResumeSection({ selectedText, instruction, action, message });
+        const aiResponse = await rewriteResumeSection({ selectedText, instruction, action, message, plan });
 
         res.status(200).json({
             message: "Success",

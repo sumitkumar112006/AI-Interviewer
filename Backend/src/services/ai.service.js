@@ -773,7 +773,7 @@ async function generateResumeHtml({ resume, selfDescription, jobDescription, pla
 Generate a professional one-two page resume in valid JSON only.
 
 Rules:
-- Missing Keyword Injection (ATS Optimization): Deeply analyze the provided Job Description for major required skills, technologies, frameworks, and keywords (e.g., AWS, Kubernetes, Geospatial stack, etc.). If any major keywords are missing from the candidate's details, seamlessly inject them into the 'Skills' section. Furthermore, naturally weave these missing keywords into at least 1 or 2 relevant bullet points in the 'Experience' or 'Projects' sections so it passes ATS screening organically.
+- ATS Keyword & Skill Optimization: Deeply analyze the provided Job Description for target skills, technologies, frameworks, and domain keywords. Match and emphasize the candidate's verified skills, technologies, and achievements that align with the target role. Highlight transferable technical competencies and relevant project/experience evidence provided by the candidate. Do NOT fabricate unverified degrees, companies, certifications, or false work experience that the candidate did not provide.
 - Use exactly one top-level key: "html".
 - The "html" value must be a string.
 - The string must contain complete printable HTML for an A4 resume.
@@ -946,7 +946,7 @@ Job Description: ${jobDescription}
 /**
  * AI Resume Chat Copilot & Section Rewriter
  */
-async function rewriteResumeSection({ selectedText = "", instruction = "", action = "enhance", message = "" }) {
+async function rewriteResumeSection({ selectedText = "", instruction = "", action = "enhance", message = "", plan = "free" }) {
     const promptText = message.trim() || instruction.trim();
     const lowerPrompt = promptText.toLowerCase();
 
@@ -1036,8 +1036,8 @@ Generate response JSON with "replyText" and "suggestedSnippet":
 `;
 
     try {
-        // Call AI with isAssistant flag = true
-        const rawText = await callGroq(systemPrompt, userPrompt, "free", true);
+        // Call AI with authenticated plan and isAssistant flag = true
+        const rawText = await callGroq(systemPrompt, userPrompt, plan, true);
         const jsonText = extractJsonFromText(rawText);
         const parsed = JSON.parse(jsonText);
 
@@ -1063,14 +1063,45 @@ function getAIStatus() {
     // Check if any Groq key is currently NOT on cooldown
     const isGroqHealthy = getAvailableGroqKey() !== null;
     const isGeminiHealthy = geminiKeys.some(k => Date.now() >= k.cooldownUntil);
-    
-    return {
-        provider: isGroqHealthy ? "Groq AI" : (isGeminiHealthy ? "Gemini AI" : "OpenRouter"),
-        primaryModel: isGroqHealthy ? "Tier-Based Model" : (isGeminiHealthy ? "Gemini 2.5 Flash" : "Nemotron 3 120B"),
-        fallbackModel: isGroqHealthy ? (isGeminiHealthy ? "Gemini 2.5 Flash" : "Nemotron 3 120B (OpenRouter)") : (isGeminiHealthy ? "Nemotron 3 120B (OpenRouter)" : "None"),
-        status: "online",
-        label: isGroqHealthy ? "AI Cluster Online" : (isGeminiHealthy ? "Switched to Gemini" : "Nemotron 3 120B · OpenRouter")
+    const isOpenRouterAvailable = Boolean(OPENROUTER_API_KEY && OPENROUTER_API_KEY.trim());
+
+    if (isGroqHealthy) {
+        return {
+            provider: "Groq AI",
+            primaryModel: "Tier-Based Model",
+            fallbackModel: isGeminiHealthy ? "Gemini 2.5 Flash" : (isOpenRouterAvailable ? "Nemotron 3 120B (OpenRouter)" : "None"),
+            status: "online",
+            label: "AI Cluster Online"
+        };
     }
+
+    if (isGeminiHealthy) {
+        return {
+            provider: "Gemini AI",
+            primaryModel: "Gemini 2.5 Flash",
+            fallbackModel: isOpenRouterAvailable ? "Nemotron 3 120B (OpenRouter)" : "None",
+            status: "online",
+            label: "Switched to Gemini"
+        };
+    }
+
+    if (isOpenRouterAvailable) {
+        return {
+            provider: "OpenRouter",
+            primaryModel: "Nemotron 3 120B",
+            fallbackModel: "None",
+            status: "online",
+            label: "Nemotron 3 120B · OpenRouter"
+        };
+    }
+
+    return {
+        provider: "None",
+        primaryModel: "None",
+        fallbackModel: "None",
+        status: "offline",
+        label: "AI Cluster Offline"
+    };
 }
 
 module.exports = { generateInterviewReport, generateResumePfd, generateCoverLetter, generateResumeHtml, rewriteResumeSection, getAIStatus }
