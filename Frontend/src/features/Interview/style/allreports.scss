@@ -3,16 +3,16 @@
 ──────────────────────────────────────────────────────────── */
 
 .ar-page {
-    --bg: #090d16;
-    --panel: #0f1322;
-    --border: #1c2338;
-    --border-s: #2c3550;
-    --text: #ffffff;
-    --muted: #8f9cae;
-    --accent: #6366f1;
-    --success: #22c55e;
-    --warn: #f59e0b;
-    --danger: #ef4444;
+    --bg: var(--bg-main, #090d16);
+    --panel: var(--panel, #0f1322);
+    --border: var(--border-color, #1c2338);
+    --border-s: var(--border-strong, #2c3550);
+    --text: var(--text-primary, #ffffff);
+    --muted: var(--text-secondary, #8f9cae);
+    --accent: var(--accent-color, #6366f1);
+    --success: var(--success-color, #22c55e);
+    --warn: var(--warning-color, #f59e0b);
+    --danger: var(--danger-color, #ef4444);
 
     width: 100%;
     display: flex;
@@ -40,11 +40,12 @@
     flex-wrap: wrap;
 
     h1 {
+        font-family: var(--font-heading, inherit);
         font-size: clamp(1.6rem, 3vw, 2.2rem);
-        font-weight: 800;
+        font-weight: 850;
         letter-spacing: -0.03em;
         margin: 0 0 0.25rem;
-        background: linear-gradient(90deg, #f4f8ff 0%, #7ddfff 50%, #8f84ff 100%);
+        background: var(--accent-gradient, linear-gradient(90deg, #6366f1 0%, #a855f7 100%));
         -webkit-background-clip: text;
         background-clip: text;
         color: transparent;

@@ -26,11 +26,22 @@ api.interceptors.response.use(
     }
 );
 
-export async function generateCoverLetterFromReport(interviewReportId, { companyName, roleName } = {}) {
+import { pollJobUntilComplete } from './interview.api';
+
+export async function generateCoverLetterFromReport(interviewReportId, { companyName, roleName } = {}, onProgress = null) {
     const response = await api.post(`/api/cover-letter/generate-from-report/${interviewReportId}`, {
         companyName,
         roleName
     });
+
+    if (response.data?.jobId) {
+        const result = await pollJobUntilComplete(response.data.jobId, onProgress);
+        return {
+            ...response.data,
+            coverLetter: result
+        };
+    }
+
     return response.data;
 }
 

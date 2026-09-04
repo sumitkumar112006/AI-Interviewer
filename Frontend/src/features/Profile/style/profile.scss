@@ -20,15 +20,15 @@
 
     /* User Profile Details Card */
     .user-info-card {
-        background: #0f1322;
-        border: 1px solid #1c2338;
+        background: var(--panel);
+        border: 1px solid var(--border-color);
         border-radius: 1.25rem;
         padding: 2rem 1.5rem;
         display: flex;
         flex-direction: column;
         align-items: center;
         text-align: center;
-        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+        box-shadow: var(--card-shadow);
         position: relative;
         overflow: hidden;
 
@@ -39,14 +39,14 @@
             left: 0;
             right: 0;
             height: 4px;
-            background: linear-gradient(90deg, #6366f1, #a855f7);
+            background: var(--accent-gradient);
         }
 
         .profile-avatar-large {
             width: 80px;
             height: 80px;
             border-radius: 50%;
-            background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+            background: var(--accent-gradient);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -55,19 +55,21 @@
             color: #ffffff;
             margin-bottom: 1.25rem;
             box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);
+            font-family: var(--font-heading);
         }
 
         h2 {
+            font-family: var(--font-heading);
             font-size: 1.35rem;
             font-weight: 800;
-            color: #ffffff;
+            color: var(--text-primary);
             margin: 0 0 0.35rem 0;
             letter-spacing: -0.01em;
         }
 
         .user-email-text {
             font-size: 0.88rem;
-            color: #8f9cae;
+            color: var(--text-secondary);
             margin: 0 0 1.5rem 0;
         }
 
@@ -76,7 +78,7 @@
             display: flex;
             flex-direction: column;
             gap: 0.85rem;
-            border-top: 1px solid #1c2338;
+            border-top: 1px solid var(--border-color);
             padding-top: 1.5rem;
 
             .detail-item {
@@ -85,12 +87,12 @@
                 font-size: 0.82rem;
 
                 .item-label {
-                    color: #627285;
+                    color: var(--text-muted);
                     font-weight: 600;
                 }
 
                 .item-value {
-                    color: #ffffff;
+                    color: var(--text-primary);
                     font-weight: 700;
                 }
             }
@@ -105,9 +107,9 @@
             gap: 0.5rem;
             padding: 0.75rem 1.25rem;
             border-radius: 0.75rem;
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.25);
-            color: #f87171;
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: var(--danger-color);
             font-size: 0.85rem;
             font-weight: 600;
             font-family: inherit;
@@ -115,11 +117,9 @@
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 
             &:hover {
-                background: rgba(239, 68, 68, 0.18);
-                border-color: rgba(239, 68, 68, 0.45);
-                color: #fca5a5;
+                background: rgba(239, 68, 68, 0.16);
+                border-color: rgba(239, 68, 68, 0.35);
                 transform: translateY(-1px);
-                box-shadow: 0 4px 15px rgba(239, 68, 68, 0.2);
             }
 
             &:active {
@@ -130,21 +130,22 @@
 
     /* Key Statistics Dashboard Card */
     .profile-stats-card {
-        background: #0f1322;
-        border: 1px solid #1c2338;
+        background: var(--panel);
+        border: 1px solid var(--border-color);
         border-radius: 1.25rem;
         padding: 2rem;
-        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+        box-shadow: var(--card-shadow);
         display: flex;
         flex-direction: column;
         justify-content: center;
         gap: 1.5rem;
 
         .stats-card-title {
+            font-family: var(--font-heading);
             font-size: 1.05rem;
             font-weight: 800;
             letter-spacing: 0.05em;
-            color: #7ddfff;
+            color: var(--accent-color);
             text-transform: uppercase;
             margin: 0;
         }
@@ -160,8 +161,8 @@
         }
 
         .stat-box {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.04);
+            background: var(--bg-card-subtle);
+            border: 1px solid var(--border-color);
             border-radius: 1rem;
             padding: 1.5rem 1.25rem;
             display: flex;
@@ -170,43 +171,34 @@
             transition: all 0.2s ease;
 
             &:hover {
-                background: rgba(255, 255, 255, 0.04);
-                border-color: rgba(99, 102, 241, 0.2);
+                border-color: var(--border-strong);
                 transform: translateY(-2px);
             }
 
             .stat-num {
+                font-family: var(--font-heading);
                 font-size: 2.25rem;
                 font-weight: 850;
-                color: #ffffff;
+                color: var(--text-primary);
                 line-height: 1.1;
 
                 &.score-excellent {
-                    background: linear-gradient(135deg, #10b981, #059669);
-                    -webkit-background-clip: text;
-                    background-clip: text;
-                    color: transparent;
+                    color: var(--success-color);
                 }
 
                 &.score-good {
-                    background: linear-gradient(135deg, #f59e0b, #d97706);
-                    -webkit-background-clip: text;
-                    background-clip: text;
-                    color: transparent;
+                    color: var(--warning-color);
                 }
 
                 &.score-average {
-                    background: linear-gradient(135deg, #6366f1, #4f46e5);
-                    -webkit-background-clip: text;
-                    background-clip: text;
-                    color: transparent;
+                    color: var(--accent-color);
                 }
             }
 
             .stat-lbl {
                 font-size: 0.78rem;
                 font-weight: 700;
-                color: #8f9cae;
+                color: var(--text-muted);
                 text-transform: uppercase;
                 letter-spacing: 0.02em;
             }
@@ -225,18 +217,19 @@
             align-items: center;
 
             h3 {
+                font-family: var(--font-heading);
                 font-size: 1.2rem;
                 font-weight: 800;
-                color: #ffffff;
+                color: var(--text-primary);
                 margin: 0;
             }
 
             .reports-count-pill {
                 font-size: 0.76rem;
                 font-weight: 700;
-                color: #6366f1;
-                background: rgba(99, 102, 241, 0.1);
-                border: 1px solid rgba(99, 102, 241, 0.2);
+                color: var(--accent-color);
+                background: var(--badge-bg);
+                border: 1px solid var(--active-link-border);
                 padding: 0.25rem 0.75rem;
                 border-radius: 99px;
             }
@@ -253,20 +246,21 @@
         }
 
         .profile-report-card {
-            background: #0f1322;
-            border: 1px solid #1c2338;
+            background: var(--panel);
+            border: 1px solid var(--border-color);
             border-radius: 1rem;
             padding: 1.25rem;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
             gap: 1.25rem;
+            box-shadow: var(--card-shadow);
             transition: all 0.22s ease;
 
             &:hover {
-                border-color: rgba(99, 102, 241, 0.35);
+                border-color: var(--accent-color);
                 transform: translateY(-2px);
-                box-shadow: 0 12px 25px rgba(0, 0, 0, 0.25);
+                box-shadow: 0 12px 25px rgba(0, 0, 0, 0.12);
             }
 
             .card-top {
@@ -282,9 +276,10 @@
                     min-width: 0;
 
                     h4 {
+                        font-family: var(--font-heading);
                         font-size: 0.95rem;
                         font-weight: 800;
-                        color: #ffffff;
+                        color: var(--text-primary);
                         margin: 0;
                         overflow: hidden;
                         text-overflow: ellipsis;
@@ -293,7 +288,7 @@
 
                     .report-date {
                         font-size: 0.78rem;
-                        color: #627285;
+                        color: var(--text-muted);
                     }
                 }
 
@@ -307,6 +302,7 @@
                     font-size: 0.88rem;
                     font-weight: 850;
                     flex-shrink: 0;
+                    font-family: var(--font-heading);
 
                     &.score-excellent {
                         background: rgba(16, 185, 129, 0.1);
@@ -323,7 +319,7 @@
                     &.score-average {
                         background: rgba(99, 102, 241, 0.1);
                         border: 1px solid rgba(99, 102, 241, 0.3);
-                        color: #8f84ff;
+                        color: var(--accent-color);
                     }
 
                     &.score-poor {
@@ -338,7 +334,7 @@
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                border-top: 1px solid rgba(255, 255, 255, 0.04);
+                border-top: 1px solid var(--border-subtle);
                 padding-top: 0.85rem;
 
                 .report-status-badge {
@@ -349,14 +345,14 @@
 
                     &.status-excellent { background: rgba(16, 185, 129, 0.08); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.15); }
                     &.status-good { background: rgba(245, 158, 11, 0.08); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.15); }
-                    &.status-average { background: rgba(99, 102, 241, 0.08); color: #8f84ff; border: 1px solid rgba(99, 102, 241, 0.15); }
+                    &.status-average { background: rgba(99, 102, 241, 0.08); color: var(--accent-color); border: 1px solid rgba(99, 102, 241, 0.15); }
                     &.status-poor { background: rgba(239, 68, 68, 0.08); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.15); }
                 }
 
                 .open-report-link {
                     font-size: 0.8rem;
                     font-weight: 700;
-                    color: #6366f1;
+                    color: var(--accent-color);
                     text-decoration: none;
                     display: inline-flex;
                     align-items: center;
@@ -373,8 +369,8 @@
 
     /* Empty State */
     .empty-reports-panel {
-        background: #0f1322;
-        border: 1px dashed #1c2338;
+        background: var(--panel);
+        border: 1.5px dashed var(--border-color);
         border-radius: 1.25rem;
         padding: 3rem 2rem;
         text-align: center;
@@ -382,30 +378,32 @@
         flex-direction: column;
         align-items: center;
         gap: 1.25rem;
+        box-shadow: var(--card-shadow);
 
         .empty-icon {
             font-size: 2.25rem;
-            background: rgba(99, 102, 241, 0.08);
+            background: var(--badge-bg);
             width: 64px;
             height: 64px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            border: 1px solid rgba(99, 102, 241, 0.15);
-            color: #6366f1;
+            border: 1px solid var(--active-link-border);
+            color: var(--accent-color);
         }
 
         h3 {
+            font-family: var(--font-heading);
             font-size: 1.15rem;
-            font-weight: 750;
-            color: #ffffff;
+            font-weight: 800;
+            color: var(--text-primary);
             margin: 0;
         }
 
         p {
             font-size: 0.85rem;
-            color: #8f9cae;
+            color: var(--text-secondary);
             max-width: 360px;
             margin: 0;
             line-height: 1.5;
@@ -413,7 +411,7 @@
 
         .generate-btn {
             padding: 0.65rem 1.5rem;
-            background: linear-gradient(135deg, #6366f1, #a855f7);
+            background: var(--button-gradient);
             color: #ffffff;
             border: none;
             border-radius: 0.6rem;

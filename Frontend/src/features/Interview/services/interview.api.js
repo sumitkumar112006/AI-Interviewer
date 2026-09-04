@@ -51,7 +51,55 @@ export async function getSkillAnalytics() {
 }
 
 
-export const generateInterviewReport = async ({ jobDescription, selfDescription, resumeFile }) => {
+export async function getJobStatus(jobId) {
+    const response = await api.get(`/api/jobs/${jobId}`)
+    return response.data
+}
+
+export async function getActiveJob(params = {}) {
+    const response = await api.get(`/api/jobs/active`, { params })
+    return response.data
+}
+
+/**
+ * Polls background BullMQ generation job until status is 'done' or 'failed'
+ */
+export async function pollJobUntilComplete(jobId, onProgress = null, intervalMs = 2500) {
+    return new Promise((resolve, reject) => {
+        let isPolling = true;
+
+        const check = async () => {
+            if (!isPolling) return;
+            try {
+                const jobData = await getJobStatus(jobId);
+                if (onProgress && typeof onProgress === 'function') {
+                    onProgress(jobData);
+                }
+
+                if (jobData.status === 'done') {
+                    isPolling = false;
+                    resolve(jobData.result);
+                } else if (jobData.status === 'failed') {
+                    isPolling = false;
+                    reject(new Error(jobData.error || 'AI generation failed.'));
+                } else {
+                    setTimeout(check, intervalMs);
+                }
+            } catch (err) {
+                if (err?.response?.status === 404) {
+                    isPolling = false;
+                    reject(new Error('Generation job not found.'));
+                } else {
+                    setTimeout(check, intervalMs);
+                }
+            }
+        };
+
+        check();
+    });
+}
+
+export const generateInterviewReport = async ({ jobDescription, selfDescription, resumeFile, onProgress }) => {
     if (!resumeFile) {
         throw new Error('Resume file is required.')
     }
@@ -75,17 +123,33 @@ export const generateInterviewReport = async ({ jobDescription, selfDescription,
 
     const response = await api.post("/api/interview", formData)
 
+    if (response.data?.jobId) {
+        const result = await pollJobUntilComplete(response.data.jobId, onProgress);
+        return {
+            ...response.data,
+            interviewReport: result
+        };
+    }
+
     return response.data
 }
 
 /**
  * Ensures the resume HTML is generated on the backend.
  * If the report already has HTML, returns immediately.
- * If not, triggers AI generation, saves it, and returns the report.
- * PDF is now generated client-side via window.print().
+ * If not, triggers async AI generation job, polls until complete, and returns the updated report.
  */
-export const generateResumePdf = async (interviewReportId, options = {}) => {
+export const generateResumePdf = async (interviewReportId, options = {}, onProgress = null) => {
     const response = await api.post(`/api/interview/resume/pdf/${interviewReportId}`, options)
+
+    if (response.data?.jobId) {
+        const result = await pollJobUntilComplete(response.data.jobId, onProgress);
+        return {
+            ...response.data,
+            interviewReport: result
+        };
+    }
+
     return response.data
 }
 
@@ -104,8 +168,19 @@ export async function updateInterviewProgress(interviewId, { technicalQuestions,
     return response.data
 }
 
-export async function rewriteResumeSection({ selectedText, instruction, action, message }) {
-    const response = await api.post(`/api/interview/resume/rewrite-section`, { selectedText, instruction, action, message })
+export async function rewriteResumeSection({ selectedText, instruction, action, message, resourceId, onProgress }) {
+    const response = await api.post(`/api/interview/resume/rewrite-section`, { selectedText, instruction, action, message, resourceId })
+
+    if (response.data?.jobId) {
+        const result = await pollJobUntilComplete(response.data.jobId, onProgress);
+        return {
+            ...response.data,
+            replyText: result.replyText,
+            suggestedSnippet: result.suggestedSnippet,
+            rewrittenText: result.suggestedSnippet
+        };
+    }
+
     return response.data
 }
 

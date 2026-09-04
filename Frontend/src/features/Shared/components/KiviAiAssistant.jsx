@@ -234,7 +234,7 @@ export function KiviAiAssistant() {
                 {showIdleNudge && !isKiviOpen && (
                     <div className="kivi-idle-nudge-bubble" onClick={() => { setIsKiviOpen(true); setShowIdleNudge(false); }}>
                         <span className="nudge-text">💡 Need help refining your resume? Click KIVI!</span>
-                        <button type="button" className="nudge-close" onClick={(e) => { e.stopPropagation(); setShowIdleNudge(false); }}>✕</button>
+                        <button type="button" className="nudge-close-btn" onClick={(e) => { e.stopPropagation(); setShowIdleNudge(false); }} title="Dismiss">✕</button>
                     </div>
                 )}
                 <button

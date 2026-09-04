@@ -79,11 +79,13 @@ const notificationRouter = require('./routes/notification.route');
 const orderRouter = require('./routes/order.route');
 const subscriptionRouter = require('./routes/subscription.route');
 const invoiceRouter = require('./routes/invoice.route');
+const jobRouter = require('./routes/job.route');
 
 // Mount routes
 app.use("/api/auth", authRouter);
 app.use('/api/interview', interviewRouter);
 app.use('/api/cover-letter', coverLetterRouter);
+app.use('/api/jobs', jobRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/notifications', notificationRouter);
 app.use('/api/orders', orderRouter);

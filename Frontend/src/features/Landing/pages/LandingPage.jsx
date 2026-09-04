@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   Sparkles, 
@@ -95,6 +95,44 @@ const FAQ_ITEMS = [
   }
 ];
 
+/**
+ * Hook: Intersection Observer for scroll-triggered reveal animations.
+ * Returns a ref to attach to the container. Children with `.reveal-on-scroll`
+ * get `.revealed` added when they enter the viewport.
+ */
+function useScrollReveal() {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('revealed');
+            observer.unobserve(entry.target); // Only animate once
+          }
+        });
+      },
+      { threshold: 0.12, rootMargin: '0px 0px -40px 0px' }
+    );
+
+    // Observe all children with the reveal class
+    const elements = container.querySelectorAll('.reveal-on-scroll');
+    elements.forEach((el, i) => {
+      // Stagger delay per element — gives a cascading feel
+      el.style.transitionDelay = `${i * 80}ms`;
+      observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  return containerRef;
+}
+
 const LandingPage = () => {
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('kivi_theme') || 'dark';
@@ -105,6 +143,13 @@ const LandingPage = () => {
   const [isMobile, setIsMobile] = useState(() => {
     return typeof window !== 'undefined' ? window.innerWidth <= 768 : false;
   });
+
+  // Scroll reveal refs for each section
+  const featuresRef = useScrollReveal();
+  const workflowRef = useScrollReveal();
+  const simulatorRef = useScrollReveal();
+  const reviewsRef = useScrollReveal();
+  const faqRef = useScrollReveal();
 
   useEffect(() => {
     const handleResize = () => {
@@ -175,7 +220,7 @@ const LandingPage = () => {
         </div>
       </header>
 
-      {/* ===== 2. HERO SECTION WITH CRISP HD IMAGE & 10px MARGIN LEFT OVERLAY CARD ===== */}
+      {/* ===== 2. HERO SECTION WITH CRISP HD IMAGE & OVERLAY CARD ===== */}
       <section className="landing-hero-section">
         <div className="hero-viewport-container">
           {/* High-Resolution Crisp Artwork with Butter-Smooth Crossfade */}
@@ -194,7 +239,7 @@ const LandingPage = () => {
             decoding="async"
           />
 
-          {/* Left Hero Card with 10px Left Margin, Full Image Height & Circular Transparent Fade */}
+          {/* Left Hero Card */}
           <div className="hero-left-overlay-card">
             <div className="hero-card-inner">
               <div className="hero-pill-badge">
@@ -269,8 +314,8 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* ===== 4. CORE FEATURES DEEP-DIVE ===== */}
-      <section className="landing-section" id="features">
+      {/* ===== 4. CORE FEATURES — Bento Grid with Scroll Reveal ===== */}
+      <section className="landing-section" id="features" ref={featuresRef}>
         <div className="section-header">
           <span className="section-badge">All-In-One Career Engine</span>
           <h2>Everything You Need to Get Hired in 2026</h2>
@@ -280,7 +325,7 @@ const LandingPage = () => {
         </div>
 
         <div className="features-grid">
-          <div className="feature-card">
+          <div className="feature-card reveal-on-scroll">
             <div className="feature-icon-wrap grad-indigo">
               <MessageSquare size={26} />
             </div>
@@ -295,7 +340,7 @@ const LandingPage = () => {
             </div>
           </div>
 
-          <div className="feature-card">
+          <div className="feature-card reveal-on-scroll">
             <div className="feature-icon-wrap grad-cyan">
               <Target size={26} />
             </div>
@@ -310,7 +355,7 @@ const LandingPage = () => {
             </div>
           </div>
 
-          <div className="feature-card">
+          <div className="feature-card reveal-on-scroll">
             <div className="feature-icon-wrap grad-emerald">
               <Compass size={26} />
             </div>
@@ -325,7 +370,7 @@ const LandingPage = () => {
             </div>
           </div>
 
-          <div className="feature-card">
+          <div className="feature-card reveal-on-scroll">
             <div className="feature-icon-wrap grad-purple">
               <FileText size={26} />
             </div>
@@ -340,13 +385,13 @@ const LandingPage = () => {
             </div>
           </div>
 
-          <div className="feature-card">
+          <div className="feature-card reveal-on-scroll">
             <div className="feature-icon-wrap grad-amber">
               <Zap size={26} />
             </div>
             <h3>Cover Letter Generator</h3>
             <p>
-              Produce compelling, personalized cover letters that weave your actual project achievements into the company’s specific mission.
+              Produce compelling, personalized cover letters that weave your actual project achievements into the company's specific mission.
             </p>
             <div className="feature-tags">
               <span className="tag">Job-Tailored</span>
@@ -355,7 +400,7 @@ const LandingPage = () => {
             </div>
           </div>
 
-          <div className="feature-card">
+          <div className="feature-card reveal-on-scroll">
             <div className="feature-icon-wrap grad-pink">
               <Bot size={26} />
             </div>
@@ -372,8 +417,13 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* ===== 5. 4-STEP HOW IT WORKS WORKFLOW ===== */}
-      <section className="landing-section" id="workflow">
+      {/* ── Decorative section divider ── */}
+      <div className="section-divider">
+        <div className="divider-line" />
+      </div>
+
+      {/* ===== 5. HOW IT WORKS — Left-aligned header, staggered cards ===== */}
+      <section className="landing-section" id="workflow" ref={workflowRef}>
         <div className="section-header">
           <span className="section-badge">Simple 4-Step Process</span>
           <h2>From Resume Upload to Final Offer</h2>
@@ -383,25 +433,25 @@ const LandingPage = () => {
         </div>
 
         <div className="workflow-grid">
-          <div className="step-card">
+          <div className="step-card reveal-on-scroll">
             <span className="step-number">1</span>
             <h4>Upload Your Resume</h4>
             <p>Upload your existing PDF/Word resume or paste your technical background and career experiences.</p>
           </div>
 
-          <div className="step-card">
+          <div className="step-card reveal-on-scroll">
             <span className="step-number">2</span>
             <h4>Paste Job Description</h4>
             <p>Provide the job specification from LinkedIn, Indeed, or Greenhouse for direct alignment analysis.</p>
           </div>
 
-          <div className="step-card">
+          <div className="step-card reveal-on-scroll">
             <span className="step-number">3</span>
             <h4>Practice & Close Gaps</h4>
             <p>Simulate mock interviews, follow your day-wise prep plan, and sharpen weak areas with instant feedback.</p>
           </div>
 
-          <div className="step-card">
+          <div className="step-card reveal-on-scroll">
             <span className="step-number">4</span>
             <h4>Generate ATS CV & Ace It</h4>
             <p>Export a polished, high-scoring ATS resume and walk into your interviews with 100% confidence.</p>
@@ -409,86 +459,101 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* ===== 6. LIVE INTERACTIVE SIMULATOR WIDGET ===== */}
-      <section className="landing-section" id="simulator">
-        <div className="landing-simulator">
-          <div className="sim-header">
-            <div className="sim-title-wrap">
-              <h3>⚡ Live Interview & Match Simulator</h3>
-              <p>Select a tech role below to see how KIVI-AI evaluates readiness in real-time:</p>
-            </div>
+      {/* ── Decorative section divider ── */}
+      <div className="section-divider">
+        <div className="divider-line" />
+      </div>
 
-            <div className="sim-role-pills">
-              {Object.keys(SIMULATOR_DATA).map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  className={`role-pill ${activeRoleKey === key ? 'active' : ''}`}
-                  onClick={() => setActiveRoleKey(key)}
-                >
-                  {SIMULATOR_DATA[key].shortLabel || SIMULATOR_DATA[key].role}
-                </button>
-              ))}
-            </div>
+      {/* ===== 6. LIVE INTERACTIVE SIMULATOR — Terminal personality ===== */}
+      <section className="landing-section" id="simulator" ref={simulatorRef}>
+        <div className="landing-simulator reveal-on-scroll">
+          {/* Terminal header bar — three dots for dashboard personality */}
+          <div className="sim-terminal-bar">
+            <span className="terminal-dot dot-red" />
+            <span className="terminal-dot dot-yellow" />
+            <span className="terminal-dot dot-green" />
+            <span className="terminal-title">kivi-ai — interview-simulator</span>
           </div>
 
-          <div className="sim-body">
-            {/* Left: QA Sample */}
-            <div className="sim-qa-box">
-              <div className="qa-header">
-                <Sparkles size={14} />
-                <span>Target Role: {currentSim.role}</span>
+          <div className="sim-content-area">
+            <div className="sim-header">
+              <div className="sim-title-wrap">
+                <h3>⚡ Live Interview & Match Simulator</h3>
+                <p>Select a tech role below to see how KIVI-AI evaluates readiness in real-time:</p>
               </div>
-              <p className="sim-question">
-                "{currentSim.question}"
-              </p>
-              <div className="sim-ideal-answer">
-                <strong>AI Model Feedback & STAR Breakdown:</strong><br />
-                {currentSim.sampleAnswer}
+
+              <div className="sim-role-pills">
+                {Object.keys(SIMULATOR_DATA).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`role-pill ${activeRoleKey === key ? 'active' : ''}`}
+                    onClick={() => setActiveRoleKey(key)}
+                  >
+                    {SIMULATOR_DATA[key].shortLabel || SIMULATOR_DATA[key].role}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Right: Score Metrics */}
-            <div className="sim-score-box">
-              <div className="score-circle-wrap">
-                <div className="score-circle">
-                  <span className="score-val">{currentSim.score}%</span>
-                  <span className="score-lbl">Match</span>
+            <div className="sim-body">
+              {/* Left: QA Sample */}
+              <div className="sim-qa-box">
+                <div className="qa-header">
+                  <Sparkles size={14} />
+                  <span>Target Role: {currentSim.role}</span>
                 </div>
-                <div className="score-detail">
-                  <h5>High Readiness Rating</h5>
-                  <p>Matches 95% of core technical competencies</p>
+                <p className="sim-question">
+                  "{currentSim.question}"
+                </p>
+                <div className="sim-ideal-answer">
+                  <strong>AI Model Feedback & STAR Breakdown:</strong><br />
+                  {currentSim.sampleAnswer}
                 </div>
               </div>
 
-              <div className="match-bars">
-                <div className="bar-row">
-                  <div className="bar-info">
-                    <span>Technical Accuracy</span>
-                    <span>{currentSim.radar.tech}%</span>
+              {/* Right: Score Metrics */}
+              <div className="sim-score-box">
+                <div className="score-circle-wrap">
+                  <div className="score-circle">
+                    <span className="score-val">{currentSim.score}%</span>
+                    <span className="score-lbl">Match</span>
                   </div>
-                  <div className="progress-track">
-                    <div className="progress-fill grad-1" style={{ width: `${currentSim.radar.tech}%` }}></div>
-                  </div>
-                </div>
-
-                <div className="bar-row">
-                  <div className="bar-info">
-                    <span>Communication & STAR</span>
-                    <span>{currentSim.radar.comm}%</span>
-                  </div>
-                  <div className="progress-track">
-                    <div className="progress-fill grad-2" style={{ width: `${currentSim.radar.comm}%` }}></div>
+                  <div className="score-detail">
+                    <h5>High Readiness Rating</h5>
+                    <p>Matches 95% of core technical competencies</p>
                   </div>
                 </div>
 
-                <div className="bar-row">
-                  <div className="bar-info">
-                    <span>System Design / Problem Solving</span>
-                    <span>{currentSim.radar.sysDesign}%</span>
+                <div className="match-bars">
+                  <div className="bar-row">
+                    <div className="bar-info">
+                      <span>Technical Accuracy</span>
+                      <span>{currentSim.radar.tech}%</span>
+                    </div>
+                    <div className="progress-track">
+                      <div className="progress-fill grad-1" style={{ width: `${currentSim.radar.tech}%` }}></div>
+                    </div>
                   </div>
-                  <div className="progress-track">
-                    <div className="progress-fill grad-3" style={{ width: `${currentSim.radar.sysDesign}%` }}></div>
+
+                  <div className="bar-row">
+                    <div className="bar-info">
+                      <span>Communication & STAR</span>
+                      <span>{currentSim.radar.comm}%</span>
+                    </div>
+                    <div className="progress-track">
+                      <div className="progress-fill grad-2" style={{ width: `${currentSim.radar.comm}%` }}></div>
+                    </div>
+                  </div>
+
+                  <div className="bar-row">
+                    <div className="bar-info">
+                      <span>System Design / Problem Solving</span>
+                      <span>{currentSim.radar.sysDesign}%</span>
+                    </div>
+                    <div className="progress-track">
+                      <div className="progress-fill grad-3" style={{ width: `${currentSim.radar.sysDesign}%` }}></div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -497,8 +562,8 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* ===== 7. TESTIMONIALS & REVIEWS ===== */}
-      <section className="landing-section" id="reviews">
+      {/* ===== 7. TESTIMONIALS — Right-aligned header, editorial variety ===== */}
+      <section className="landing-section" id="reviews" ref={reviewsRef}>
         <div className="section-header">
           <span className="section-badge">Success Stories</span>
           <h2>Loved by 10,000+ Engineers & Candidates</h2>
@@ -508,7 +573,7 @@ const LandingPage = () => {
         </div>
 
         <div className="testimonials-grid">
-          <div className="testimonial-card">
+          <div className="testimonial-card reveal-on-scroll">
             <div className="stars-row">
               {[...Array(5)].map((_, i) => <Star key={i} size={16} fill="currentColor" />)}
             </div>
@@ -516,15 +581,15 @@ const LandingPage = () => {
               "KIVI-AI caught skill gaps I didn't even realize were listed on the JD. The day-wise roadmap kept my prep structured, and I landed my Senior Full Stack offer in 3 weeks!"
             </p>
             <div className="author-info">
-              <div className="author-avatar">AK</div>
+              <div className="author-avatar">DK</div>
               <div className="author-details">
-                <span className="author-name">Alex Kumar</span>
+                <span className="author-name">Dev Kumar</span>
                 <span className="author-role">Senior Software Engineer @ FinTech</span>
               </div>
             </div>
           </div>
 
-          <div className="testimonial-card">
+          <div className="testimonial-card reveal-on-scroll">
             <div className="stars-row">
               {[...Array(5)].map((_, i) => <Star key={i} size={16} fill="currentColor" />)}
             </div>
@@ -540,7 +605,7 @@ const LandingPage = () => {
             </div>
           </div>
 
-          <div className="testimonial-card">
+          <div className="testimonial-card reveal-on-scroll">
             <div className="stars-row">
               {[...Array(5)].map((_, i) => <Star key={i} size={16} fill="currentColor" />)}
             </div>
@@ -548,9 +613,9 @@ const LandingPage = () => {
               "The TipTap Resume Studio + AI Section Rewriter is a game changer. My resume score jumped from 68% to 94% on ATS tests, leading to 4 interviews in one week."
             </p>
             <div className="author-info">
-              <div className="author-avatar">MR</div>
+              <div className="author-avatar">SD</div>
               <div className="author-details">
-                <span className="author-name">Marcus Rodriguez</span>
+                <span className="author-name">Shaloni Dubey</span>
                 <span className="author-role">DevOps & Cloud Architect</span>
               </div>
             </div>
@@ -558,8 +623,8 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* ===== 8. FREQUENTLY ASKED QUESTIONS ===== */}
-      <section className="landing-section" id="faq">
+      {/* ===== 8. FAQ — Numbered, smooth expand animation ===== */}
+      <section className="landing-section" id="faq" ref={faqRef}>
         <div className="section-header">
           <span className="section-badge">Got Questions?</span>
           <h2>Frequently Asked Questions</h2>
@@ -570,24 +635,27 @@ const LandingPage = () => {
 
         <div className="faq-accordion">
           {FAQ_ITEMS.map((item, index) => (
-            <div key={index} className="faq-item">
+            <div key={index} className="faq-item reveal-on-scroll">
               <button 
                 type="button" 
                 className="faq-question-btn"
                 onClick={() => setOpenFaq(openFaq === index ? -1 : index)}
               >
-                <span>{item.q}</span>
+                <span className="faq-num">{String(index + 1).padStart(2, '0')}</span>
+                <span className="faq-q-text">{item.q}</span>
                 <ChevronDown size={18} className={`chevron-icon ${openFaq === index ? 'open' : ''}`} />
               </button>
-              {openFaq === index && (
-                <p className="faq-answer">{item.a}</p>
-              )}
+              <div className={`faq-answer-wrapper ${openFaq === index ? 'open' : ''}`}>
+                <div className="faq-answer-inner">
+                  <p className="faq-answer">{item.a}</p>
+                </div>
+              </div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ===== 9. HIGH-CONVERSION CTA BANNER ===== */}
+      {/* ===== 9. CTA BANNER — Left-offset with decorative shapes ===== */}
       <section className="landing-cta-banner">
         <div className="cta-inner-card">
           <h2>Ready to Ace Your Next Interview?</h2>

@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const { generateCoverLetter } = require('../services/ai.service');
 const coverLetterModel = require('../models/coverLetter.model');
 const interviewReportModel = require('../models/interviewReport.model');
+const JobModel = require('../models/job.model');
+const { enqueueAiJob } = require('../jobs/aiQueue');
 
 async function createCoverLetterController(req, res, next) {
     try {
@@ -14,30 +16,50 @@ async function createCoverLetterController(req, res, next) {
             return res.status(400).json({ message: "Job description is required" });
         }
 
+        // 1. Check for active pending/processing job
+        const existingJob = await JobModel.findOne({
+            userId: req.user.id,
+            type: 'cover_letter',
+            status: { $in: ['pending', 'processing'] }
+        });
+
+        if (existingJob) {
+            return res.status(409).json({
+                message: "Cover letter generation is already running.",
+                jobId: existingJob._id,
+                status: existingJob.status,
+                genCredits: req.genCredits
+            });
+        }
+
+        // 2. Parse PDF buffer in milliseconds
         const resumeContent = await (new pdfParse.PDFParse(Uint8Array.from(req.file.buffer))).getText();
         const { jobDescription, selfDescription, companyName, roleName } = req.body;
 
-        const coverLetterHtml = await generateCoverLetter({
-            resume: resumeContent.text,
-            selfDescription,
-            jobDescription,
-            companyName,
-            roleName
+        // 3. Create Job document in MongoDB
+        const job = await JobModel.create({
+            userId: req.user.id,
+            type: 'cover_letter',
+            resourceId: null,
+            resourceModel: 'CoverLetter',
+            status: 'pending',
+            input: {
+                resumeText: resumeContent.text,
+                selfDescription,
+                jobDescription,
+                companyName,
+                roleName
+            }
         });
 
-        const coverLetter = await coverLetterModel.create({
-            user: req.user.id,
-            resume: resumeContent.text,
-            jobDescription,
-            selfDescription,
-            companyName,
-            roleName,
-            generatedContent: coverLetterHtml
-        });
+        // 4. Enqueue to BullMQ
+        await enqueueAiJob('cover_letter', { jobId: job._id });
 
-        res.status(201).json({
-            message: "Cover Letter created successfully!",
-            coverLetter,
+        // 5. Respond 202
+        return res.status(202).json({
+            message: "Cover Letter generation started.",
+            jobId: job._id,
+            status: 'pending',
             genCredits: req.genCredits
         });
     } catch (error) {
@@ -149,34 +171,45 @@ async function createCoverLetterFromReportController(req, res, next) {
             return res.status(404).json({ message: "Interview report not found" });
         }
 
-        const { resume, selfDescription, jobDescription } = interviewReport;
-
-        const coverLetterHtml = await generateCoverLetter({
-            resume,
-            selfDescription,
-            jobDescription,
-            companyName,
-            roleName
+        // 1. Check for active pending/processing job for this report
+        const existingJob = await JobModel.findOne({
+            userId: req.user.id,
+            type: 'cover_letter_report',
+            resourceId: interviewReportId,
+            status: { $in: ['pending', 'processing'] }
         });
 
-        const coverLetter = await coverLetterModel.findOneAndUpdate(
-            { interviewReport: interviewReportId, user: req.user.id },
-            {
-                user: req.user.id,
-                interviewReport: interviewReportId,
-                resume,
-                jobDescription,
-                selfDescription,
-                companyName,
-                roleName,
-                generatedContent: coverLetterHtml
-            },
-            { upsert: true, returnDocument: 'after' }
-        );
+        if (existingJob) {
+            return res.status(409).json({
+                message: "Cover letter generation is already running for this report.",
+                jobId: existingJob._id,
+                status: existingJob.status,
+                genCredits: req.genCredits
+            });
+        }
 
-        res.status(201).json({
-            message: "Cover Letter created successfully!",
-            coverLetter,
+        // 2. Create Job document in MongoDB
+        const job = await JobModel.create({
+            userId: req.user.id,
+            type: 'cover_letter_report',
+            resourceId: interviewReportId,
+            resourceModel: 'CoverLetter',
+            status: 'pending',
+            input: {
+                interviewReportId,
+                companyName,
+                roleName
+            }
+        });
+
+        // 3. Enqueue to BullMQ
+        await enqueueAiJob('cover_letter_report', { jobId: job._id });
+
+        // 4. Respond 202
+        return res.status(202).json({
+            message: "Cover letter generation started.",
+            jobId: job._id,
+            status: 'pending',
             genCredits: req.genCredits
         });
     } catch (error) {

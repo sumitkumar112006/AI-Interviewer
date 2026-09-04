@@ -172,6 +172,12 @@
         color: #ffffff;
         margin-bottom: 0.4rem;
         line-height: 1.3;
+
+        .theme-light &,
+        .light-theme &,
+        [data-theme="light"] & {
+          color: #0f172a;
+        }
       }
 
       .newsletter-desc {
@@ -179,6 +185,12 @@
         color: #94a3b8;
         line-height: 1.5;
         margin: 0;
+
+        .theme-light &,
+        .light-theme &,
+        [data-theme="light"] & {
+          color: #475569;
+        }
       }
     }
 
