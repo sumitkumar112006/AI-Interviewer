@@ -8,7 +8,7 @@ const JWT = require('jsonwebtoken');
 const { isEmailDomainReal } = require("../utils/emailValidator");
 const { sendOtpEmail } = require("../services/email.service");
 const crypto = require("crypto");
-const { supabase } = require("../config/supabase.config");
+const { supabase, getSupabaseClient } = require("../config/supabase.config");
 const {
     blacklistTokenInRedis,
     isTokenBlacklistedInRedis
@@ -702,14 +702,16 @@ async function googleSupabaseAuthController(req, res) {
             });
         }
 
-        if (!supabase) {
+        const client = getSupabaseClient() || supabase;
+        if (!client) {
+            console.error("[SUPABASE AUTH] Supabase client unavailable on server. Checked variables: SUPABASE_URL, SUPABASE_SECRET_KEY, SUPABASE_PUBLISHABLE_KEY, SUPABASE_ANON_KEY");
             return res.status(500).json({
                 message: "Supabase is not configured on the server."
             });
         }
 
         // Verify token directly with Supabase Auth
-        const { data: { user: sbUser }, error: sbError } = await supabase.auth.getUser(accessToken);
+        const { data: { user: sbUser }, error: sbError } = await client.auth.getUser(accessToken);
 
         if (sbError || !sbUser || !sbUser.email) {
             return res.status(401).json({

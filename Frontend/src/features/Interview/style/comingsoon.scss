@@ -2,20 +2,20 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: calc(100vh - 80px);
+    min-height: calc(100vh - 120px);
     padding: 2rem;
-    background: #090d16;
+    background: transparent;
 }
 
 .coming-soon-card {
     max-width: 500px;
     width: 100%;
-    padding: 3rem 2rem;
-    background: #0f1320;
-    border: 1px solid #1c2338;
+    padding: 3rem 2.25rem;
+    background: var(--panel);
+    border: 1px solid var(--border-color);
     border-radius: 1.25rem;
     text-align: center;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--card-shadow);
 
     .coming-soon-icon {
         margin-bottom: 1.5rem;
@@ -24,43 +24,45 @@
         justify-content: center;
         width: 80px;
         height: 80px;
-        background: rgba(99, 102, 241, 0.1);
+        background: var(--badge-bg);
         border-radius: 50%;
-        color: #6366f1;
+        color: var(--accent-color);
+        box-shadow: 0 4px 16px rgba(99, 102, 241, 0.15);
     }
 
     h1 {
+        font-family: var(--font-heading);
         font-size: 1.8rem;
-        font-weight: 700;
-        color: #ffffff;
-        margin-bottom: 1rem;
+        font-weight: 800;
+        color: var(--text-primary);
+        margin-bottom: 0.85rem;
         letter-spacing: -0.02em;
     }
 
     p {
         font-size: 0.95rem;
-        color: #8f9cae;
+        color: var(--text-secondary);
         line-height: 1.6;
-        margin-bottom: 2rem;
+        margin-bottom: 1.75rem;
     }
 
     .ai-badge {
         display: inline-flex;
         align-items: center;
         gap: 0.5rem;
-        padding: 0.5rem 1rem;
+        padding: 0.45rem 1rem;
         background: rgba(16, 185, 129, 0.08);
-        border: 1px solid rgba(16, 185, 129, 0.2);
+        border: 1px solid rgba(16, 185, 129, 0.22);
         border-radius: 999px;
-        color: #10b981;
-        font-size: 0.85rem;
+        color: var(--success-color);
+        font-size: 0.82rem;
         font-weight: 600;
         margin-bottom: 2rem;
 
         .pulse-dot {
             width: 8px;
             height: 8px;
-            background: #10b981;
+            background: var(--success-color);
             border-radius: 50%;
             display: inline-block;
             box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
@@ -71,18 +73,20 @@
     .back-home-btn {
         width: 100%;
         padding: 0.85rem;
-        background: linear-gradient(135deg, #6366f1, #a855f7);
+        background: var(--button-gradient);
         border: none;
         border-radius: 0.75rem;
         color: #ffffff;
-        font-size: 0.95rem;
+        font-size: 0.92rem;
         font-weight: 700;
+        font-family: var(--font-heading);
         cursor: pointer;
         transition: transform 0.2s ease, box-shadow 0.2s ease;
+        box-shadow: 0 4px 14px rgba(99, 102, 241, 0.25);
 
         &:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(99, 102, 241, 0.35);
         }
 
         &:active {

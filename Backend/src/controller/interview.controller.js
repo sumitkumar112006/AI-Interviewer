@@ -4,6 +4,8 @@ const crypto = require('crypto')
 const { generateInterviewReport, generateResumePfd, generateResumeHtml, rewriteResumeSection, getAIStatus } = require('../services/ai.service')
 const interviewReportModle = require('../models/interviewReport.model')
 const interviewReportModel = require('../models/interviewReport.model')
+const JobModel = require('../models/job.model')
+const { enqueueAiJob } = require('../jobs/aiQueue')
 const { getCache, setCache, deleteCache } = require('../services/redis.service')
 const { processReportSkills, aggregateSkillAnalytics } = require('../services/skills.service')
 const { getUserGenCredits } = require('../middleware/rateLimiter.middleware')
@@ -22,46 +24,52 @@ async function generateInterviewReportController(req, res, next) {
             })
         }
 
+        // 1. Check for active pending/processing job for this user
+        const existingJob = await JobModel.findOne({
+            userId: req.user.id,
+            type: 'interview_report',
+            status: { $in: ['pending', 'processing'] }
+        });
+
+        if (existingJob) {
+            return res.status(409).json({
+                message: "An interview report generation is already running.",
+                jobId: existingJob._id,
+                status: existingJob.status,
+                genCredits: req.genCredits
+            });
+        }
+
+        // 2. Parse PDF buffer in milliseconds (lean payload for Redis)
         const resumeContent = await (new pdfParse.PDFParse(Uint8Array.from(req.file.buffer))).getText()
         const { selfDescription, jobDescription } = req.body
-
         const userPlan = (req.user?.plan || "free").toLowerCase();
 
-        const interviewReportByAI = await generateInterviewReport({
-            resume: resumeContent.text,
-            selfDescription,
-            jobDescription,
-            plan: userPlan
-        })
+        // 3. Create Job document in MongoDB
+        const job = await JobModel.create({
+            userId: req.user.id,
+            type: 'interview_report',
+            resourceId: null,
+            resourceModel: 'InterviewReport',
+            status: 'pending',
+            input: {
+                resumeText: resumeContent.text,
+                selfDescription,
+                jobDescription,
+                userPlan
+            }
+        });
 
-        const detectedSkills = processReportSkills({
-            resume: resumeContent.text,
-            selfDescription,
-            jobDescription,
-            ...interviewReportByAI
-        })
+        // 4. Enqueue to BullMQ
+        await enqueueAiJob('interview_report', { jobId: job._id });
 
-        const userIdStr = req.user.id || req.user._id?.toString()
-        const userObjectId = mongoose.Types.ObjectId.isValid(userIdStr) ? new mongoose.Types.ObjectId(userIdStr) : userIdStr
-
-        const interviewReport = await interviewReportModle.create({
-            user: userObjectId,
-            resume: resumeContent.text,
-            selfDescription,
-            jobDescription,
-            detectedSkills,
-            ...interviewReportByAI
-        })
-
-        // Invalidate user reports cache
-        await deleteCache(`cache:reports:user:${userIdStr}`)
-        if (req.user.id) await deleteCache(`cache:reports:user:${req.user.id}`)
-
-        res.status(201).json({
-            message: "Interview Report Generated Successfully !",
-            interviewReport,
+        // 5. Respond 202 Accepted immediately
+        return res.status(202).json({
+            message: "Interview report generation started.",
+            jobId: job._id,
+            status: 'pending',
             genCredits: req.genCredits
-        })
+        });
     } catch (error) {
         console.error("generateInterviewReportController error:", error.message);
         if (req.refundGeneration) {
@@ -238,30 +246,48 @@ async function generateResumePdfController(req, res, next) {
             return res.status(200).json({ interviewReport, genCredits: req.genCredits })
         }
 
-        // Sanitize resume text — if it's an ObjectId string, clear it so prompt doesn't render raw ID
-        let resumeText = (interviewReport.resume || '').trim()
-        if (/^[a-f0-9]{24}$/i.test(resumeText)) {
-            resumeText = ''
+        // 1. Check for active pending/processing job for this specific report
+        const existingJob = await JobModel.findOne({
+            userId: req.user.id,
+            type: 'resume_html',
+            resourceId: interviewReportId,
+            status: { $in: ['pending', 'processing'] }
+        });
+
+        if (existingJob) {
+            return res.status(409).json({
+                message: "Resume generation is already running for this report.",
+                jobId: existingJob._id,
+                status: existingJob.status,
+                genCredits: req.genCredits
+            });
         }
 
-        // Generate fresh resume HTML from AI and persist it
-        const { selfDescription, jobDescription } = interviewReport
+        // 2. Create Job document
         const userPlan = (req.user?.plan || "free").toLowerCase();
-        const generatedHtml = await generateResumeHtml({
-            resume: resumeText || selfDescription || jobDescription,
-            selfDescription,
-            jobDescription,
-            plan: userPlan
-        })
+        const job = await JobModel.create({
+            userId: req.user.id,
+            type: 'resume_html',
+            resourceId: interviewReportId,
+            resourceModel: 'InterviewReport',
+            status: 'pending',
+            input: {
+                interviewReportId,
+                userPlan,
+                forceRegenerate
+            }
+        });
 
-        interviewReport.generatedResumeHtml = generatedHtml
-        await interviewReport.save()
+        // 3. Enqueue to BullMQ
+        await enqueueAiJob('resume_html', { jobId: job._id });
 
-        // Invalidate report detail cache
-        const cacheKey = `cache:report:${interviewReportId}:${req.user.id}`
-        await deleteCache(cacheKey)
-
-        res.status(200).json({ interviewReport, genCredits: req.genCredits })
+        // 4. Respond 202 Accepted immediately
+        return res.status(202).json({
+            message: "Resume generation started.",
+            jobId: job._id,
+            status: 'pending',
+            genCredits: req.genCredits
+        });
     } catch (error) {
         console.error("generateResumePdfController error:", error);
         if (req.refundGeneration) {
@@ -378,16 +404,43 @@ async function updateInterviewProgressController(req, res, next) {
 
 async function rewriteResumeSectionController(req, res, next) {
     try {
-        const { selectedText, instruction, action, message } = req.body;
+        const { selectedText, instruction, action, message, resourceId } = req.body;
         const plan = (req.user?.plan || 'free').toLowerCase();
 
-        const aiResponse = await rewriteResumeSection({ selectedText, instruction, action, message, plan });
+        // 1. Check for active pending/processing job
+        const existingJob = await JobModel.findOne({
+            userId: req.user.id,
+            type: 'rewrite_section',
+            resourceId: resourceId || null,
+            status: { $in: ['pending', 'processing'] }
+        });
 
-        res.status(200).json({
-            message: "Success",
-            replyText: aiResponse.replyText,
-            suggestedSnippet: aiResponse.suggestedSnippet,
-            rewrittenText: aiResponse.suggestedSnippet
+        if (existingJob) {
+            return res.status(409).json({
+                message: "AI rewrite already in progress.",
+                jobId: existingJob._id,
+                status: existingJob.status
+            });
+        }
+
+        // 2. Create Job document
+        const job = await JobModel.create({
+            userId: req.user.id,
+            type: 'rewrite_section',
+            resourceId: resourceId || null,
+            resourceModel: 'InterviewReport',
+            status: 'pending',
+            input: { selectedText, instruction, action, message, plan }
+        });
+
+        // 3. Enqueue to BullMQ
+        await enqueueAiJob('rewrite_section', { jobId: job._id });
+
+        // 4. Respond 202 Accepted immediately
+        return res.status(202).json({
+            message: "Rewrite request started.",
+            jobId: job._id,
+            status: 'pending'
         });
     } catch (error) {
         next(error);

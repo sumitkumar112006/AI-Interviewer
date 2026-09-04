@@ -21,9 +21,14 @@ $text-muted:     #8496b4;
     height: 100%;
     min-height: 0;
     flex: 1;
-    background: $bg-dark;
+    background: var(--bg-main, #080c14);
     border-radius: 0.75rem;
     overflow: hidden;
+
+    .light-theme &,
+    [data-theme="light"] & {
+        background: #f1f5f9;
+    }
 }
 
 // ── Formatting Toolbar ─────────────────────────────────────────────────────
@@ -31,42 +36,69 @@ $text-muted:     #8496b4;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 0.2rem;
+    gap: 0.25rem;
     padding: 0.55rem 0.85rem;
     background: rgba(15, 21, 32, 0.98);
-    border-bottom: 1px solid $border-dim;
+    border-bottom: 1px solid var(--border-color, #1a2236);
     flex-shrink: 0;
     position: sticky;
     top: 0;
     z-index: 30;
     backdrop-filter: blur(12px);
+
+    .light-theme &,
+    [data-theme="light"] & {
+        background: rgba(255, 255, 255, 0.98);
+        border-bottom: 1px solid #e2e8f0;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    }
 }
 
 .tiptap-toolbar-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     border: 1px solid transparent;
-    border-radius: 0.35rem;
+    border-radius: 0.4rem;
     background: transparent;
-    color: $text-muted;
+    color: var(--text-secondary, #8496b4);
     cursor: pointer;
     transition: all 0.15s ease;
     padding: 0;
     flex-shrink: 0;
 
+    .light-theme &,
+    [data-theme="light"] & {
+        color: #475569;
+    }
+
     &:hover:not(:disabled) {
         background: rgba(99, 102, 241, 0.12);
         border-color: rgba(99, 102, 241, 0.3);
-        color: $text-white;
+        color: #ffffff;
+
+        .light-theme &,
+        [data-theme="light"] & {
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+            color: #0f172a;
+        }
     }
 
     &.is-active {
         background: rgba(99, 102, 241, 0.2);
         border-color: rgba(99, 102, 241, 0.5);
-        color: $accent-indigo;
+        color: var(--accent-color, #6366f1);
+
+        .light-theme &,
+        [data-theme="light"] & {
+            background: #eef2ff;
+            border-color: #c7d2fe;
+            color: #4f46e5;
+            font-weight: 600;
+        }
     }
 
     &:disabled {
@@ -83,6 +115,14 @@ $text-muted:     #8496b4;
         &:hover:not(:disabled) {
             background: rgba(248, 113, 113, 0.12);
             border-color: rgba(248, 113, 113, 0.3);
+            color: #ef4444;
+
+            .light-theme &,
+            [data-theme="light"] & {
+                background: #fef2f2;
+                border-color: #fecaca;
+                color: #dc2626;
+            }
         }
     }
 }
@@ -90,9 +130,14 @@ $text-muted:     #8496b4;
 .tiptap-divider {
     width: 1px;
     height: 18px;
-    background: $border-mid;
+    background: var(--border-strong, #243050);
     margin: 0 0.25rem;
     flex-shrink: 0;
+
+    .light-theme &,
+    [data-theme="light"] & {
+        background: #e2e8f0;
+    }
 }
 
 .tiptap-color-wrap {
@@ -100,18 +145,30 @@ $text-muted:     #8496b4;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     border: 1px solid transparent;
-    border-radius: 0.35rem;
-    color: $text-muted;
+    border-radius: 0.4rem;
+    color: var(--text-secondary, #8496b4);
     cursor: pointer;
     transition: all 0.15s ease;
+
+    .light-theme &,
+    [data-theme="light"] & {
+        color: #475569;
+    }
 
     &:hover {
         background: rgba(99, 102, 241, 0.12);
         border-color: rgba(99, 102, 241, 0.3);
-        color: $text-white;
+        color: #ffffff;
+
+        .light-theme &,
+        [data-theme="light"] & {
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+            color: #0f172a;
+        }
     }
 
     svg {
@@ -138,13 +195,19 @@ $text-muted:     #8496b4;
     min-height: 0;
     overflow-y: scroll !important;
     overflow-x: auto;
-    background: #060911;
+    background: #080c16;
     padding: 2.5rem 1rem 5rem 1rem;
     display: flex;
     flex-direction: column;
     align-items: center;
     width: 100%;
     box-sizing: border-box;
+    transition: background 0.25s ease;
+
+    .light-theme &,
+    [data-theme="light"] & {
+        background: #eef2f6; // refined designer workstation slate canvas
+    }
 
     &::-webkit-scrollbar {
         width: 10px;
@@ -152,14 +215,28 @@ $text-muted:     #8496b4;
     }
     &::-webkit-scrollbar-track {
         background: #090d16;
+        .light-theme &,
+        [data-theme="light"] & {
+            background: #e2e8f0;
+        }
     }
     &::-webkit-scrollbar-thumb {
         background: #6366f1;
         border-radius: 6px;
         border: 2px solid #090d16;
 
+        .light-theme &,
+        [data-theme="light"] & {
+            background: #94a3b8;
+            border: 2px solid #e2e8f0;
+        }
+
         &:hover {
             background: #818cf8;
+            .light-theme &,
+            [data-theme="light"] & {
+                background: #64748b;
+            }
         }
     }
 }
@@ -188,6 +265,15 @@ $text-muted:     #8496b4;
     overflow: visible !important;
     word-break: break-word;
     overflow-wrap: break-word;
+    transition: box-shadow 0.25s ease;
+
+    .light-theme &,
+    [data-theme="light"] & {
+        box-shadow:
+            0 12px 36px -4px rgba(15, 23, 42, 0.12),
+            0 2px 8px -2px rgba(15, 23, 42, 0.05),
+            0 0 0 1px rgba(15, 23, 42, 0.06);
+    }
 }
 
 // ── TipTap prose content inside A4 ────────────────────────────────────────

@@ -5,17 +5,17 @@
 
 // ── Design Tokens ──────────────────────────────────────────────────────────
 .cl-page {
-    --cl-bg:         #080c14;
-    --cl-panel:      #0d1424;
-    --cl-border:     #1a2236;
-    --cl-border-mid: #243050;
-    --cl-text:       #f0f4ff;
-    --cl-muted:      #7a8fa8;
-    --cl-indigo:     #6366f1;
+    --cl-bg:         var(--bg-main, #080c14);
+    --cl-panel:      var(--panel, #0d1424);
+    --cl-border:     var(--border-color, #1a2236);
+    --cl-border-mid: var(--border-strong, #243050);
+    --cl-text:       var(--text-primary, #f0f4ff);
+    --cl-muted:      var(--text-secondary, #7a8fa8);
+    --cl-indigo:     var(--accent-color, #6366f1);
     --cl-cyan:       #22d3ee;
-    --cl-green:      #10b981;
-    --cl-amber:      #f59e0b;
-    --cl-danger:     #f87171;
+    --cl-green:      var(--success-color, #10b981);
+    --cl-amber:      var(--warning-color, #f59e0b);
+    --cl-danger:     var(--danger-color, #f87171);
 
     display: flex;
     flex-direction: column;
@@ -25,6 +25,18 @@
     background: var(--cl-bg);
     color: var(--cl-text);
     font-family: inherit;
+
+    .light-theme &,
+    [data-theme="light"] & {
+        --cl-bg: #f8fafc;
+        --cl-panel: #ffffff;
+        --cl-border: #e2e8f0;
+        --cl-border-mid: #cbd5e1;
+        --cl-text: #0f172a;
+        --cl-muted: #64748b;
+        --cl-indigo: #4f46e5;
+        --cl-cyan: #0284c7;
+    }
 }
 
 // ── Header ─────────────────────────────────────────────────────────────────
@@ -39,6 +51,13 @@
     backdrop-filter: blur(16px);
     flex-shrink: 0;
     z-index: 20;
+
+    .light-theme &,
+    [data-theme="light"] & {
+        background: rgba(255, 255, 255, 0.96);
+        border-bottom: 1px solid #e2e8f0;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    }
 }
 
 .cl-header-left {
@@ -57,6 +76,11 @@
     color: var(--cl-cyan);
     white-space: nowrap;
     flex-shrink: 0;
+
+    .light-theme &,
+    [data-theme="light"] & {
+        color: #4f46e5;
+    }
 }
 
 .cl-title {
@@ -71,6 +95,14 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+
+    .light-theme &,
+    [data-theme="light"] & {
+        background: linear-gradient(90deg, #0f172a 0%, #3b82f6 55%, #4f46e5 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
 }
 
 .cl-unsaved-badge {
@@ -84,6 +116,13 @@
     white-space: nowrap;
     flex-shrink: 0;
     animation: pulse-badge 2s ease infinite;
+
+    .light-theme &,
+    [data-theme="light"] & {
+        background: #fffbeb;
+        border-color: #fde68a;
+        color: #d97706;
+    }
 }
 
 @keyframes pulse-badge {
@@ -102,14 +141,14 @@
 .cl-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
-    padding: 0.42rem 0.9rem;
+    gap: 0.35rem;
+    padding: 0.45rem 0.95rem;
     border-radius: 0.55rem;
     font-size: 0.8rem;
     font-weight: 700;
     cursor: pointer;
     white-space: nowrap;
-    transition: all 0.18s ease;
+    transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
     border: 0;
 
     &:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -117,11 +156,26 @@
     &:not(:disabled):active { transform: translateY(0) scale(0.97); }
 
     &.cl-btn-ghost {
-        background: rgba(255,255,255,0.05);
+        background: rgba(255,255,255,0.06);
         border: 1px solid var(--cl-border-mid);
         color: var(--cl-text);
+
+        .light-theme &,
+        [data-theme="light"] & {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            color: #334155;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+
+            &:not(:disabled):hover {
+                background: #f8fafc;
+                border-color: #94a3b8;
+                color: #0f172a;
+            }
+        }
+
         &:not(:disabled):hover {
-            background: rgba(255,255,255,0.09);
+            background: rgba(255,255,255,0.1);
             border-color: var(--cl-cyan);
             color: var(--cl-cyan);
         }
@@ -131,12 +185,26 @@
         background: linear-gradient(135deg, #059669, #10b981);
         color: #fff;
         box-shadow: 0 3px 12px rgba(16,185,129,0.28);
+        &:not(:disabled):hover {
+            box-shadow: 0 5px 18px rgba(16,185,129,0.42);
+            filter: brightness(1.05);
+        }
     }
 
     &.cl-btn-primary {
         background: linear-gradient(135deg, var(--cl-indigo), #8b5cf6);
         color: #fff;
         box-shadow: 0 3px 12px rgba(99,102,241,0.28);
+        &:not(:disabled):hover {
+            box-shadow: 0 5px 18px rgba(99,102,241,0.42);
+            filter: brightness(1.05);
+        }
+
+        .light-theme &,
+        [data-theme="light"] & {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            box-shadow: 0 4px 14px rgba(79, 70, 229, 0.28);
+        }
     }
 
     &.cl-btn-danger {
@@ -148,6 +216,17 @@
         &:not(:disabled):hover {
             background: rgba(248, 113, 113, 0.18);
             border-color: var(--cl-danger);
+        }
+
+        .light-theme &,
+        [data-theme="light"] & {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #dc2626;
+            &:not(:disabled):hover {
+                background: #fee2e2;
+                border-color: #fca5a5;
+            }
         }
     }
 }
@@ -166,6 +245,13 @@
     font-weight: 500;
     flex-shrink: 0;
     animation: slideDown 0.2s ease;
+
+    .light-theme &,
+    [data-theme="light"] & {
+        background: #fef2f2;
+        border-bottom: 1px solid #fecaca;
+        color: #dc2626;
+    }
 
     button {
         background: transparent;
@@ -205,6 +291,12 @@
     padding: 1.25rem;
     box-sizing: border-box;
 
+    .light-theme &,
+    [data-theme="light"] & {
+        background: #ffffff;
+        border-right: 1px solid #e2e8f0;
+    }
+
     &::-webkit-scrollbar { width: 4px; }
     &::-webkit-scrollbar-thumb {
         background: rgba(99,102,241,0.35);
@@ -228,6 +320,14 @@
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+
+    .light-theme &,
+    [data-theme="light"] & {
+        background: linear-gradient(90deg, #0f172a, #4f46e5);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
 }
 
 .cl-panel-sub {
@@ -254,6 +354,11 @@
         color: #c7d2fe;
         text-transform: uppercase;
         letter-spacing: 0.06em;
+
+        .light-theme &,
+        [data-theme="light"] & {
+            color: #475569;
+        }
     }
 
     input {
@@ -275,6 +380,18 @@
             box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
         }
 
+        .light-theme &,
+        [data-theme="light"] & {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            color: #0f172a;
+            &::placeholder { color: #94a3b8; }
+            &:focus {
+                border-color: #4f46e5;
+                box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+            }
+        }
+
         &:disabled { opacity: 0.5; cursor: not-allowed; }
     }
 }
@@ -289,13 +406,20 @@
     font-weight: 700;
     font-size: 0.85rem;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 4px 14px rgba(99,102,241,0.25);
     letter-spacing: 0.02em;
+
+    .light-theme &,
+    [data-theme="light"] & {
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        box-shadow: 0 4px 14px rgba(79, 70, 229, 0.25);
+    }
 
     &:not(:disabled):hover {
         transform: translateY(-2px);
         box-shadow: 0 7px 20px rgba(99,102,241,0.38);
+        filter: brightness(1.05);
     }
     &:disabled { opacity: 0.45; cursor: not-allowed; }
 }
@@ -309,9 +433,20 @@
     color: #c49a3a;
     line-height: 1.55;
 
+    .light-theme &,
+    [data-theme="light"] & {
+        background: #fffbeb;
+        border-color: #fde68a;
+        color: #b45309;
+    }
+
     span {
         font-weight: 700;
         color: var(--cl-amber);
+        .light-theme &,
+        [data-theme="light"] & {
+            color: #d97706;
+        }
     }
 }
 
@@ -323,6 +458,11 @@
     flex-direction: column;
     overflow: hidden;
     background: #0a0e1a;
+
+    .light-theme &,
+    [data-theme="light"] & {
+        background: #eef2f6;
+    }
 }
 
 // ── Loading / empty states ─────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import {
     deleteCoverLetter,
     updateCoverLetter
 } from '../services/coverletter.api'
+import { getActiveJob, pollJobUntilComplete } from '../services/interview.api'
 import { useInterview } from '../hooks/useInterview'
 import { useAuth } from '../../Auth/hooks/useAuth'
 import Loading from '../Loading'
@@ -52,6 +53,22 @@ const CoverLetter = () => {
                     setCompanyName(res.coverLetter.companyName || '')
                     setRoleName(res.coverLetter.roleName || '')
                 }
+
+                // Check if an active generation job is currently running for this report
+                getActiveJob({ type: 'cover_letter_report', resourceId: interviewId }).then(jobRes => {
+                    if (mounted && jobRes?.activeJob?.jobId) {
+                        setGenLoading(true);
+                        pollJobUntilComplete(jobRes.activeJob.jobId).then(cl => {
+                            if (mounted && cl) {
+                                setCoverLetter(cl);
+                                setHtmlContent(sanitizeResumeHtml(cl.generatedContent));
+                                setGenLoading(false);
+                            }
+                        }).catch(() => {
+                            if (mounted) setGenLoading(false);
+                        });
+                    }
+                }).catch(() => {});
             } catch (err) {
                 if (mounted) setError(err?.response?.data?.message || err?.message || 'Failed to load data.')
             } finally {

@@ -5,6 +5,7 @@ import { useAuth } from '../../Auth/hooks/useAuth'
 import { useNavigate } from 'react-router-dom'
 import PageLoading from '../../Shared/components/PageLoading'
 import ReportGenerationLoading from '../components/ReportGenerationLoading'
+import { getActiveJob, pollJobUntilComplete } from '../services/interview.api'
 
 function extractObjectId(value) {
     if (!value) return ''
@@ -46,7 +47,7 @@ function getReportTitle(reportItem) {
 
 const Home = () => {
     const { user } = useAuth()
-    const { loading, report, generateReport, reports, getReports, deleteReport } = useInterview()
+    const { loading, setLoading, report, setReport, generateReport, reports, getReports, deleteReport } = useInterview()
     const isReportsBlocked = Boolean(user?.blockedFeatures?.interviewReports)
     const isResumeBlocked = Boolean(user?.blockedFeatures?.resumeGeneration)
     const isGenerationBlocked = isReportsBlocked || isResumeBlocked
@@ -72,6 +73,31 @@ const Home = () => {
             selfDescription: report.selfDescription ?? ''
         })
     }, [report])
+
+    // Check for active background generation job on mount
+    useEffect(() => {
+        let isMounted = true;
+        getActiveJob({ type: 'interview_report' }).then(res => {
+            if (isMounted && res?.activeJob?.jobId) {
+                setLoading(true);
+                pollJobUntilComplete(res.activeJob.jobId).then(data => {
+                    if (isMounted && data) {
+                        setReport(data);
+                        setLoading(false);
+                        const interviewId = extractObjectId(data?._id);
+                        if (interviewId) {
+                            navigate(`/interview/${interviewId}`, { state: { interviewReport: data } });
+                        }
+                    }
+                }).catch(err => {
+                    if (isMounted) setLoading(false);
+                    console.error("Active job tracking error:", err);
+                });
+            }
+        }).catch(() => {});
+
+        return () => { isMounted = false; };
+    }, [navigate, setReport, setLoading]);
 
     useEffect(() => {
         if (reports !== null || hasRequestedReportsRef.current) return
