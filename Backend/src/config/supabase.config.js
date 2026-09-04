@@ -1,29 +1,40 @@
 const { createClient } = require('@supabase/supabase-js');
 
-const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SECRET_KEY || 
-                    process.env.SUPABASE_SERVICE_ROLE_KEY || 
-                    process.env.SUPABASE_PUBLISHABLE_KEY || 
-                    process.env.SUPABASE_ANON_KEY || 
-                    process.env.VITE_SUPABASE_ANON_KEY || 
-                    process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+let supabaseInstance = null;
 
-let supabase = null;
+function getSupabaseClient() {
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SECRET_KEY || 
+                        process.env.SUPABASE_SERVICE_ROLE_KEY || 
+                        process.env.SUPABASE_PUBLISHABLE_KEY || 
+                        process.env.SUPABASE_ANON_KEY || 
+                        process.env.VITE_SUPABASE_ANON_KEY || 
+                        process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-if (supabaseUrl && supabaseKey) {
-    try {
-        supabase = createClient(supabaseUrl, supabaseKey, {
-            auth: {
-                persistSession: false,
-                autoRefreshToken: false
-            }
-        });
-        console.log('[SUPABASE CONFIG] Initialized Supabase client successfully.');
-    } catch (err) {
-        console.error('[SUPABASE CONFIG] Failed to initialize Supabase client:', err.message);
+    if (!supabaseUrl || !supabaseKey) {
+        return null;
     }
-} else {
-    console.warn('[SUPABASE CONFIG] Supabase credentials (SUPABASE_URL / SUPABASE_SECRET_KEY / SUPABASE_PUBLISHABLE_KEY) are not set.');
+
+    if (!supabaseInstance) {
+        try {
+            supabaseInstance = createClient(supabaseUrl.trim(), supabaseKey.trim(), {
+                auth: {
+                    persistSession: false,
+                    autoRefreshToken: false
+                }
+            });
+            console.log('[SUPABASE CONFIG] Initialized Supabase client successfully.');
+        } catch (err) {
+            console.error('[SUPABASE CONFIG] Failed to initialize Supabase client:', err.message);
+            return null;
+        }
+    }
+    return supabaseInstance;
 }
 
-module.exports = { supabase };
+module.exports = {
+    get supabase() {
+        return getSupabaseClient();
+    },
+    getSupabaseClient
+};

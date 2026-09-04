@@ -15,3 +15,4 @@ request_handling_architecture.md
 Backend/test-groq-keys.js
 Backend/test-openrouter-keys.js
 Backend/test-anthropic-keys.js
+Backend/test-all-api-keys.js

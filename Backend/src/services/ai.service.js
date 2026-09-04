@@ -5,7 +5,6 @@ const { z } = require('zod')
 const { zodToJsonSchema } = require('zod-to-json-schema')
 // Puppeteer removed — PDF is now generated client-side via window.print()
 
-const request = require('request');
 const fs = require('fs')
 const axios = require('axios');
 
