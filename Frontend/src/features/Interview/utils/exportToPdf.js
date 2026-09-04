@@ -159,7 +159,7 @@ export async function exportElementToPdf(element, filename = 'Resume.pdf') {
     const options = {
         margin: [MARGIN_TOP_MM, 0, MARGIN_BOTTOM_MM, 0],
         filename: cleanFilename,
-        image: { type: 'png', quality: 1.0 },
+        image: { type: 'jpeg', quality: 0.95 },
         html2canvas: {
             scale: 2,
             useCORS: true,
@@ -171,7 +171,8 @@ export async function exportElementToPdf(element, filename = 'Resume.pdf') {
         jsPDF: {
             unit: 'mm',
             format: 'a4',
-            orientation: 'portrait'
+            orientation: 'portrait',
+            compress: true
         },
         pagebreak: {
             // We already did break-avoidance manually above — disable html2pdf's own.

@@ -37,14 +37,17 @@ const technicalQuestionSchema = new mongoose.Schema({
     question: {
         type: String,
         required: [true, "Technical question is required"],
+        trim: true
     },
     intention: {
         type: String,
-        required: [true, "Intention is required for technical question"],
+        default: "Evaluates technical depth, architecture tradeoffs, and practical implementation ability.",
+        trim: true
     },
     answer: {
         type: String,
-        required: [true, "Answer is required for technical question"],
+        default: "Provide a structured explanation detailing core concepts, implementation steps, tradeoff analysis, and concrete project experience.",
+        trim: true
     },
     userResponse: {
         type: String,
@@ -59,14 +62,17 @@ const behavioralQuestionSchema = new mongoose.Schema({
     question: {
         type: String,
         required: [true, "Behavioral question is required"],
+        trim: true
     },
     intention: {
         type: String,
-        required: [true, "Intention is required for Behavioral question"],
+        default: "Evaluates communication, ownership, collaboration, problem-solving, and emotional intelligence.",
+        trim: true
     },
     answer: {
         type: String,
-        required: [true, "Answer is required for Behavioral question"],
+        default: "Use the STAR method (Situation, Task, Action, Result) highlighting your personal leadership, decision-making, and measurable impact.",
+        trim: true
     },
     userResponse: {
         type: String,
@@ -81,11 +87,12 @@ const skillGapSchema = new mongoose.Schema({
     skill: {
         type: String,
         required: [true, "Skill is required for skill gap"],
+        trim: true
     },
     severity: {
         type: String,
         enum: ["low", "medium", "high"],
-        required: [true, "Severity is required"]
+        default: "medium"
     }
 }, {
     _id: false
@@ -95,15 +102,17 @@ const skillGapSchema = new mongoose.Schema({
 const interviewPreparationPlanSchema = new mongoose.Schema({
     day: {
         type: String,
-        required: [true, "Day is required"]
+        default: "Day 1",
+        trim: true
     },
     focus: {
         type: String,
-        required: [true, "Focus is required"]
+        default: "Core Technical Concepts & Problem Solving",
+        trim: true
     },
     tasks: [{
         type: String,
-        required: [true, "Task is required"]
+        trim: true
     }]
 }, {
     _id: false
