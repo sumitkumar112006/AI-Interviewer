@@ -55,6 +55,38 @@ const userSchema = new mongoose.Schema({
         coverLetterGeneration: { type: Boolean, default: false },
         interviewReports: { type: Boolean, default: false }
     },
+    careerProfile: {
+        selfDescription: {
+            type: String,
+            default: "",
+            trim: true
+        },
+        targetRole: {
+            type: String,
+            default: "Full Stack Developer",
+            trim: true
+        },
+        targetCompanies: {
+            type: [String],
+            default: ["Product Companies"]
+        },
+        experienceLevel: {
+            type: String,
+            enum: ["fresher", "mid", "senior"],
+            default: "fresher"
+        },
+        savedDescriptions: [{
+            title: { type: String, required: true, trim: true },
+            content: { type: String, required: true, trim: true },
+            isDefault: { type: Boolean, default: false }
+        }],
+        savedRoadmaps: [{
+            title: { type: String, required: true },
+            url: { type: String, required: true },
+            topic: { type: String, default: "General" },
+            savedAt: { type: Date, default: Date.now }
+        }]
+    },
     createdAt: {
         type: Date,
         default: Date.now

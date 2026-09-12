@@ -32,7 +32,7 @@ async function authUser(req, res, next) {
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         
-        const account = await userModel.findById(decoded.id).select("username email plan role isBlocked customBonusCredits customAiBonusCredits blockedFeatures");
+        const account = await userModel.findById(decoded.id).select("username email plan role isBlocked customBonusCredits customAiBonusCredits blockedFeatures careerProfile");
 
         if (!account) {
             return res.status(401).json({ message: "User account not found." });
@@ -61,6 +61,13 @@ async function authUser(req, res, next) {
                 resumeGeneration: false,
                 coverLetterGeneration: false,
                 interviewReports: false
+            },
+            careerProfile: account.careerProfile || {
+                selfDescription: "",
+                targetRole: "Full Stack Developer",
+                targetCompanies: ["Product Companies"],
+                experienceLevel: "fresher",
+                savedRoadmaps: []
             }
         };
 

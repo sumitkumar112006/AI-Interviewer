@@ -4,6 +4,7 @@ const crypto = require('crypto')
 const { generateInterviewReport, generateResumePfd, generateResumeHtml, rewriteResumeSection, getAIStatus } = require('../services/ai.service')
 const interviewReportModle = require('../models/interviewReport.model')
 const interviewReportModel = require('../models/interviewReport.model')
+const userModel = require('../models/user.model')
 const JobModel = require('../models/job.model')
 const { enqueueAiJob } = require('../jobs/aiQueue')
 const { getCache, setCache, deleteCache } = require('../services/redis.service')
@@ -18,10 +19,21 @@ async function generateInterviewReportController(req, res, next) {
             })
         }
 
-        if (!req.body?.selfDescription?.trim() || !req.body?.jobDescription?.trim()) {
+        const rawSelfDesc = req.body?.selfDescription?.trim();
+        const savedSelfDesc = req.user?.careerProfile?.selfDescription?.trim();
+        const effectiveSelfDescription = rawSelfDesc || savedSelfDesc;
+
+        if (!effectiveSelfDescription || !req.body?.jobDescription?.trim()) {
             return res.status(400).json({
                 message: "Job description and self description are required"
             })
+        }
+
+        // Auto-save selfDescription if explicitly requested or if user currently has none saved
+        if (rawSelfDesc && (req.body?.saveSelfDescription === true || req.body?.saveSelfDescription === 'true' || !savedSelfDesc)) {
+            userModel.findByIdAndUpdate(req.user.id, {
+                $set: { "careerProfile.selfDescription": rawSelfDesc }
+            }).catch(err => console.error("Auto-save selfDescription error:", err.message));
         }
 
         // 1. Check for active pending/processing job for this user
@@ -42,7 +54,7 @@ async function generateInterviewReportController(req, res, next) {
 
         // 2. Parse PDF buffer in milliseconds (lean payload for Redis)
         const resumeContent = await (new pdfParse.PDFParse(Uint8Array.from(req.file.buffer))).getText()
-        const { selfDescription, jobDescription } = req.body
+        const { jobDescription } = req.body
         const userPlan = (req.user?.plan || "free").toLowerCase();
 
         // 3. Create Job document in MongoDB
@@ -54,7 +66,7 @@ async function generateInterviewReportController(req, res, next) {
             status: 'pending',
             input: {
                 resumeText: resumeContent.text,
-                selfDescription,
+                selfDescription: effectiveSelfDescription,
                 jobDescription,
                 userPlan
             }
@@ -209,10 +221,24 @@ async function getSkillAnalyticsController(req, res, next) {
             .sort({ createdAt: -1 })
 
         const skillAnalytics = aggregateSkillAnalytics(interviewReports)
+        const careerProfile = req.user?.careerProfile || {
+            selfDescription: "",
+            targetRole: "Full Stack Developer",
+            targetCompanies: ["Product Companies"],
+            experienceLevel: "fresher",
+            savedRoadmaps: []
+        };
 
         res.status(200).json({
             message: "Skill analytics retrieved successfully",
-            skillAnalytics
+            skillAnalytics,
+            careerTarget: {
+                targetRole: careerProfile.targetRole,
+                targetCompanies: careerProfile.targetCompanies,
+                experienceLevel: careerProfile.experienceLevel,
+                selfDescription: careerProfile.selfDescription
+            },
+            savedRoadmaps: careerProfile.savedRoadmaps || []
         })
     } catch (error) {
         next(error)

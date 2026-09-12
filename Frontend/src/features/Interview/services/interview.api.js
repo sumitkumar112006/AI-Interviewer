@@ -99,7 +99,7 @@ export async function pollJobUntilComplete(jobId, onProgress = null, intervalMs 
     });
 }
 
-export const generateInterviewReport = async ({ jobDescription, selfDescription, resumeFile, onProgress }) => {
+export const generateInterviewReport = async ({ jobDescription, selfDescription, resumeFile, saveSelfDescription = false, onProgress }) => {
     if (!resumeFile) {
         throw new Error('Resume file is required.')
     }
@@ -120,6 +120,9 @@ export const generateInterviewReport = async ({ jobDescription, selfDescription,
     formData.append("jobDescription", jobDescription.trim())
     formData.append("selfDescription", selfDescription.trim())
     formData.append("resume", resumeFile)
+    if (saveSelfDescription) {
+        formData.append("saveSelfDescription", "true")
+    }
 
     const response = await api.post("/api/interview", formData)
 
@@ -182,6 +185,112 @@ export async function rewriteResumeSection({ selectedText, instruction, action, 
     }
 
     return response.data
+}
+
+export async function streamAssistantChatApi({
+    reportId = null,
+    message = '',
+    selectedText = '',
+    action = 'enhance',
+    instruction = '',
+    onToken = () => {},
+    onDone = () => {},
+    onError = () => {},
+    signal = null
+}) {
+    const baseUrl = API_BASE_URL.replace(/\/$/, "");
+    const url = `${baseUrl}/api/assistant/chat`;
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'text/event-stream'
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+                reportId,
+                message,
+                selectedText,
+                action,
+                instruction,
+                stream: true
+            }),
+            signal
+        });
+
+        if (!response.ok) {
+            let errorMsg = `Server error (${response.status})`;
+            try {
+                const errJson = await response.json();
+                errorMsg = errJson.message || errorMsg;
+            } catch (e) {
+                // ignore
+            }
+            const err = new Error(errorMsg);
+            err.status = response.status;
+            throw err;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let accumulatedText = '';
+        let buffer = '';
+        let doneData = null;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ''; // keep remaining incomplete line in buffer
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || trimmed.startsWith(':')) continue; // skip comments / pings
+
+                if (trimmed === 'data: [DONE]') {
+                    continue;
+                }
+
+                if (trimmed.startsWith('data: ')) {
+                    const jsonStr = trimmed.slice(6);
+                    try {
+                        const parsed = JSON.parse(jsonStr);
+                        if (parsed.type === 'token' && parsed.token) {
+                            accumulatedText += parsed.token;
+                            onToken(parsed.token, accumulatedText);
+                        } else if (parsed.type === 'done') {
+                            doneData = parsed;
+                        } else if (parsed.type === 'error') {
+                            throw new Error(parsed.message || 'Stream error occurred.');
+                        }
+                    } catch (parseErr) {
+                        // ignore malformed SSE json chunks
+                    }
+                }
+            }
+        }
+
+        const finalResult = {
+            replyText: doneData?.reply || accumulatedText,
+            suggestedSnippet: doneData?.suggestedSnippet || null,
+            resources: doneData?.resources || [],
+            profile: doneData?.profile || null
+        };
+
+        onDone(finalResult);
+        return finalResult;
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            console.log('[SSE] Stream aborted by client.');
+            return null;
+        }
+        onError(err);
+        throw err;
+    }
 }
 
 export async function getAiModelInfo() {

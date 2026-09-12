@@ -5,7 +5,9 @@ import { useAuth } from '../../Auth/hooks/useAuth'
 import { useNavigate } from 'react-router-dom'
 import PageLoading from '../../Shared/components/PageLoading'
 import ReportGenerationLoading from '../components/ReportGenerationLoading'
+import ConfirmModal from '../../Shared/components/ConfirmModal'
 import { getActiveJob, pollJobUntilComplete } from '../services/interview.api'
+import { updateCareerProfile } from '../../Auth/services/auth.api'
 
 function extractObjectId(value) {
     if (!value) return ''
@@ -46,7 +48,7 @@ function getReportTitle(reportItem) {
 }
 
 const Home = () => {
-    const { user } = useAuth()
+    const { user, setUser } = useAuth()
     const { loading, setLoading, report, setReport, generateReport, reports, getReports, deleteReport } = useInterview()
     const isReportsBlocked = Boolean(user?.blockedFeatures?.interviewReports)
     const isResumeBlocked = Boolean(user?.blockedFeatures?.resumeGeneration)
@@ -56,6 +58,24 @@ const Home = () => {
     const [selectedFileName, setSelectedFileName] = useState('')
     const [isDragOver, setIsDragOver] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
+    const [presets, setPresets] = useState(user?.careerProfile?.savedDescriptions || [])
+    const [showPresetInput, setShowPresetInput] = useState(false)
+    const [presetTitle, setPresetTitle] = useState('')
+    const [presetSaving, setPresetSaving] = useState(false)
+    const [saveAsDefault, setSaveAsDefault] = useState(false)
+
+    const [confirmModal, setConfirmModal] = useState({
+        isOpen: false,
+        title: '',
+        message: '',
+        details: null,
+        confirmText: 'Confirm',
+        cancelText: 'Cancel',
+        type: 'danger',
+        loading: false,
+        onConfirm: () => {}
+    })
+
     const resumeInputRef = useRef()
     const hasRequestedReportsRef = useRef(false)
     const navigate = useNavigate()
@@ -65,6 +85,16 @@ const Home = () => {
     const filteredReports = recentReports.filter(r =>
         getReportTitle(r).toLowerCase().includes(searchQuery.toLowerCase())
     )
+
+    useEffect(() => {
+        if (user?.careerProfile?.savedDescriptions) {
+            setPresets(user.careerProfile.savedDescriptions)
+        }
+        // Auto-fill self-description from saved career profile if form is initially empty
+        if (!formData.selfDescription && user?.careerProfile?.selfDescription) {
+            setFormData(prev => ({ ...prev, selfDescription: user.careerProfile.selfDescription }))
+        }
+    }, [user])
 
     useEffect(() => {
         if (!report) return
@@ -127,19 +157,182 @@ const Home = () => {
         }
     }
 
+    const handleSelectPreset = (presetItem) => {
+        setFormData(prev => ({ ...prev, selfDescription: presetItem.content }))
+    }
+
+    const handleSavePreset = async () => {
+        if (!presetTitle.trim()) {
+            setConfirmModal({
+                isOpen: true,
+                title: 'Profile Label Required',
+                message: 'Please enter a short profile label (e.g. Frontend Developer, Backend, Full Stack).',
+                details: 'Labeling your presets allows you to quickly switch between tailored self descriptions.',
+                confirmText: 'Understood',
+                cancelText: 'Close',
+                type: 'warning',
+                loading: false,
+                onConfirm: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+            })
+            return
+        }
+        if (!formData.selfDescription?.trim()) {
+            setConfirmModal({
+                isOpen: true,
+                title: 'Empty Self Description',
+                message: 'Please enter your self description in the box before saving it as a profile preset.',
+                details: null,
+                confirmText: 'Understood',
+                cancelText: 'Close',
+                type: 'warning',
+                loading: false,
+                onConfirm: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+            })
+            return
+        }
+
+        setPresetSaving(true)
+        try {
+            const res = await updateCareerProfile({
+                newDescription: {
+                    title: presetTitle.trim(),
+                    content: formData.selfDescription.trim()
+                },
+                selfDescription: formData.selfDescription.trim()
+            })
+            if (res?.careerProfile?.savedDescriptions) {
+                setPresets(res.careerProfile.savedDescriptions)
+            } else {
+                setPresets(prev => [...prev, { title: presetTitle.trim(), content: formData.selfDescription.trim() }])
+            }
+            if (setUser && res?.careerProfile) {
+                setUser(prev => prev ? ({ ...prev, careerProfile: res.careerProfile }) : prev)
+            }
+            setPresetTitle('')
+            setShowPresetInput(false)
+        } catch (err) {
+            console.error('Save preset error:', err)
+            setConfirmModal({
+                isOpen: true,
+                title: 'Save Failed',
+                message: 'Failed to save profile preset. Please try again.',
+                details: err?.response?.data?.message || err?.message || 'Server error',
+                confirmText: 'Dismiss',
+                cancelText: 'Close',
+                type: 'danger',
+                loading: false,
+                onConfirm: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+            })
+        } finally {
+            setPresetSaving(false)
+        }
+    }
+
+    const handleDeletePreset = (presetItem, e) => {
+        e.stopPropagation()
+        const displayTitle = presetItem.title?.length > 40
+            ? `${presetItem.title.slice(0, 40)}...`
+            : presetItem.title || 'Selected Preset'
+
+        setConfirmModal({
+            isOpen: true,
+            title: 'Delete Profile Preset',
+            message: `Are you sure you want to delete the preset "${displayTitle}"?`,
+            details: 'This profile description will be permanently removed from your saved presets.',
+            confirmText: 'Delete Preset',
+            cancelText: 'Cancel',
+            type: 'danger',
+            loading: false,
+            onConfirm: async () => {
+                setConfirmModal(prev => ({ ...prev, loading: true }))
+                try {
+                    const res = await updateCareerProfile({
+                        deleteDescriptionId: presetItem._id,
+                        deleteDescriptionTitle: presetItem.title
+                    })
+                    if (res?.careerProfile?.savedDescriptions) {
+                        setPresets(res.careerProfile.savedDescriptions)
+                    } else {
+                        setPresets(prev => prev.filter(p => p._id ? p._id !== presetItem._id : p.title !== presetItem.title))
+                    }
+                    if (setUser && res?.careerProfile) {
+                        setUser(prev => prev ? ({ ...prev, careerProfile: res.careerProfile }) : prev)
+                    }
+                    setConfirmModal(prev => ({ ...prev, isOpen: false, loading: false }))
+                } catch (err) {
+                    console.error('Delete preset error:', err)
+                    setConfirmModal(prev => ({ ...prev, loading: false }))
+                }
+            }
+        })
+    }
+
     const handleGenerateReport = async () => {
         if (isGenerationBlocked) return
         try {
             const resumeFile = resumeInputRef.current.files[0]
-            if (!resumeFile) { alert('Please upload a resume PDF file.'); return }
-            if (!formData.jobDescription?.trim()) { alert('Please enter a job description.'); return }
-            if (!formData.selfDescription?.trim()) { alert('Please enter a self description.'); return }
+            if (!resumeFile) {
+                setConfirmModal({
+                    isOpen: true,
+                    title: 'Resume Required',
+                    message: 'Please upload your resume (PDF or DOCX) before generating an interview report.',
+                    details: null,
+                    confirmText: 'Upload Resume',
+                    cancelText: 'Cancel',
+                    type: 'warning',
+                    loading: false,
+                    onConfirm: () => {
+                        setConfirmModal(prev => ({ ...prev, isOpen: false }))
+                        resumeInputRef.current?.click()
+                    }
+                })
+                return
+            }
+            if (!formData.jobDescription?.trim()) {
+                setConfirmModal({
+                    isOpen: true,
+                    title: 'Job Description Required',
+                    message: 'Please paste the target job description to match against your skills.',
+                    details: null,
+                    confirmText: 'Got it',
+                    cancelText: 'Close',
+                    type: 'warning',
+                    loading: false,
+                    onConfirm: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+                })
+                return
+            }
+            if (!formData.selfDescription?.trim()) {
+                setConfirmModal({
+                    isOpen: true,
+                    title: 'Self Description Required',
+                    message: 'Please add a brief candidate summary or select one of your saved presets.',
+                    details: null,
+                    confirmText: 'Got it',
+                    cancelText: 'Close',
+                    type: 'warning',
+                    loading: false,
+                    onConfirm: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+                })
+                return
+            }
 
             const data = await generateReport({
                 jobDescription: formData.jobDescription,
                 selfDescription: formData.selfDescription,
-                resumeFile
+                resumeFile,
+                saveSelfDescription: saveAsDefault
             })
+
+            if (saveAsDefault && setUser) {
+                setUser(prev => prev ? ({
+                    ...prev,
+                    careerProfile: {
+                        ...(prev.careerProfile || {}),
+                        selfDescription: formData.selfDescription.trim()
+                    }
+                }) : prev)
+            }
 
             const interviewId = extractObjectId(data?._id)
             if (interviewId) {
@@ -155,19 +348,47 @@ const Home = () => {
             if (window.triggerGlobalError) {
                 window.triggerGlobalError(userMessage, '', true)
             } else {
-                alert(userMessage)
+                setConfirmModal({
+                    isOpen: true,
+                    title: 'Generation Error',
+                    message: userMessage,
+                    details: null,
+                    confirmText: 'Dismiss',
+                    cancelText: 'Close',
+                    type: 'danger',
+                    loading: false,
+                    onConfirm: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+                })
             }
         }
     }
 
-    const handleDeleteReport = async (interviewId, e) => {
+    const handleDeleteReport = (interviewId, e) => {
         e.stopPropagation()
-        if (!window.confirm('Are you sure you want to delete this report?')) return
-        try {
-            await deleteReport(interviewId)
-        } catch (error) {
-            alert(error?.message || 'Failed to delete report.')
-        }
+        setConfirmModal({
+            isOpen: true,
+            title: 'Delete Interview Report',
+            message: 'Are you sure you want to permanently delete this interview report session?',
+            details: 'This action cannot be undone. All questions, match scores, and interview analysis will be lost.',
+            confirmText: 'Delete Report',
+            cancelText: 'Cancel',
+            type: 'danger',
+            loading: false,
+            onConfirm: async () => {
+                setConfirmModal(prev => ({ ...prev, loading: true }))
+                try {
+                    await deleteReport(interviewId)
+                    setConfirmModal(prev => ({ ...prev, isOpen: false, loading: false }))
+                } catch (error) {
+                    setConfirmModal(prev => ({
+                        ...prev,
+                        title: 'Delete Failed',
+                        message: error?.message || 'Failed to delete report.',
+                        loading: false
+                    }))
+                }
+            }
+        })
     }
 
     const handleViewReport = (reportItem) => {
@@ -350,19 +571,97 @@ const Home = () => {
                         </div>
 
                         <div className="panel input-group textarea-group">
-                            <div className="section-heading">
-                                <label htmlFor="selfDescription">Self Description</label>
+                            <div className="section-heading split">
+                                <div>
+                                    <p className="section-kicker">Candidate Profile</p>
+                                    <label htmlFor="selfDescription">Self Description</label>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPresetInput(!showPresetInput)}
+                                    className="preset-toggle-btn"
+                                    title="Save or switch candidate profile presets"
+                                >
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: '4px'}}>
+                                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                                        <polyline points="17 21 17 13 7 13 7 21" />
+                                        <polyline points="7 3 7 8 15 8" />
+                                    </svg>
+                                    <span>{showPresetInput ? 'Cancel' : '+ Save Preset'}</span>
+                                </button>
                             </div>
-                            <p className="helper-copy">
-                                Add a few lines about your strengths, experience, and career direction.
-                            </p>
+
+                            {/* Saved Profile Presets Quick Selection Bar */}
+                            <div className="profile-presets-bar">
+                                <span className="presets-label">Saved Profiles:</span>
+                                {presets.length === 0 ? (
+                                    <span className="presets-empty">No presets yet</span>
+                                ) : (
+                                    <div className="presets-list">
+                                        {presets.map((p, idx) => {
+                                            const isSelected = formData.selfDescription.trim() === p.content?.trim();
+                                            return (
+                                                <button
+                                                    key={p._id || idx}
+                                                    type="button"
+                                                    className={`preset-chip ${isSelected ? 'preset-chip--active' : ''}`}
+                                                    onClick={() => handleSelectPreset(p)}
+                                                    title={`Click to auto-fill: ${p.content}`}
+                                                >
+                                                    <span className="preset-chip__icon">⚡</span>
+                                                    <span className="preset-chip__title">{p.title}</span>
+                                                    <span
+                                                        className="preset-chip__del"
+                                                        onClick={(e) => handleDeletePreset(p, e)}
+                                                        title="Delete profile preset"
+                                                    >
+                                                        &times;
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Inline Preset Save Form */}
+                            {showPresetInput && (
+                                <div className="preset-save-box">
+                                    <input
+                                        type="text"
+                                        placeholder="Profile Label (e.g. Frontend, Backend, Full Stack)..."
+                                        value={presetTitle}
+                                        onChange={(e) => setPresetTitle(e.target.value)}
+                                        className="preset-title-input"
+                                    />
+                                    <button
+                                        type="button"
+                                        className="preset-save-btn"
+                                        onClick={handleSavePreset}
+                                        disabled={presetSaving || !presetTitle.trim() || !formData.selfDescription.trim()}
+                                    >
+                                        {presetSaving ? 'Saving...' : 'Save Profile'}
+                                    </button>
+                                </div>
+                            )}
+
                             <textarea
                                 value={formData.selfDescription}
                                 onChange={handleInputChange}
                                 name="selfDescription"
                                 id="selfDescription"
-                                placeholder='Enter your self description in a few sentences. Highlight your strengths and career goals...'
+                                placeholder='Enter your self description in a few sentences, or pick a saved profile preset above...'
                             />
+
+                            <label className="save-default-toggle" htmlFor="save-default-self-desc">
+                                <input
+                                    id="save-default-self-desc"
+                                    type="checkbox"
+                                    checked={saveAsDefault}
+                                    onChange={(e) => setSaveAsDefault(e.target.checked)}
+                                />
+                                <span>Save as default profile self-description</span>
+                            </label>
                         </div>
 
                         <button
@@ -490,6 +789,12 @@ const Home = () => {
 
                 {loading && <ReportGenerationLoading />}
             </div>
+
+            {/* Custom Glassmorphism Confirm / Alert Modal */}
+            <ConfirmModal
+                {...confirmModal}
+                onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+            />
         </div>
     )
 }

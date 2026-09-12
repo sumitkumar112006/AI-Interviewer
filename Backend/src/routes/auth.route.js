@@ -9,10 +9,12 @@ const {
     forgotPasswordController,
     resetPasswordController,
     getUserUsageController,
-    googleSupabaseAuthController
+    googleSupabaseAuthController,
+    updateCareerProfileController
 } = require("../controller/auth.controller");
 
-const { createRateLimiter } = require("../middleware/rateLimiter.middleware")
+const { authUser } = require("../middleware/auth.middleware");
+const { createRateLimiter } = require("../middleware/rateLimiter.middleware");
 
 const authLoginLimiter = createRateLimiter({
     prefix: 'ratelimit:auth:login',
@@ -120,6 +122,13 @@ authRouter.get("/logout", logoutController);
  * @access Private
  */
 authRouter.get("/get-me", getMeController);
+
+/**
+ * @route PUT /api/auth/career-profile
+ * @description update user selfDescription, targetRole, targetCompanies, or save roadmap
+ * @access Private
+ */
+authRouter.put("/career-profile", authUser, updateCareerProfileController);
 
 /**
  * @route GET /api/auth/usage
