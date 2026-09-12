@@ -622,21 +622,32 @@ async function callGemini(systemPrompt, userPrompt, plan = "free", isAssistant =
     throw new Error("All Gemini keys failed or are currently cooling down.");
 }
 
-/**
- * Primary AI call dispatcher:
- * 1. Tries Groq keys in Priority Order (Key 1 -> Key 2 -> Key 3) with instant failover on rate limits.
- * 2. If all Groq keys fail or are on cooldown -> Falls back to Gemini.
- * 3. If Gemini fails -> Falls back to OpenRouter (Nemotron 120B).
- */
 async function callGroq(systemPrompt, userPrompt, plan = "free", isAssistant = false) {
+    return callLlmWithFallback({
+        systemPrompt,
+        userPrompt,
+        plan,
+        isAssistant
+    });
+}
+
+/**
+ * Unified non-streaming LLM caller with multi-provider waterfall
+ * (Groq Multi-key -> Gemini Multi-key -> OpenRouter)
+ */
+async function callLlmWithFallback({ messages, systemPrompt, userPrompt, plan = "free", isAssistant = false }) {
+    const formattedMessages = messages || [
+        ...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
+        { role: "user", content: userPrompt }
+    ];
+
     const model = getModelForProvider(plan, "groq", isAssistant);
     const maxTokens = getMaxTokensForProvider(plan, "groq", isAssistant);
     const temperature = getTemperatureForPlan(plan, isAssistant);
     const now = Date.now();
 
-    // 1. Try each Groq key in Priority Order (Key 1 -> Key 2 -> Key 3)
+    // 1. Try Groq Multi-Key Pool
     for (const keyState of groqKeys) {
-        // Skip key if it is currently in its cooldown window
         if (now < keyState.cooldownUntil) {
             const remainingSec = Math.max(1, Math.ceil((keyState.cooldownUntil - now) / 1000));
             console.log(`[AI] Groq Key ${keyState.id} cooling down (${remainingSec}s remaining). Trying next priority key...`);
@@ -648,23 +659,18 @@ async function callGroq(systemPrompt, userPrompt, plan = "free", isAssistant = f
             const client = new Groq({ apiKey: keyState.key });
             const completion = await client.chat.completions.create({
                 model: model,
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: userPrompt }
-                ],
+                messages: formattedMessages,
                 temperature: temperature,
                 max_tokens: maxTokens,
                 top_p: 1,
-                stream: false,
-                stop: null
+                stream: false
             });
 
-            return completion.choices[0].message.content; // Successfully returned
+            return completion.choices[0].message.content;
         } catch (err) {
             if (isGroqRateLimitError(err)) {
                 handleGroqRateLimit(keyState.id, err);
                 console.warn(`[AI] Groq Key ${keyState.id} rate-limited. Failing over to next key immediately in same request...`);
-                // Loop continues to next key!
             } else {
                 console.warn(`[AI] Groq call failed on Key ${keyState.id}: ${err?.message}. Trying next priority key...`);
             }
@@ -673,21 +679,23 @@ async function callGroq(systemPrompt, userPrompt, plan = "free", isAssistant = f
 
     console.warn('[AI] All Groq keys exhausted or cooling down. Falling back to secondary providers...');
 
-    // Fallback 1: Gemini (Multi-Key)
+    // 2. Fallback: Gemini (Multi-Key)
     if (geminiKeys.length > 0) {
         try {
-            console.log(`[AI] Attempting Gemini fallback (Model: ${getModelForProvider(plan, "gemini", isAssistant)})...`);
-            return await callGemini(systemPrompt, userPrompt, plan, isAssistant);
+            const sys = systemPrompt || formattedMessages.find(m => m.role === 'system')?.content || '';
+            const usr = userPrompt || formattedMessages.filter(m => m.role !== 'system').map(m => `${m.role}: ${m.content}`).join('\n\n');
+            return await callGemini(sys, usr, plan, isAssistant);
         } catch (geminiErr) {
             console.warn('[AI] Gemini fallback failed:', geminiErr.message);
         }
     }
 
-    // Fallback 2: OpenRouter
+    // 3. Fallback: OpenRouter
     if (OPENROUTER_API_KEY) {
         try {
-            console.log(`[AI] Attempting OpenRouter fallback (Model: ${getModelForProvider(plan, "openrouter", isAssistant)})...`);
-            return await callOpenRouter(systemPrompt, userPrompt, plan, isAssistant);
+            const sys = systemPrompt || formattedMessages.find(m => m.role === 'system')?.content || '';
+            const usr = userPrompt || formattedMessages.filter(m => m.role !== 'system').map(m => `${m.role}: ${m.content}`).join('\n\n');
+            return await callOpenRouter(sys, usr, plan, isAssistant);
         } catch (orErr) {
             console.error('[AI] OpenRouter fallback failed:', orErr.message);
             throw orErr;
@@ -695,6 +703,168 @@ async function callGroq(systemPrompt, userPrompt, plan = "free", isAssistant = f
     }
 
     throw new Error('All AI providers (Groq, Gemini, OpenRouter) failed or are not configured.');
+}
+
+/**
+ * Real-Time SSE Token Streaming LLM Caller with Multi-Provider Waterfall:
+ * 1. Streams tokens from Groq Priority Keys (sub-200ms TTFT)
+ * 2. If Groq fails or rate limits, falls back to Gemini streaming
+ * 3. If Gemini fails, falls back to OpenRouter
+ * 
+ * @param {Object} params
+ * @param {Array} [params.messages] - Chat messages array [{ role, content }]
+ * @param {string} [params.systemPrompt] - System instructions
+ * @param {string} [params.userPrompt] - User message
+ * @param {string} [params.plan] - Plan ('free'|'pro'|'premium')
+ * @param {boolean} [params.isAssistant] - Whether this is for the KIVI Assistant
+ * @param {Function} params.onToken - Callback invoked for each token chunk: (token: string) => void
+ * @returns {Promise<string>} Full assembled text response
+ */
+async function streamLlmWithFallback({ messages, systemPrompt, userPrompt, plan = "free", isAssistant = true, onToken }) {
+    const formattedMessages = messages || [
+        ...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
+        { role: "user", content: userPrompt }
+    ];
+
+    const model = getModelForProvider(plan, "groq", isAssistant);
+    const maxTokens = getMaxTokensForProvider(plan, "groq", isAssistant);
+    const temperature = getTemperatureForPlan(plan, isAssistant);
+    const now = Date.now();
+
+    // 1. Try Groq Streaming with Multi-Key Pool
+    for (const keyState of groqKeys) {
+        if (now < keyState.cooldownUntil) {
+            continue;
+        }
+
+        let fullText = '';
+        let hasStreamedToken = false;
+
+        try {
+            console.log(`[AI SSE] Streaming from Groq (Key: ${keyState.id}, Model: ${model})...`);
+            const client = new Groq({ apiKey: keyState.key });
+            const stream = await client.chat.completions.create({
+                model: model,
+                messages: formattedMessages,
+                temperature: temperature,
+                max_tokens: maxTokens,
+                top_p: 1,
+                stream: true
+            });
+
+            for await (const chunk of stream) {
+                const token = chunk.choices[0]?.delta?.content || '';
+                if (token) {
+                    hasStreamedToken = true;
+                    fullText += token;
+                    if (typeof onToken === 'function') {
+                        onToken(token);
+                    }
+                }
+            }
+
+            if (fullText.trim().length > 0) {
+                return fullText;
+            }
+        } catch (err) {
+            if (isGroqRateLimitError(err)) {
+                handleGroqRateLimit(keyState.id, err);
+                console.warn(`[AI SSE] Groq Key ${keyState.id} rate-limited. Failing over...`);
+            } else {
+                console.warn(`[AI SSE] Groq Key ${keyState.id} streaming failed: ${err?.message}`);
+            }
+
+            // If we already emitted some tokens to the client, return what we have
+            if (hasStreamedToken) {
+                return fullText;
+            }
+        }
+    }
+
+    console.warn('[AI SSE] Groq streaming exhausted. Falling back to Gemini streaming...');
+
+    // 2. Fallback: Gemini Streaming (Multi-Key)
+    if (geminiKeys.length > 0) {
+        const geminiModel = getModelForProvider(plan, "gemini", isAssistant);
+        const geminiTemp = getTemperatureForPlan(plan, isAssistant);
+        const geminiMaxTokens = getMaxTokensForProvider(plan, "gemini", isAssistant);
+
+        const sysMsg = systemPrompt || formattedMessages.find(m => m.role === 'system')?.content || '';
+        const nonSysMessages = formattedMessages.filter(m => m.role !== 'system');
+        const contents = nonSysMessages.map(m => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: m.content }]
+        }));
+
+        if (contents.length === 0 && userPrompt) {
+            contents.push({ role: 'user', parts: [{ text: userPrompt }] });
+        }
+
+        for (const keyState of geminiKeys) {
+            if (Date.now() < keyState.cooldownUntil) continue;
+
+            let fullText = '';
+            let hasStreamedToken = false;
+
+            try {
+                console.log(`[AI SSE] Attempting Gemini Streaming (Key: ${keyState.id}, Model: ${geminiModel})...`);
+                const client = new GoogleGenAI({ apiKey: keyState.key });
+                const responseStream = await client.models.generateContentStream({
+                    model: geminiModel,
+                    contents: contents,
+                    config: {
+                        temperature: geminiTemp,
+                        maxOutputTokens: geminiMaxTokens,
+                        ...(sysMsg ? { systemInstruction: { parts: [{ text: sysMsg }] } } : {})
+                    }
+                });
+
+                for await (const chunk of responseStream) {
+                    const token = chunk.text || '';
+                    if (token) {
+                        hasStreamedToken = true;
+                        fullText += token;
+                        if (typeof onToken === 'function') {
+                            onToken(token);
+                        }
+                    }
+                }
+
+                if (fullText.trim().length > 0) {
+                    return fullText;
+                }
+            } catch (geminiErr) {
+                const msg = (geminiErr?.message || "").toLowerCase();
+                if (msg.includes("quota") || msg.includes("resource has been exhausted") || msg.includes("429")) {
+                    handleGeminiRateLimit(keyState.id, geminiErr);
+                }
+                console.warn(`[AI SSE] Gemini Key ${keyState.id} streaming error: ${geminiErr.message}`);
+
+                if (hasStreamedToken) {
+                    return fullText;
+                }
+            }
+        }
+    }
+
+    // 3. Fallback: OpenRouter non-streaming fallback with chunk emission
+    if (OPENROUTER_API_KEY) {
+        try {
+            console.log('[AI SSE] Falling back to OpenRouter...');
+            const sys = systemPrompt || formattedMessages.find(m => m.role === 'system')?.content || '';
+            const usr = userPrompt || formattedMessages.filter(m => m.role !== 'system').map(m => `${m.role}: ${m.content}`).join('\n\n');
+            const result = await callOpenRouter(sys, usr, plan, isAssistant);
+            if (typeof onToken === 'function' && result) {
+                onToken(result);
+            }
+            return result;
+        } catch (orErr) {
+            console.error('[AI SSE] OpenRouter fallback failed:', orErr.message);
+            throw orErr;
+        }
+    }
+
+    throw new Error('All streaming AI providers failed or are unavailable.');
 }
 
 
@@ -1158,5 +1328,14 @@ function getAIStatus() {
     };
 }
 
-module.exports = { generateInterviewReport, generateResumePfd, generateCoverLetter, generateResumeHtml, rewriteResumeSection, getAIStatus }
+module.exports = {
+    generateInterviewReport,
+    generateResumePfd,
+    generateCoverLetter,
+    generateResumeHtml,
+    rewriteResumeSection,
+    getAIStatus,
+    callLlmWithFallback,
+    streamLlmWithFallback
+};
 

@@ -26,10 +26,10 @@ export const useInterview = () => {
         newResume
     } = context
 
-    const generateReport = async ({ jobDescription, selfDescription, resumeFile }) => {
+    const generateReport = async ({ jobDescription, selfDescription, resumeFile, saveSelfDescription = false }) => {
         setLoading(true)
         try {
-            const response = await generateInterviewReport({ jobDescription, selfDescription, resumeFile })
+            const response = await generateInterviewReport({ jobDescription, selfDescription, resumeFile, saveSelfDescription })
 
             // 1. Set current report
             setReport(response.interviewReport)

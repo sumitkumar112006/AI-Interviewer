@@ -99,7 +99,27 @@ export async function getUserUsage() {
         const response = await api.get('usage');
         return response.data;
     } catch (err) {
-        return null;
+        throw err;
+    }
+}
+
+export async function updateCareerProfile(payload) {
+    try {
+        const response = await api.put('career-profile', payload);
+        return response.data;
+    } catch (err) {
+        throw err;
+    }
+}
+
+export async function googleSupabaseAuth(supabaseAccessToken) {
+    try {
+        const response = await api.post('google-supabase', {
+            supabaseAccessToken
+        });
+        return response.data;
+    } catch (err) {
+        throw err;
     }
 }
 
@@ -114,5 +134,5 @@ export async function loginWithGoogleSupabase({ accessToken }) {
     } catch (err) {
         throw err;
     }
-}
 
+}

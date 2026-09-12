@@ -34,7 +34,8 @@ async function createCoverLetterController(req, res, next) {
 
         // 2. Parse PDF buffer in milliseconds
         const resumeContent = await (new pdfParse.PDFParse(Uint8Array.from(req.file.buffer))).getText();
-        const { jobDescription, selfDescription, companyName, roleName } = req.body;
+        const { jobDescription, companyName, roleName } = req.body;
+        const effectiveSelfDescription = req.body?.selfDescription?.trim() || req.user?.careerProfile?.selfDescription?.trim() || '';
 
         // 3. Create Job document in MongoDB
         const job = await JobModel.create({
@@ -45,7 +46,7 @@ async function createCoverLetterController(req, res, next) {
             status: 'pending',
             input: {
                 resumeText: resumeContent.text,
-                selfDescription,
+                selfDescription: effectiveSelfDescription,
                 jobDescription,
                 companyName,
                 roleName

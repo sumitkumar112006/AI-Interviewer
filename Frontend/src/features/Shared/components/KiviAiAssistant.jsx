@@ -1,7 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import { useAuth } from '../../Auth/hooks/useAuth';
-import { rewriteResumeSection } from '../../Interview/services/interview.api';
+import { streamAssistantChatApi, rewriteResumeSection } from '../../Interview/services/interview.api';
 import './KiviAiAssistant.scss';
+
+// Configure marked options
+marked.setOptions({
+    breaks: true,
+    gfm: true
+});
+
+const renderMarkdown = (content) => {
+    if (!content) return '';
+    // Normalize any stray <br> tags
+    const normalized = content.replace(/<br\s*\/?>/gi, '\n');
+    const rawHtml = marked.parse(normalized);
+    return DOMPurify.sanitize(rawHtml);
+};
+
+const DEFAULT_WIDTH = 410;
+const DEFAULT_HEIGHT = 580;
 
 export function KiviAiAssistant() {
     const { user, fetchUsage } = useAuth();
@@ -9,6 +28,21 @@ export function KiviAiAssistant() {
     const [showIdleNudge, setShowIdleNudge] = useState(false);
     const idleTimerRef = useRef(null);
     const savedRangeRef = useRef(null);
+    const abortControllerRef = useRef(null);
+
+    // Resizable drawer dimensions & maximize state
+    const [drawerSize, setDrawerSize] = useState(() => {
+        try {
+            const saved = localStorage.getItem('kivi_drawer_size');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed.width && parsed.height) return parsed;
+            }
+        } catch (e) {}
+        return { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT };
+    });
+    const [isMaximized, setIsMaximized] = useState(false);
+    const isResizingRef = useRef(false);
 
     if (!user) {
         return null;
@@ -19,7 +53,8 @@ export function KiviAiAssistant() {
         {
             id: 1,
             sender: 'ai',
-            text: '👋 Hi! I am KIVI, your AI Assistant. Highlight any text in your Resume or Cover Letter editor, then send me instructions or click quick presets to improve it!'
+            text: '👋 Hi! I am KIVI, your AI Assistant. Highlight any text in your Resume or Cover Letter editor, then send me instructions or click quick presets to improve it!',
+            isStreaming: false
         }
     ]);
     const [chatInput, setChatInput] = useState('');
@@ -35,6 +70,58 @@ export function KiviAiAssistant() {
             scrollToBottom();
         }
     }, [chatMessages, chatLoading, isKiviOpen]);
+
+    // Handle drag resizing from top, left, and top-left corner
+    const handleResizeStart = (direction, e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isMaximized) return;
+
+        isResizingRef.current = true;
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startWidth = drawerSize.width;
+        const startHeight = drawerSize.height;
+
+        const onMouseMove = (moveEvent) => {
+            if (!isResizingRef.current) return;
+
+            const deltaX = startX - moveEvent.clientX; // Dragging left increases width
+            const deltaY = startY - moveEvent.clientY; // Dragging top increases height
+
+            let newWidth = startWidth;
+            let newHeight = startHeight;
+
+            if (direction.includes('w')) {
+                const maxAllowedWidth = Math.min(window.innerWidth - 64, 960);
+                newWidth = Math.min(Math.max(startWidth + deltaX, 340), maxAllowedWidth);
+            }
+
+            if (direction.includes('n')) {
+                const maxAllowedHeight = Math.min(window.innerHeight - 120, 900);
+                newHeight = Math.min(Math.max(startHeight + deltaY, 400), maxAllowedHeight);
+            }
+
+            setDrawerSize({ width: newWidth, height: newHeight });
+        };
+
+        const onMouseUp = () => {
+            isResizingRef.current = false;
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+
+            // Save user size preference
+            setDrawerSize((current) => {
+                try {
+                    localStorage.setItem('kivi_drawer_size', JSON.stringify(current));
+                } catch (e) {}
+                return current;
+            });
+        };
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+    };
 
     // Proactive Idle Nudge effect (triggers nudge after 6s of inactivity)
     useEffect(() => {
@@ -98,51 +185,116 @@ export function KiviAiAssistant() {
         };
     }, []);
 
+    // Clean up ongoing SSE streaming on unmount or drawer close
+    useEffect(() => {
+        return () => {
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+        };
+    }, []);
+
     const handleSendChatMessage = async (e, customText = null, actionPreset = null) => {
         if (e) e.preventDefault();
         const messageToSend = customText || chatInput;
         if (!messageToSend.trim() && !selectedSnippet && !actionPreset) return;
 
+        // Cancel any existing in-flight stream
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
+
         const userMsgText = messageToSend.trim() || (actionPreset ? `Apply preset: ${actionPreset}` : 'Refine selection');
+        const activeSnippet = selectedSnippet;
         
         const userMsg = {
             id: Date.now(),
             sender: 'user',
             text: userMsgText,
-            highlightedContext: selectedSnippet ? selectedSnippet : null
+            highlightedContext: activeSnippet ? activeSnippet : null
         };
 
-        setChatMessages(prev => [...prev, userMsg]);
+        const aiMsgId = Date.now() + 1;
+        const initialAiMsg = {
+            id: aiMsgId,
+            sender: 'ai',
+            text: '',
+            isStreaming: true,
+            suggestedSnippet: null,
+            resources: []
+        };
+
+        setChatMessages(prev => [...prev, userMsg, initialAiMsg]);
         if (!customText) setChatInput('');
         setChatLoading(true);
 
+        const urlMatch = window.location.pathname.match(/\/(?:interview|resume|cover-letter)\/([a-f0-9]{24})/i);
+        const currentReportId = urlMatch ? urlMatch[1] : null;
+
         try {
-            const res = await rewriteResumeSection({
-                selectedText: selectedSnippet,
-                instruction: messageToSend,
+            await streamAssistantChatApi({
+                reportId: currentReportId,
+                message: messageToSend,
+                selectedText: activeSnippet,
                 action: actionPreset || 'enhance',
-                message: messageToSend
+                instruction: messageToSend,
+                signal: abortControllerRef.current.signal,
+                onToken: (token, accumulated) => {
+                    setChatMessages(prev => prev.map(msg => {
+                        if (msg.id === aiMsgId) {
+                            return { ...msg, text: accumulated, isStreaming: true };
+                        }
+                        return msg;
+                    }));
+                },
+                onDone: (data) => {
+                    setChatMessages(prev => prev.map(msg => {
+                        if (msg.id === aiMsgId) {
+                            return {
+                                ...msg,
+                                text: data.replyText || msg.text || 'Here is information to assist you.',
+                                suggestedSnippet: data.suggestedSnippet || null,
+                                resources: data.resources || [],
+                                isStreaming: false
+                            };
+                        }
+                        return msg;
+                    }));
+                    setChatLoading(false);
+                    if (fetchUsage) fetchUsage();
+                },
+                onError: (err) => {
+                    if (err.name === 'AbortError') return;
+                    console.error("KIVI Chat Streaming error:", err);
+                    setChatMessages(prev => prev.map(msg => {
+                        if (msg.id === aiMsgId) {
+                            return {
+                                ...msg,
+                                text: msg.text ? (msg.text + '\n\n⚠️ Stream interrupted.') : (err?.message || '⚠️ Sorry, I encountered an issue. Please try again.'),
+                                isStreaming: false
+                            };
+                        }
+                        return msg;
+                    }));
+                    setChatLoading(false);
+                }
             });
-
-            if (fetchUsage) fetchUsage();
-
-            const aiMsg = {
-                id: Date.now() + 1,
-                sender: 'ai',
-                text: res?.replyText || 'Here is information to assist you.',
-                suggestedSnippet: res?.suggestedSnippet || null
-            };
-            setChatMessages(prev => [...prev, aiMsg]);
         } catch (err) {
-            console.error("KIVI Chat error:", err);
-            const errorMsg = {
-                id: Date.now() + 1,
-                sender: 'ai',
-                text: err?.response?.data?.message || '⚠️ Sorry, I encountered an issue. Please try sending your message again.'
-            };
-            setChatMessages(prev => [...prev, errorMsg]);
-        } finally {
-            setChatLoading(false);
+            if (err.name !== 'AbortError') {
+                console.error("KIVI Chat error:", err);
+                setChatMessages(prev => prev.map(msg => {
+                    if (msg.id === aiMsgId) {
+                        return {
+                            ...msg,
+                            text: err?.message || '⚠️ Sorry, I encountered an issue. Please try sending your message again.',
+                            isStreaming: false
+                        };
+                    }
+                    return msg;
+                }));
+                setChatLoading(false);
+            }
         }
     };
 
@@ -227,6 +379,11 @@ export function KiviAiAssistant() {
 
     const isAiBlocked = Boolean(user?.blockedFeatures?.aiAssistant);
 
+    const drawerInlineStyle = {
+        width: isMaximized ? 'min(860px, calc(100vw - 64px))' : `${drawerSize.width}px`,
+        height: isMaximized ? 'min(850px, calc(100vh - 120px))' : `${drawerSize.height}px`
+    };
+
     return (
         <>
             {/* Floating Trigger Button */}
@@ -256,7 +413,33 @@ export function KiviAiAssistant() {
 
             {/* Floating AI Chat Drawer */}
             {isKiviOpen && (
-                <div className="ai-chat-copilot-floating-drawer">
+                <div 
+                    className={`ai-chat-copilot-floating-drawer ${isMaximized ? 'maximized' : ''}`}
+                    style={drawerInlineStyle}
+                >
+                    {/* Top & Left Drag-to-Resize Handles */}
+                    {!isMaximized && (
+                        <>
+                            <div 
+                                className="kivi-resize-corner-nw"
+                                onMouseDown={(e) => handleResizeStart('nw', e)}
+                                title="Drag corner to resize width & height"
+                            >
+                                <span className="resize-grip-dots">⠿</span>
+                            </div>
+                            <div 
+                                className="kivi-resize-edge-top"
+                                onMouseDown={(e) => handleResizeStart('n', e)}
+                                title="Drag top edge to resize height"
+                            />
+                            <div 
+                                className="kivi-resize-edge-left"
+                                onMouseDown={(e) => handleResizeStart('w', e)}
+                                title="Drag left edge to resize width"
+                            />
+                        </>
+                    )}
+
                     <div className="drawer-header">
                         <div className="header-branding">
                             <img src="/Logo.png" alt="KIVI Logo" className="header-logo" />
@@ -266,19 +449,34 @@ export function KiviAiAssistant() {
                                     {isAiBlocked ? (
                                         <span style={{ color: '#f87171', fontWeight: 800 }}>❌ Disabled by Admin</span>
                                     ) : (
-                                        <>● Online · Powered by Gemini Pro</>
+                                        <>● Online · Real-Time Streaming</>
                                     )}
                                 </span>
                             </div>
                         </div>
-                        <button 
-                            type="button" 
-                            className="drawer-close-btn" 
-                            onClick={() => setIsKiviOpen(false)}
-                            title="Close KIVI"
-                        >
-                            ✕
-                        </button>
+                        <div className="header-actions">
+                            <button
+                                type="button"
+                                className="drawer-header-btn"
+                                onClick={() => setIsMaximized(!isMaximized)}
+                                title={isMaximized ? "Restore default window size" : "Maximize / Expand window"}
+                            >
+                                {isMaximized ? '🗗' : '🗖'}
+                            </button>
+                            <button 
+                                type="button" 
+                                className="drawer-close-btn" 
+                                onClick={() => {
+                                    if (abortControllerRef.current) {
+                                        abortControllerRef.current.abort();
+                                    }
+                                    setIsKiviOpen(false);
+                                }}
+                                title="Close KIVI"
+                            >
+                                ✕
+                            </button>
+                        </div>
                     </div>
 
                     {isAiBlocked && (
@@ -300,7 +498,7 @@ export function KiviAiAssistant() {
                             <span className="context-icon">📌</span>
                             <div className="context-text">
                                 <span className="context-label">Active Context:</span>
-                                <span className="context-snippet">"{selectedSnippet.slice(0, 45)}{selectedSnippet.length > 45 ? '...' : ''}"</span>
+                                <span className="context-snippet">"{selectedSnippet.slice(0, 50)}{selectedSnippet.length > 50 ? '...' : ''}"</span>
                             </div>
                             <button type="button" className="context-clear-btn" onClick={() => setSelectedSnippet('')} title="Clear Context">✕</button>
                         </div>
@@ -319,8 +517,21 @@ export function KiviAiAssistant() {
                                             📌 <em>"{msg.highlightedContext}"</em>
                                         </div>
                                     )}
-                                    <p className="msg-text">{msg.text}</p>
+                                    {msg.sender === 'ai' ? (
+                                        <div className="msg-content-wrapper">
+                                            <div
+                                                className="msg-markdown-content"
+                                                dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.text) }}
+                                            />
+                                            {msg.isStreaming && <span className="streaming-cursor" />}
+                                        </div>
+                                    ) : (
+                                        <p className="msg-text">
+                                            {msg.text}
+                                        </p>
+                                    )}
 
+                                    {/* Suggested Snippet Apply Card */}
                                     {msg.suggestedSnippet && typeof msg.suggestedSnippet === 'string' && msg.suggestedSnippet.trim() !== '' && msg.suggestedSnippet !== 'null' && (
                                         <div className="suggested-snippet-card">
                                             <div className="snippet-body">"{msg.suggestedSnippet}"</div>
@@ -334,10 +545,30 @@ export function KiviAiAssistant() {
                                             </button>
                                         </div>
                                     )}
+
+                                    {/* Verified Resources Links */}
+                                    {Array.isArray(msg.resources) && msg.resources.length > 0 && (
+                                        <div className="verified-resources-panel">
+                                            <div className="resources-title">
+                                                <span>📚</span> Verified Study & Video Resources:
+                                            </div>
+                                            {msg.resources.map((res, i) => (
+                                                <a 
+                                                    key={i} 
+                                                    href={res.url} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer" 
+                                                    className="resource-link-item"
+                                                >
+                                                    {res.type === 'video' ? '▶️' : '🔗'} {res.title}
+                                                </a>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         ))}
-                        {chatLoading && (
+                        {chatLoading && !chatMessages.some(m => m.isStreaming && m.text) && (
                             <div className="chat-bubble-row ai">
                                 <img src="/Logo.png" alt="KIVI" className="chat-avatar-img" />
                                 <div className="chat-bubble ai typing">

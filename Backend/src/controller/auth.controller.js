@@ -489,6 +489,13 @@ async function getMeController(req, res) {
                     resumeGeneration: false,
                     coverLetterGeneration: false,
                     interviewReports: false
+                },
+                careerProfile: account.careerProfile || {
+                    selfDescription: "",
+                    targetRole: "Full Stack Developer",
+                    targetCompanies: ["Product Companies"],
+                    experienceLevel: "fresher",
+                    savedRoadmaps: []
                 }
             }
         });
@@ -793,8 +800,95 @@ async function googleSupabaseAuthController(req, res) {
                 email: user.email,
                 plan: user.plan || 'free',
                 role: user.role || 'user',
-                isAdmin: ['admin', 'super_admin'].includes(user.role)
+                isAdmin: ['admin', 'super_admin'].includes(user.role),
+                careerProfile: user.careerProfile || {
+                    selfDescription: "",
+                    targetRole: "Full Stack Developer",
+                    targetCompanies: ["Product Companies"],
+                    experienceLevel: "fresher",
+                    savedRoadmaps: []
+                }
             }
+        });
+    } catch (err) {
+        return handleAuthControllerError(res, err);
+    }
+}
+
+/**
+ * @name updateCareerProfileController
+ * @description update user selfDescription, targetRole, targetCompanies, or save a roadmap
+ * @access private (authUser)
+ */
+async function updateCareerProfileController(req, res) {
+    try {
+        const userId = req.user.id;
+        const {
+            selfDescription,
+            targetRole,
+            targetCompanies,
+            experienceLevel,
+            newRoadmap,
+            newDescription,
+            deleteDescriptionId,
+            deleteDescriptionTitle
+        } = req.body;
+
+        const updateFields = {};
+        if (selfDescription !== undefined) updateFields["careerProfile.selfDescription"] = selfDescription.trim();
+        if (targetRole !== undefined) updateFields["careerProfile.targetRole"] = targetRole.trim();
+        if (Array.isArray(targetCompanies)) updateFields["careerProfile.targetCompanies"] = targetCompanies;
+        if (experienceLevel !== undefined) updateFields["careerProfile.experienceLevel"] = experienceLevel;
+
+        const updateQuery = {};
+        if (Object.keys(updateFields).length > 0) {
+            updateQuery.$set = updateFields;
+        }
+
+        // Push new saved roadmap
+        if (newRoadmap?.title && newRoadmap?.url) {
+            updateQuery.$push = updateQuery.$push || {};
+            updateQuery.$push["careerProfile.savedRoadmaps"] = {
+                title: newRoadmap.title,
+                url: newRoadmap.url,
+                topic: newRoadmap.topic || "General",
+                savedAt: new Date()
+            };
+        }
+
+        // Push new saved self-description preset
+        if (newDescription?.title && newDescription?.content) {
+            updateQuery.$push = updateQuery.$push || {};
+            updateQuery.$push["careerProfile.savedDescriptions"] = {
+                title: newDescription.title.trim(),
+                content: newDescription.content.trim(),
+                isDefault: Boolean(newDescription.isDefault)
+            };
+        }
+
+        // Pull / Delete a saved self-description preset
+        if (deleteDescriptionId || deleteDescriptionTitle) {
+            updateQuery.$pull = updateQuery.$pull || {};
+            if (deleteDescriptionId) {
+                updateQuery.$pull["careerProfile.savedDescriptions"] = { _id: deleteDescriptionId };
+            } else if (deleteDescriptionTitle) {
+                updateQuery.$pull["careerProfile.savedDescriptions"] = { title: deleteDescriptionTitle };
+            }
+        }
+
+        const updatedUser = await userModel.findByIdAndUpdate(
+            userId,
+            updateQuery,
+            { new: true, select: "careerProfile username email plan" }
+        );
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        return res.status(200).json({
+            message: "Career profile updated successfully",
+            careerProfile: updatedUser.careerProfile
         });
     } catch (err) {
         return handleAuthControllerError(res, err);
@@ -811,5 +905,6 @@ module.exports = {
     forgotPasswordController,
     resetPasswordController,
     getUserUsageController,
-    googleSupabaseAuthController
+    googleSupabaseAuthController,
+    updateCareerProfileController
 };

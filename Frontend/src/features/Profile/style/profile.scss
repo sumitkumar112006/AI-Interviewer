@@ -427,4 +427,393 @@
             }
         }
     }
+
+    /* Career Profile & Presets Section */
+    .career-profile-section {
+        background: var(--panel);
+        border: 1px solid var(--border-color);
+        border-radius: 1.25rem;
+        padding: 1.75rem;
+        box-shadow: var(--card-shadow);
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+
+        .section-header-row {
+            .header-title-block {
+                display: flex;
+                align-items: flex-start;
+                gap: 0.85rem;
+
+                .section-icon {
+                    color: var(--accent-color);
+                    margin-top: 0.15rem;
+                    flex-shrink: 0;
+                }
+
+                h3 {
+                    font-family: var(--font-heading);
+                    font-size: 1.15rem;
+                    font-weight: 800;
+                    color: var(--text-primary);
+                    margin: 0 0 0.25rem 0;
+                }
+
+                .section-subtitle {
+                    font-size: 0.82rem;
+                    color: var(--text-secondary);
+                    margin: 0;
+                    line-height: 1.4;
+                }
+            }
+        }
+
+        .profile-feedback-alert {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.65rem 1rem;
+            border-radius: 0.6rem;
+            font-size: 0.82rem;
+            font-weight: 600;
+
+            &.success {
+                background: rgba(16, 185, 129, 0.12);
+                border: 1px solid rgba(16, 185, 129, 0.3);
+                color: #10b981;
+            }
+
+            &.error {
+                background: rgba(239, 68, 68, 0.12);
+                border: 1px solid rgba(239, 68, 68, 0.3);
+                color: #ef4444;
+            }
+        }
+
+        .career-profile-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 1.5rem;
+
+            @media (max-width: 860px) {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Form Card */
+        .career-form-card {
+            background: var(--bg-card-subtle);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+
+            h4 {
+                font-family: var(--font-heading);
+                font-size: 0.95rem;
+                font-weight: 700;
+                color: var(--text-primary);
+                margin: 0;
+            }
+
+            .form-row {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 0.75rem;
+
+                @media (max-width: 540px) {
+                    grid-template-columns: 1fr;
+                }
+            }
+
+            .form-group {
+                display: flex;
+                flex-direction: column;
+                gap: 0.35rem;
+
+                label {
+                    font-size: 0.76rem;
+                    font-weight: 600;
+                    color: var(--text-secondary);
+                }
+
+                input, select, textarea {
+                    padding: 0.55rem 0.75rem;
+                    font-size: 0.82rem;
+                    color: var(--text-primary);
+                    background: var(--bg-main);
+                    border: 1px solid var(--border-color);
+                    border-radius: 0.5rem;
+                    outline: none;
+                    font-family: inherit;
+                    transition: border-color 0.2s, box-shadow 0.2s;
+
+                    &:focus {
+                        border-color: var(--accent-color);
+                        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+                    }
+                }
+
+                textarea {
+                    resize: vertical;
+                    min-height: 85px;
+                    line-height: 1.45;
+                }
+
+                .field-hint {
+                    font-size: 0.7rem;
+                    color: var(--text-muted);
+                    line-height: 1.3;
+                }
+            }
+
+            .form-actions {
+                display: flex;
+                justify-content: flex-end;
+                margin-top: 0.25rem;
+
+                .save-career-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.45rem;
+                    padding: 0.6rem 1.2rem;
+                    background: var(--button-gradient);
+                    color: #ffffff;
+                    border: none;
+                    border-radius: 0.55rem;
+                    font-size: 0.8rem;
+                    font-weight: 700;
+                    cursor: pointer;
+                    box-shadow: 0 3px 12px rgba(99, 102, 241, 0.25);
+                    transition: all 0.2s ease;
+
+                    &:hover:not(:disabled) {
+                        transform: translateY(-1px);
+                        box-shadow: 0 5px 16px rgba(99, 102, 241, 0.35);
+                    }
+
+                    &:disabled {
+                        opacity: 0.6;
+                        cursor: not-allowed;
+                    }
+                }
+            }
+        }
+
+        /* Presets Manager Card */
+        .presets-manager-card {
+            background: var(--bg-card-subtle);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.85rem;
+
+            .presets-card-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+
+                h4 {
+                    font-family: var(--font-heading);
+                    font-size: 0.95rem;
+                    font-weight: 700;
+                    color: var(--text-primary);
+                    margin: 0;
+                }
+
+                .presets-subtitle {
+                    font-size: 0.72rem;
+                    color: var(--text-muted);
+                    font-weight: 600;
+                }
+
+                .add-preset-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.3rem;
+                    padding: 0.35rem 0.7rem;
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                    color: var(--accent-color);
+                    background: var(--badge-bg);
+                    border: 1px solid var(--border-color);
+                    border-radius: 0.45rem;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+
+                    &:hover {
+                        border-color: var(--accent-color);
+                    }
+                }
+            }
+
+            .new-preset-inline-form {
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+                padding: 0.75rem;
+                background: var(--bg-main);
+                border: 1px dashed var(--accent-color);
+                border-radius: 0.65rem;
+
+                input, textarea {
+                    padding: 0.45rem 0.65rem;
+                    font-size: 0.78rem;
+                    color: var(--text-primary);
+                    background: var(--bg-card-subtle);
+                    border: 1px solid var(--border-color);
+                    border-radius: 0.4rem;
+                    outline: none;
+                    font-family: inherit;
+
+                    &:focus {
+                        border-color: var(--accent-color);
+                    }
+                }
+
+                .save-new-preset-btn {
+                    align-self: flex-end;
+                    padding: 0.4rem 0.85rem;
+                    font-size: 0.75rem;
+                    font-weight: 700;
+                    color: #ffffff;
+                    background: var(--button-gradient);
+                    border: none;
+                    border-radius: 0.4rem;
+                    cursor: pointer;
+
+                    &:disabled {
+                        opacity: 0.5;
+                        cursor: not-allowed;
+                    }
+                }
+            }
+
+            .presets-list-scroll {
+                display: flex;
+                flex-direction: column;
+                gap: 0.6rem;
+                max-height: 260px;
+                overflow-y: auto;
+                padding-right: 0.2rem;
+
+                .no-presets-box {
+                    padding: 1.5rem 1rem;
+                    text-align: center;
+                    color: var(--text-muted);
+                    font-size: 0.78rem;
+                    background: var(--bg-main);
+                    border-radius: 0.65rem;
+                    border: 1px dashed var(--border-color);
+                }
+
+                .preset-item-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-start;
+                    gap: 0.65rem;
+                    padding: 0.65rem 0.75rem;
+                    background: var(--bg-main);
+                    border: 1px solid var(--border-color);
+                    border-radius: 0.65rem;
+                    transition: all 0.15s ease;
+
+                    &.active-default {
+                        border-color: var(--accent-color);
+                        background: var(--badge-bg);
+                    }
+
+                    &:hover {
+                        border-color: var(--border-strong);
+                    }
+
+                    .preset-info {
+                        flex: 1;
+                        min-width: 0;
+
+                        .preset-title-wrap {
+                            display: flex;
+                            align-items: center;
+                            gap: 0.45rem;
+                            margin-bottom: 0.25rem;
+
+                            .preset-name {
+                                font-size: 0.8rem;
+                                font-weight: 700;
+                                color: var(--text-primary);
+                            }
+
+                            .default-badge {
+                                font-size: 0.64rem;
+                                font-weight: 700;
+                                text-transform: uppercase;
+                                padding: 0.12rem 0.4rem;
+                                border-radius: 0.35rem;
+                                background: rgba(16, 185, 129, 0.15);
+                                color: #10b981;
+                                border: 1px solid rgba(16, 185, 129, 0.3);
+                            }
+                        }
+
+                        .preset-preview-text {
+                            font-size: 0.72rem;
+                            color: var(--text-secondary);
+                            margin: 0;
+                            line-height: 1.35;
+                            display: -webkit-box;
+                            -webkit-line-clamp: 2;
+                            -webkit-box-orient: vertical;
+                            overflow: hidden;
+                        }
+                    }
+
+                    .preset-actions {
+                        display: flex;
+                        align-items: center;
+                        gap: 0.35rem;
+                        flex-shrink: 0;
+
+                        .set-default-btn {
+                            padding: 0.25rem 0.5rem;
+                            font-size: 0.68rem;
+                            font-weight: 600;
+                            color: var(--text-secondary);
+                            background: var(--bg-card-subtle);
+                            border: 1px solid var(--border-color);
+                            border-radius: 0.35rem;
+                            cursor: pointer;
+                            transition: all 0.15s ease;
+
+                            &:hover {
+                                color: var(--accent-color);
+                                border-color: var(--accent-color);
+                            }
+                        }
+
+                        .delete-preset-icon-btn {
+                            background: transparent;
+                            border: none;
+                            color: var(--text-muted);
+                            cursor: pointer;
+                            padding: 0.25rem;
+                            border-radius: 0.35rem;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            transition: all 0.15s ease;
+
+                            &:hover {
+                                color: #ef4444;
+                                background: rgba(239, 68, 68, 0.12);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
