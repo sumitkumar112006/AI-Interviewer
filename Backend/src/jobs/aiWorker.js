@@ -76,6 +76,25 @@ function initAiWorker() {
                     // Invalidate reports list cache
                     await deleteCache(`cache:reports:user:${userIdStr}`);
 
+                    // Non-blocking background chunk & embedding pre-warming for Roadmap & JD RAG
+                    setImmediate(async () => {
+                        try {
+                            const { parseRoadmap, parseJobDescription } = require('../ai-assistant/Chunker');
+                            const { getOrEmbedRoadmapChunks, getOrEmbedJdChunks } = require('../ai-assistant/Embedder');
+                            const repIdStr = interviewReport._id.toString();
+                            if (Array.isArray(interviewReport.preparationPlan) && interviewReport.preparationPlan.length > 0) {
+                                const rChunks = parseRoadmap(interviewReport.preparationPlan, interviewReport.completedTasks || []);
+                                await getOrEmbedRoadmapChunks(repIdStr, rChunks);
+                            }
+                            if (interviewReport.jobDescription) {
+                                const jdChunks = parseJobDescription(interviewReport.jobDescription, interviewReport.developerTitle || '');
+                                await getOrEmbedJdChunks(repIdStr, jdChunks);
+                            }
+                        } catch (ragErr) {
+                            console.warn('[AI Worker] Non-critical RAG pre-warming notice:', ragErr.message);
+                        }
+                    });
+
                     jobDoc.resourceId = interviewReport._id;
                     jobDoc.resourceModel = 'InterviewReport';
                     jobDoc.result = interviewReport;
@@ -90,18 +109,28 @@ function initAiWorker() {
                 // 2. RESUME HTML GENERATION
                 case 'resume_html': {
                     const { interviewReportId, userPlan, forceRegenerate } = jobDoc.input;
+                    const userIdStr = jobDoc.userId?.toString();
+                    const userObjectId = mongoose.Types.ObjectId.isValid(userIdStr)
+                        ? new mongoose.Types.ObjectId(userIdStr)
+                        : jobDoc.userId;
 
                     const interviewReport = await interviewReportModel.findOne({
                         _id: interviewReportId,
-                        user: jobDoc.userId
+                        $or: [
+                            { user: userObjectId },
+                            { user: userIdStr }
+                        ]
                     });
 
                     if (!interviewReport) {
                         throw new Error(`Interview report ${interviewReportId} not found`);
                     }
 
-                    // If HTML exists and force is false, complete immediately
-                    if (interviewReport.generatedResumeHtml && !forceRegenerate) {
+                    const cleanExistingHtml = (interviewReport.generatedResumeHtml || '').replace(/<[^>]*>/g, '').trim();
+                    const isExistingHealthy = cleanExistingHtml.length >= 30 && !/^[a-f0-9]{24}$/i.test(cleanExistingHtml);
+
+                    // If HTML exists and is healthy, and force is false, complete immediately
+                    if (isExistingHealthy && !forceRegenerate) {
                         jobDoc.result = interviewReport;
                         jobDoc.status = 'done';
                         await jobDoc.save();
@@ -126,6 +155,20 @@ function initAiWorker() {
 
                     // Invalidate report detail cache
                     await deleteCache(`cache:report:${interviewReportId}:${jobDoc.userId}`);
+
+                    // Non-blocking background chunk & embedding pre-warming for Resume RAG
+                    setImmediate(async () => {
+                        try {
+                            const { parseResumeHtml } = require('../ai-assistant/Chunker');
+                            const { getOrEmbedChunks } = require('../ai-assistant/Embedder');
+                            if (generatedHtml) {
+                                const rChunks = parseResumeHtml(generatedHtml);
+                                await getOrEmbedChunks(interviewReportId.toString(), rChunks);
+                            }
+                        } catch (ragErr) {
+                            console.warn('[AI Worker] Non-critical Resume RAG pre-warming notice:', ragErr.message);
+                        }
+                    });
 
                     jobDoc.resourceId = interviewReport._id;
                     jobDoc.resourceModel = 'InterviewReport';
@@ -222,18 +265,20 @@ function initAiWorker() {
 
                 // 5. REWRITE RESUME SECTION
                 case 'rewrite_section': {
-                    const { selectedText, instruction, action, message, plan } = jobDoc.input;
+                    const { selectedText, instruction, action, message, plan, currentResumeHtml } = jobDoc.input;
 
                     const aiResponse = await rewriteResumeSection({
                         selectedText,
                         instruction,
                         action,
                         message,
-                        plan: plan || 'free'
+                        plan: plan || 'free',
+                        currentResumeHtml: currentResumeHtml || ''
                     });
 
                     jobDoc.result = {
                         replyText: aiResponse.replyText,
+                        targetText: aiResponse.targetText || null,
                         suggestedSnippet: aiResponse.suggestedSnippet,
                         rewrittenText: aiResponse.suggestedSnippet
                     };
@@ -241,7 +286,7 @@ function initAiWorker() {
                     jobDoc.creditDeducted = true;
                     await jobDoc.save();
 
-                    console.log(`[AI Worker] Job ${jobId} (rewrite_section) finished successfully.`);
+                    console.log(`[AI Worker] Job ${jobId} (rewrite_section) finished successfully. Target text: ${aiResponse.targetText ? 'Identified' : 'None'}`);
                     return jobDoc.result;
                 }
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { generateResumePdf, getInterviewReportById, updateResumeHtml, rewriteResumeSection } from '../services/interview.api'
+import { generateResumePdf, getInterviewReportById, updateResumeHtml, rewriteResumeSection, getActiveJob } from '../services/interview.api'
 import { useInterview } from '../hooks/useInterview'
 import { useAuth } from '../../Auth/hooks/useAuth'
 import ShimmerLoading from '../../Shared/components/ShimmerLoading'
@@ -18,11 +18,22 @@ function extractObjectId(value) {
     return String(value).trim()
 }
 
+// ── helper: validate that resume HTML is healthy and non-empty ────────────
+function isHealthyResumeHtml(html) {
+    if (!html || typeof html !== 'string') return false
+    const stripped = html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()
+    // Reject 24-character hexadecimal IDs (MongoDB ObjectIds like 6a8365bd727464329cdbd674)
+    if (/^[a-f0-9]{24}$/i.test(stripped)) return false
+    // Reject empty or tiny fragments
+    if (stripped.length < 30) return false
+    return true
+}
+
 // ── Resume page ────────────────────────────────────────────────────────────
 const Resume = () => {
     const { interviewId } = useParams()
     const navigate = useNavigate()
-    const { report, loading, setLoading, getReoprtById, updateNewResume } = useInterview()
+    const { report, loading, setLoading, getReoprtById, setReport } = useInterview()
     const { user, fetchUsage } = useAuth()
 
     const [error, setError]           = useState('')
@@ -32,6 +43,7 @@ const Resume = () => {
     const [isDirty, setIsDirty]       = useState(false)
     const [saveLoading, setSaveLoading] = useState(false)
     const [printLoading, setPrintLoading] = useState(false)
+    const [saveNotification, setSaveNotification] = useState(null) // { message: string, type: 'manual' | 'auto' }
 
     // AI Copilot state
     const [isAiOpen, setIsAiOpen]     = useState(false)
@@ -45,31 +57,107 @@ const Resume = () => {
     const editorRef  = useRef(null)
     const chatEndRef = useRef(null)
 
-    // ── Load resume HTML ──────────────────────────────────────────────────
+    // ── Load resume HTML with health validation & DB fallback ─────────────
     useEffect(() => {
         let mounted = true
         async function init() {
             setDbLoading(true)
             setError('')
+
+            // 1. Instant check: Do we have a healthy draft in localStorage from recent edits?
+            let cachedDraft = null
             try {
+                const stored = localStorage.getItem(`resume_draft_${interviewId}`)
+                if (isHealthyResumeHtml(stored)) {
+                    cachedDraft = stored
+                    setHtmlContent(sanitizeResumeHtml(stored))
+                    setDbLoading(false)
+                }
+            } catch (e) {
+                console.warn('[Resume] Local draft read notice:', e)
+            }
+
+            try {
+                // 2. Fetch current report from database
                 const fetched = await getReoprtById(interviewId)
                 if (!mounted) return
 
-                if (fetched?.generatedResumeHtml) {
-                    setHtmlContent(sanitizeResumeHtml(fetched.generatedResumeHtml))
+                // 3. Health check: Does DB already have a healthy generatedResumeHtml?
+                if (isHealthyResumeHtml(fetched?.generatedResumeHtml)) {
+                    const sanitized = sanitizeResumeHtml(fetched.generatedResumeHtml)
+                    setHtmlContent(sanitized)
+                    try {
+                        localStorage.setItem(`resume_draft_${interviewId}`, sanitized)
+                    } catch {}
                     setDbLoading(false)
-                } else {
-                    // Trigger AI HTML generation on backend
-                    setDbLoading(false)
-                    setAiGenerating(true)
-                    await generateResumePdf(interviewId)
-                    const updated = await getReoprtById(interviewId)
-                    if (mounted && updated?.generatedResumeHtml) {
-                        setHtmlContent(sanitizeResumeHtml(updated.generatedResumeHtml))
-                        if (fetchUsage) fetchUsage()
-                    }
-                    if (mounted) setAiGenerating(false)
+                    return
                 }
+
+                // 4. If DB generatedResumeHtml is missing or corrupted, but we have a healthy local draft:
+                if (cachedDraft) {
+                    setHtmlContent(sanitizeResumeHtml(cachedDraft))
+                    setDbLoading(false)
+                    // Sync this draft to the database
+                    updateResumeHtml(interviewId, { generatedResumeHtml: cachedDraft }).catch(err => {
+                        console.warn('[Resume] Background draft recovery sync notice:', err.message)
+                    })
+                    return
+                }
+
+                // 5. Check if an active resume generation job is currently running on the server
+                try {
+                    const jobRes = await getActiveJob({ type: 'resume_html', resourceId: interviewId })
+                    if (mounted && jobRes?.activeJob?.jobId) {
+                        setDbLoading(false)
+                        setAiGenerating(true)
+                        const pollResult = await generateResumePdf(interviewId)
+                        const reportWithHtml = pollResult?.interviewReport || pollResult
+                        if (mounted && isHealthyResumeHtml(reportWithHtml?.generatedResumeHtml)) {
+                            const sanitized = sanitizeResumeHtml(reportWithHtml.generatedResumeHtml)
+                            setHtmlContent(sanitized)
+                            try {
+                                localStorage.setItem(`resume_draft_${interviewId}`, sanitized)
+                            } catch {}
+                            if (fetchUsage) fetchUsage()
+                        }
+                        if (mounted) setAiGenerating(false)
+                        return
+                    }
+                } catch (jobErr) {
+                    console.warn('[Resume] Active job check notice:', jobErr.message)
+                }
+
+                // 6. Fallback: If generatedResumeHtml is missing, use original DB resume text (if healthy)
+                if (isHealthyResumeHtml(fetched?.resume)) {
+                    const paragraphs = fetched.resume
+                        .split(/\n{2,}/)
+                        .map(p => `<p>${p.replace(/\n/g, '<br/>')}</p>`)
+                        .join('')
+                    const fallbackHtml = `<h2>${fetched.developerTitle || 'Resume'}</h2>${paragraphs}`
+                    const sanitized = sanitizeResumeHtml(fallbackHtml)
+                    setHtmlContent(sanitized)
+                    try {
+                        localStorage.setItem(`resume_draft_${interviewId}`, sanitized)
+                    } catch {}
+                    setDbLoading(false)
+                    return
+                }
+
+                // 7. If neither exists, trigger AI generation with force to guarantee clean generation
+                setDbLoading(false)
+                setAiGenerating(true)
+                const genRes = await generateResumePdf(interviewId, { force: true })
+                const freshReport = genRes?.interviewReport || genRes
+                if (mounted && isHealthyResumeHtml(freshReport?.generatedResumeHtml)) {
+                    const sanitized = sanitizeResumeHtml(freshReport.generatedResumeHtml)
+                    setHtmlContent(sanitized)
+                    try {
+                        localStorage.setItem(`resume_draft_${interviewId}`, sanitized)
+                    } catch {}
+                    if (fetchUsage) fetchUsage()
+                }
+                if (mounted) setAiGenerating(false)
+
             } catch (err) {
                 if (mounted) setError(err?.response?.data?.message || err?.message || 'Failed to load resume.')
                 if (mounted) {
@@ -104,24 +192,83 @@ const Resume = () => {
         return report.developerTitle || report?.Title || report?.title || 'Generated Resume'
     }, [report])
 
-    // ── Save ───────────────────────────────────────────────────────────────
-    const handleSave = useCallback(async () => {
+    // ── Unified Save & Auto-Save Function ──────────────────────────────────
+    const saveResumeChanges = useCallback(async (isAuto = false) => {
         if (!editorRef.current) return
-        setSaveLoading(true)
+        const html = editorRef.current.getHtml()
+        if (!isHealthyResumeHtml(html)) return
+
+        if (!isAuto) {
+            setSaveLoading(true)
+        }
         setError('')
+
+        // Immediately persist to localStorage
         try {
-            const html = editorRef.current.getHtml()
-            await updateResumeHtml(interviewId, html)
-            updateNewResume(interviewId, html)
+            localStorage.setItem(`resume_draft_${interviewId}`, html)
+        } catch (e) {
+            console.warn('[Resume] LocalStorage draft save warning:', e)
+        }
+
+        try {
+            const res = await updateResumeHtml(interviewId, { generatedResumeHtml: html })
+            if (res?.interviewReport && setReport) {
+                setReport(res.interviewReport)
+            }
             setHtmlContent(sanitizeResumeHtml(html))
             setIsDirty(false)
             if (fetchUsage) fetchUsage()
+
+            setSaveNotification({
+                message: isAuto
+                    ? 'Auto-saved: Your latest resume changes have been saved to the database.'
+                    : 'Saved: Your resume changes have been saved to the database successfully!',
+                type: isAuto ? 'auto' : 'manual'
+            })
+
+            setTimeout(() => {
+                setSaveNotification(null)
+            }, 4500)
         } catch (err) {
-            setError(err?.response?.data?.message || err?.message || 'Failed to save resume.')
+            if (!isAuto) {
+                setError(err?.response?.data?.message || err?.message || 'Failed to save resume.')
+            } else {
+                console.warn('[Auto-Save] Error saving draft:', err.message)
+            }
         } finally {
-            setSaveLoading(false)
+            if (!isAuto) {
+                setSaveLoading(false)
+            }
         }
-    }, [interviewId, updateNewResume, fetchUsage])
+    }, [interviewId, setReport, fetchUsage])
+
+    // ── Editor OnChange: Persist Draft Instantly ──────────────────────────
+    const handleEditorChange = useCallback((updatedHtml) => {
+        setIsDirty(true)
+        const html = updatedHtml || editorRef.current?.getHtml()
+        if (isHealthyResumeHtml(html)) {
+            try {
+                localStorage.setItem(`resume_draft_${interviewId}`, html)
+            } catch {}
+        }
+    }, [interviewId])
+
+    // ── 5-Minute Auto-Save Timer ──────────────────────────────────────────
+    useEffect(() => {
+        const AUTO_SAVE_INTERVAL = 5 * 60 * 1000 // 5 minutes
+        const timer = setInterval(() => {
+            if (isDirty) {
+                saveResumeChanges(true)
+            }
+        }, AUTO_SAVE_INTERVAL)
+
+        return () => clearInterval(timer)
+    }, [isDirty, saveResumeChanges])
+
+    // ── Manual Save Button Click ──────────────────────────────────────────
+    const handleSave = useCallback(() => {
+        saveResumeChanges(false)
+    }, [saveResumeChanges])
 
     // ── Direct 1-Click PDF Export ─────────────────────────────────────────
     const handlePrint = useCallback(async () => {
@@ -130,10 +277,7 @@ const Resume = () => {
         try {
             // Auto-save edits first if dirty
             if (isDirty && editorRef.current) {
-                const html = editorRef.current.getHtml()
-                await updateResumeHtml(interviewId, html)
-                updateNewResume(interviewId, html)
-                setIsDirty(false)
+                await saveResumeChanges(false)
             }
             const el = document.querySelector('.tiptap-a4-page')
             const safeTitle = (displayTitle || 'Resume').replace(/[^a-z0-9_-]/gi, '_')
@@ -145,7 +289,7 @@ const Resume = () => {
         } finally {
             setPrintLoading(false)
         }
-    }, [isDirty, interviewId, updateNewResume, displayTitle, fetchUsage])
+    }, [isDirty, saveResumeChanges, displayTitle, fetchUsage])
 
     const isResumeBlocked = Boolean(user?.blockedFeatures?.resumeGeneration)
 
@@ -193,17 +337,21 @@ const Resume = () => {
         setChatLoading(true)
 
         try {
+            const currentResumeHtml = editorRef.current?.getHtml() || ''
             const res = await rewriteResumeSection({
                 selectedText,
                 instruction: msg,
                 action: preset || 'enhance',
-                message: msg
+                message: msg,
+                resourceId: interviewId,
+                currentResumeHtml
             })
             if (fetchUsage) fetchUsage()
             const aiMsg = {
                 id: Date.now() + 1,
                 sender: 'ai',
                 text: res?.replyText || 'Here is the refined suggestion.',
+                targetText: res?.targetText || selectedText || null,
                 snippet: res?.suggestedSnippet || res?.rewrittenText || null
             }
             setChatMessages(prev => [...prev, aiMsg])
@@ -216,12 +364,46 @@ const Resume = () => {
         } finally {
             setChatLoading(false)
         }
-    }, [chatInput, selectedText, fetchUsage])
+    }, [chatInput, selectedText, interviewId, fetchUsage])
 
-    const handleApplySnippet = useCallback((snippet) => {
+    // ── Apply Snippet In-Place or to Selection ──────────────────────────────
+    const handleApplySnippet = useCallback((snippet, targetText = null) => {
         if (!snippet || !editorRef.current) return
-        editorRef.current.insertContent(snippet)
-        setIsDirty(true)
+        if (editorRef.current.replaceExactText) {
+            const replaced = editorRef.current.replaceExactText(targetText, snippet)
+            if (replaced) {
+                setIsDirty(true)
+                return
+            }
+        }
+        if (editorRef.current.isFocused && editorRef.current.isFocused()) {
+            editorRef.current.insertContent(snippet)
+            setIsDirty(true)
+        }
+    }, [])
+
+    // ── Listen for in-place replacement events from KIVI AI Assistant ───────
+    useEffect(() => {
+        const onKiviReplace = (e) => {
+            const { targetText, snippet } = e.detail || {}
+            if (snippet && editorRef.current) {
+                if (editorRef.current.replaceExactText) {
+                    const replaced = editorRef.current.replaceExactText(targetText, snippet)
+                    if (replaced) {
+                        setIsDirty(true)
+                        if (typeof e.preventDefault === 'function') e.preventDefault()
+                        return
+                    }
+                }
+                if (editorRef.current.isFocused && editorRef.current.isFocused()) {
+                    editorRef.current.insertContent(snippet)
+                    setIsDirty(true)
+                    if (typeof e.preventDefault === 'function') e.preventDefault()
+                }
+            }
+        }
+        window.addEventListener('kivi-replace-text', onKiviReplace)
+        return () => window.removeEventListener('kivi-replace-text', onKiviReplace)
     }, [])
 
     const RESUME_STEPS = [
@@ -311,7 +493,7 @@ const Resume = () => {
                             ref={editorRef}
                             initialHtml={htmlContent}
                             placeholder="Your resume content will appear here. Start editing!"
-                            onChange={() => setIsDirty(true)}
+                            onChange={handleEditorChange}
                         />
                     ) : (
                         <Loading
@@ -328,6 +510,22 @@ const Resume = () => {
                     )}
                 </main>
             </div>
+
+            {/* ── Floating Save & Auto-Save Notification Toast ───────── */}
+            {saveNotification && (
+                <div className={`rp-save-toast ${saveNotification.type}`} role="status" aria-live="polite">
+                    <span className="toast-icon">{saveNotification.type === 'auto' ? '💾' : '✅'}</span>
+                    <span className="toast-text">{saveNotification.message}</span>
+                    <button
+                        type="button"
+                        className="toast-close-btn"
+                        onClick={() => setSaveNotification(null)}
+                        aria-label="Dismiss notification"
+                    >
+                        ✕
+                    </button>
+                </div>
+            )}
         </div>
     )
 }

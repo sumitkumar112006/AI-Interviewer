@@ -1,7 +1,11 @@
 const express = require('express');
 const authMiddleware = require('../middleware/auth.middleware');
 const { createTieredRateLimiter } = require('../middleware/rateLimiter.middleware');
-const { chatAssistantController } = require('../controller/assistant.controller');
+const {
+    chatAssistantController,
+    getAssistantHistoryController,
+    clearAssistantHistoryController
+} = require('../controller/assistant.controller');
 
 const assistantRouter = express.Router();
 
@@ -31,6 +35,28 @@ assistantRouter.post(
     checkAiAssistantAccess,
     aiAssistantTieredLimiter,
     chatAssistantController
+);
+
+/**
+ * @route GET /api/assistant/history
+ * @description Get current session history from Redis
+ */
+assistantRouter.get(
+    '/history',
+    authMiddleware.authUser,
+    checkAiAssistantAccess,
+    getAssistantHistoryController
+);
+
+/**
+ * @route DELETE /api/assistant/history
+ * @description Clear assistant session history
+ */
+assistantRouter.delete(
+    '/history',
+    authMiddleware.authUser,
+    checkAiAssistantAccess,
+    clearAssistantHistoryController
 );
 
 module.exports = assistantRouter;

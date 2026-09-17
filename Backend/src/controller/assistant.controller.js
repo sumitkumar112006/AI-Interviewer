@@ -9,7 +9,7 @@ async function chatAssistantController(req, res, next) {
     try {
         const userId = req.user?._id || req.user?.id;
         const userPlan = req.user?.plan || 'free';
-        const { reportId, message, selectedText, action, instruction, stream = true } = req.body;
+        const { reportId, message, selectedText, action, instruction, stream = true, activeTab = '', currentRoute = '' } = req.body;
 
         if (!message && !selectedText && !instruction) {
             return res.status(400).json({ message: 'A prompt message, instruction, or highlighted snippet is required.' });
@@ -43,6 +43,8 @@ async function chatAssistantController(req, res, next) {
                     selectedText,
                     action,
                     instruction,
+                    activeTab,
+                    currentRoute,
                     userPlan,
                     onToken: (token) => {
                         if (!clientAborted) {
@@ -55,6 +57,7 @@ async function chatAssistantController(req, res, next) {
                     res.write(`data: ${JSON.stringify({
                         type: 'done',
                         reply: result.reply,
+                        targetText: result.targetText || null,
                         suggestedSnippet: result.suggestedSnippet,
                         resources: result.resources,
                         profile: result.candidateProfile
@@ -81,6 +84,8 @@ async function chatAssistantController(req, res, next) {
                 selectedText,
                 action,
                 instruction,
+                activeTab,
+                currentRoute,
                 userPlan
             });
 
@@ -92,6 +97,38 @@ async function chatAssistantController(req, res, next) {
     }
 }
 
+/**
+ * Endpoint: GET /api/assistant/history
+ */
+async function getAssistantHistoryController(req, res) {
+    try {
+        const { getCache } = require('../services/redis.service');
+        const userId = req.user?._id || req.user?.id;
+        const cacheKey = `chat:session:${userId}`;
+        const history = (await getCache(cacheKey)) || [];
+        return res.status(200).json({ history });
+    } catch (err) {
+        return res.status(500).json({ message: 'Failed to retrieve assistant history' });
+    }
+}
+
+/**
+ * Endpoint: DELETE /api/assistant/history
+ */
+async function clearAssistantHistoryController(req, res) {
+    try {
+        const { deleteCache } = require('../services/redis.service');
+        const userId = req.user?._id || req.user?.id;
+        const cacheKey = `chat:session:${userId}`;
+        await deleteCache(cacheKey);
+        return res.status(200).json({ message: 'Assistant chat history cleared' });
+    } catch (err) {
+        return res.status(500).json({ message: 'Failed to clear assistant history' });
+    }
+}
+
 module.exports = {
-    chatAssistantController
+    chatAssistantController,
+    getAssistantHistoryController,
+    clearAssistantHistoryController
 };

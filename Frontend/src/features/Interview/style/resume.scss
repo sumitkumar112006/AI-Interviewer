@@ -751,3 +751,88 @@
         }
     }
 }
+
+// ── Floating Save & Auto-Save Toast ──────────────────────────────────────────
+.rp-save-toast {
+    position: fixed;
+    top: 1.25rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.85rem 1.4rem;
+    border-radius: 2rem;
+    background: rgba(15, 23, 42, 0.94);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5), 0 0 24px rgba(16, 185, 129, 0.2);
+    color: #f8fafc;
+    font-size: 0.875rem;
+    font-weight: 500;
+    z-index: 99999;
+    animation: toastSlideDown 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+    &.auto {
+        border-color: rgba(59, 130, 246, 0.45);
+        box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5), 0 0 24px rgba(59, 130, 246, 0.2);
+
+        .toast-icon {
+            color: #60a5fa;
+        }
+    }
+
+    .toast-icon {
+        font-size: 1.15rem;
+        flex-shrink: 0;
+    }
+
+    .toast-text {
+        color: #e2e8f0;
+        line-height: 1.4;
+    }
+
+    .toast-close-btn {
+        background: transparent;
+        border: none;
+        color: #94a3b8;
+        font-size: 0.9rem;
+        cursor: pointer;
+        padding: 0.2rem;
+        margin-left: 0.25rem;
+        line-height: 1;
+        transition: color 0.15s ease;
+
+        &:hover {
+            color: #ffffff;
+        }
+    }
+
+    .light-theme &,
+    [data-theme="light"] & {
+        background: rgba(255, 255, 255, 0.95);
+        border: 1px solid #a7f3d0;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 0 15px rgba(16, 185, 129, 0.15);
+        color: #0f172a;
+
+        .toast-text {
+            color: #1e293b;
+        }
+
+        &.auto {
+            border-color: #bfdbfe;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 0 15px rgba(59, 130, 246, 0.15);
+        }
+    }
+}
+
+@keyframes toastSlideDown {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -24px) scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(1);
+    }
+}

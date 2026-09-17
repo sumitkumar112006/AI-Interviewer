@@ -1,3 +1,5 @@
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 require('dotenv').config();
 
 /**
@@ -14,27 +16,30 @@ require('dotenv').config();
  */
 
 const GROQ_API_KEYS = [
-    process.env.GROQ_API_KEY,      // Key 1 (Primary Priority)
-    process.env.PRINCE_GROQ_API,   // Key 2 (Secondary Priority)
-    process.env.SAURABH_GROQ_API,  // Key 3 (Tertiary Priority)
-    // 👉 Add additional Groq keys here anytime:
-    // process.env.GROQ_API_KEY_4,
-    // "gsk_...",
+    process.env.GROQ_API_KEY,               // Key 1 (Primary Priority)
+    process.env.PRINCE_GROQ_API,            // Key 2
+    process.env.SAURABH_GROQ_API,           // Key 3
+    process.env.SAURABH_SECOND_GROQ_API,    // Key 4
+    process.env.SUMIT_KUMAR_GROQ_API_KEY,   // Key 5
+    process.env.WEB_BUSSINESS_GROQ_API,     // Key 6
+    process.env['SUMIT-1_GROQ_API_KEY'],    // Key 7
+    process.env['KIVI-SUMIT-2_GROQ_API_KEY'],// Key 8
 ];
 
 const GEMINI_API_KEYS = [
-    process.env.PRINCE_GENAI_API_KEY,  // Key 1 (Primary Gemini)
-    process.env.SK_SG_GENAI_API_KEY,  // Key 2 (Secondary Priority)
-    process.env.INDONESIAKA_GENAI_API_KEY,  // Key 3 (Secondary Priority)
-    process.env.AMIT_KUMAR_GENAI_API_KEY,  // Key 4 (Secondary Priority)
-    // 👉 Add additional Gemini keys here anytime:
-    // process.env.GOOGLE_GENAI_API_KEY_2,
-    // "AIzaSy...",
+    process.env.PRINCE_GENAI_API_KEY,       // Key 1 (Primary Gemini)
+    process.env.SK_SG_GENAI_API_KEY,        // Key 2
+    process.env.SAURABH_GEMINI_API_KEY,     // Key 3
+    process.env.INDONESIAKA_GENAI_API_KEY,  // Key 4
+    process.env.AMIT_KUMAR_GENAI_API_KEY,   // Key 5
+    process.env['KIVI-SUMIT_GEMINI_API_KEY'],// Key 6
 ];
 
 const OPENROUTER_API_KEYS = [
     process.env.OPENROUTER_API_KEY,
 ];
+
+
 
 /**
  * Initializes and returns the active priority pool of managed Groq keys.

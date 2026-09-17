@@ -162,6 +162,30 @@ const CoverLetter = () => {
         }
     }, [coverLetter])
 
+    // ── Listen for in-place replacement events from KIVI AI Assistant ───────
+    useEffect(() => {
+        const onKiviReplace = (e) => {
+            const { targetText, snippet } = e.detail || {}
+            if (snippet && editorRef.current) {
+                if (editorRef.current.replaceExactText) {
+                    const replaced = editorRef.current.replaceExactText(targetText, snippet)
+                    if (replaced) {
+                        setIsDirty(true)
+                        if (typeof e.preventDefault === 'function') e.preventDefault()
+                        return
+                    }
+                }
+                if (editorRef.current.isFocused && editorRef.current.isFocused()) {
+                    editorRef.current.insertContent(snippet)
+                    setIsDirty(true)
+                    if (typeof e.preventDefault === 'function') e.preventDefault()
+                }
+            }
+        }
+        window.addEventListener('kivi-replace-text', onKiviReplace)
+        return () => window.removeEventListener('kivi-replace-text', onKiviReplace)
+    }, [])
+
     if (pageLoading) return <main><ShimmerLoading type="workspace" title="Loading Cover Letter..." /></main>
 
     const reportTitle = report?.developerTitle || 'Developer'

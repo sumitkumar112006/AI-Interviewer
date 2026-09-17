@@ -1167,10 +1167,29 @@ Job Description: ${jobDescription}
     return htmlContent;
 }
 
+function stripHtmlToCleanText(html = '') {
+    if (!html) return '';
+    return html
+        .replace(/<h[1-6][^>]*>/gi, '\n### ')
+        .replace(/<\/h[1-6]>/gi, '\n')
+        .replace(/<li[^>]*>/gi, '\n• ')
+        .replace(/<\/li>/gi, '')
+        .replace(/<p[^>]*>/gi, '\n')
+        .replace(/<\/p>/gi, '\n')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
 /**
  * AI Resume Chat Copilot & Section Rewriter
  */
-async function rewriteResumeSection({ selectedText = "", instruction = "", action = "enhance", message = "", plan = "free" }) {
+async function rewriteResumeSection({ selectedText = "", instruction = "", action = "enhance", message = "", plan = "free", currentResumeHtml = "" }) {
     const promptText = message.trim() || instruction.trim();
     const lowerPrompt = promptText.toLowerCase();
 
@@ -1206,17 +1225,28 @@ async function rewriteResumeSection({ selectedText = "", instruction = "", actio
             lowerPrompt.includes("who are you") ||
             lowerPrompt.includes("what is") ||
             lowerPrompt.includes("how to")
-        ) && !lowerPrompt.includes("rewrite") && !lowerPrompt.includes("enhance") && !lowerPrompt.includes("shorten") && !lowerPrompt.includes("summary")
+        ) && !lowerPrompt.includes("rewrite") && !lowerPrompt.includes("enhance") && !lowerPrompt.includes("shorten") && !lowerPrompt.includes("summary") && !lowerPrompt.includes("update") && !lowerPrompt.includes("bullet") && !lowerPrompt.includes("line")
     );
 
-    let systemPrompt = `You are an expert AI Resume Copilot & Career Coach (KIVI AI). You help job seekers refine their resume content and answer career/job questions. 
+    let systemPrompt = `You are an expert AI Resume Copilot & Career Coach (KIVI AI). You help candidates refine their resume content and answer resume/career questions with high precision.
 
-Respond in valid JSON only with two keys:
-1. "replyText": A concise, friendly conversational response answering the user or explaining your improvement (1-3 sentences max).
-2. "suggestedSnippet": (Optional string) ONLY set this if the user explicitly asked to rewrite, enhance, shorten, or generate specific resume text snippet or if text was highlighted to be rewritten. If the user is asking general questions, questions about jobs, career advice, or about the platform/application, set "suggestedSnippet" to null!
+You have access to the candidate's FULL RESUME content provided in the prompt.
+When the user asks to rewrite, enhance, shorten, update, or replace any line, bullet point, or section (e.g. "update second line of devchat", "make my summary more impactful", "enhance bullet 1 of my current job"):
+1. Locate the EXACT original text in the candidate's resume that the user is referring to. Set this in "targetText".
+2. Generate the improved, high-impact replacement text. Set this in "suggestedSnippet".
+3. Provide a friendly, concise explanation of your improvement in "replyText" (1-2 sentences).
+
+If the user highlighted text manually, "targetText" should be that highlighted text.
+If the user didn't highlight text, identify the exact corresponding line or sentence from the provided resume as "targetText".
+If the user is asking a general question, career advice, or info about the platform, set "targetText" to null and "suggestedSnippet" to null!
+
+Respond in valid JSON ONLY with three keys:
+1. "replyText": string
+2. "targetText": string or null
+3. "suggestedSnippet": string or null
 
 Rules:
-- Return ONLY valid JSON with keys "replyText" and "suggestedSnippet".
+- Return ONLY valid JSON with keys "replyText", "targetText", and "suggestedSnippet".
 - Never wrap JSON in code fences.`;
 
     if (isAskingAboutProject) {
@@ -1234,12 +1264,13 @@ About KIVI-AI Platform:
 Your Task:
 When the user asks about the project, jobs, or application, provide a friendly, helpful, and concise overview explaining what the application does and how its features help candidates succeed.
 
-Respond in valid JSON only with two keys:
+Respond in valid JSON only with keys:
 1. "replyText": Clear, enthusiastic, and informative answer about KIVI-AI Platform and career tools (2-4 sentences max).
-2. "suggestedSnippet": Set to null.
+2. "targetText": null
+3. "suggestedSnippet": null
 
 Rules:
-- Return ONLY valid JSON with keys "replyText" and "suggestedSnippet".
+- Return ONLY valid JSON with keys "replyText", "targetText", and "suggestedSnippet".
 - Never wrap JSON in code fences.`;
     }
 
@@ -1252,12 +1283,27 @@ Rules:
         actionGuide = "Optimize the text snippet with industry-relevant technical keywords and professional skills.";
     }
 
-    const userPrompt = `
-User Query / Message: ${promptText || actionGuide}
-${selectedText ? `Highlighted Resume Text: "${selectedText.trim()}"` : 'No text highlighted currently.'}
+    const cleanResume = stripHtmlToCleanText(currentResumeHtml);
 
-Generate response JSON with "replyText" and "suggestedSnippet":
+    const userPrompt = `
+${cleanResume ? `CURRENT RESUME CONTENT:\n"""\n${cleanResume}\n"""\n` : ''}
+${selectedText ? `HIGHLIGHTED TEXT:\n"${selectedText.trim()}"\n` : ''}
+USER QUERY / INSTRUCTION:
+${promptText || actionGuide}
+
+Generate response JSON with "replyText", "targetText", and "suggestedSnippet":
 `;
+
+    console.log('\n' + '═'.repeat(85));
+    console.log(`📝 [RESUME REWRITE-SECTION REQUEST PAYLOAD] | ${new Date().toLocaleTimeString()}`);
+    console.log('═'.repeat(85));
+    console.log(`👤 User Query / Instruction: "${promptText || actionGuide}"`);
+    console.log(`📌 Highlighted Selection   : ${selectedText ? `"${selectedText.trim()}"` : 'None (No text highlighted)'}`);
+    console.log(`🎯 Action Preset           : "${action}"`);
+    console.log(`📄 Resume Injected         : ${cleanResume ? `✅ YES (${cleanResume.length} characters)` : '❌ NO'}`);
+    console.log('\n✉️ [FULL USER PROMPT SENT TO LLM]:');
+    console.log(userPrompt.trim());
+    console.log('\n' + '═'.repeat(85) + '\n');
 
     try {
         // Call AI with authenticated plan and isAssistant flag = true
@@ -1265,12 +1311,17 @@ Generate response JSON with "replyText" and "suggestedSnippet":
         const jsonText = extractJsonFromText(rawText);
         const parsed = JSON.parse(jsonText);
 
+        const targetTextResult = (parsed.targetText && parsed.targetText !== "null")
+            ? parsed.targetText.trim()
+            : (selectedText ? selectedText.trim() : null);
+
         const snippetResult = (isGeneralInfoOrJobQuery || !parsed.suggestedSnippet || parsed.suggestedSnippet === "null")
             ? null
-            : parsed.suggestedSnippet;
+            : parsed.suggestedSnippet.trim();
 
         return {
             replyText: parsed.replyText || "Here is information to assist you.",
+            targetText: snippetResult ? targetTextResult : null,
             suggestedSnippet: snippetResult
         };
     } catch (err) {
@@ -1278,6 +1329,7 @@ Generate response JSON with "replyText" and "suggestedSnippet":
             replyText: isAskingAboutProject
                 ? "KIVI-AI is an end-to-end AI platform featuring AI Mock Interviews, detailed technical reports, and an automated ATS Resume Studio with live 1:1 A4 PDF export!"
                 : "Here is information to assist you.",
+            targetText: selectedText ? selectedText.trim() : null,
             suggestedSnippet: (isGeneralInfoOrJobQuery || !selectedText) ? null : selectedText.trim()
         };
     }

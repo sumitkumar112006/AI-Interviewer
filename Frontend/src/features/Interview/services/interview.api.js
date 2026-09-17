@@ -143,17 +143,29 @@ export const generateInterviewReport = async ({ jobDescription, selfDescription,
  * If not, triggers async AI generation job, polls until complete, and returns the updated report.
  */
 export const generateResumePdf = async (interviewReportId, options = {}, onProgress = null) => {
-    const response = await api.post(`/api/interview/resume/pdf/${interviewReportId}`, options)
+    try {
+        const response = await api.post(`/api/interview/resume/pdf/${interviewReportId}`, options)
 
-    if (response.data?.jobId) {
-        const result = await pollJobUntilComplete(response.data.jobId, onProgress);
-        return {
-            ...response.data,
-            interviewReport: result
-        };
+        if (response.data?.jobId) {
+            const result = await pollJobUntilComplete(response.data.jobId, onProgress);
+            return {
+                ...response.data,
+                interviewReport: result
+            };
+        }
+
+        return response.data
+    } catch (err) {
+        // If a generation job is already running (409 Conflict), seamlessly poll the existing job
+        if (err?.response?.status === 409 && err?.response?.data?.jobId) {
+            const result = await pollJobUntilComplete(err.response.data.jobId, onProgress);
+            return {
+                ...err.response.data,
+                interviewReport: result
+            };
+        }
+        throw err;
     }
-
-    return response.data
 }
 
 export async function deleteReportById(interviewReportId) {
@@ -161,7 +173,17 @@ export async function deleteReportById(interviewReportId) {
     return response.data
 }
 
-export async function updateResumeHtml(interviewReportId, { generatedResumeHtml }) {
+export async function updateResumeHtml(interviewReportId, payload) {
+    const generatedResumeHtml = typeof payload === 'string'
+        ? payload
+        : (payload?.generatedResumeHtml ?? '');
+
+    const clean = (generatedResumeHtml || '').replace(/<[^>]*>/g, '').trim();
+    if (/^[a-f0-9]{24}$/i.test(clean) || clean.length < 30) {
+        console.warn('[updateResumeHtml] Attempted to send invalid or ObjectId resume HTML. Request blocked.', { interviewReportId, clean });
+        throw new Error('Invalid resume content: cannot save empty text or system IDs.');
+    }
+
     const response = await api.put(`/api/interview/resume/${interviewReportId}`, { generatedResumeHtml })
     return response.data
 }
@@ -171,14 +193,22 @@ export async function updateInterviewProgress(interviewId, { technicalQuestions,
     return response.data
 }
 
-export async function rewriteResumeSection({ selectedText, instruction, action, message, resourceId, onProgress }) {
-    const response = await api.post(`/api/interview/resume/rewrite-section`, { selectedText, instruction, action, message, resourceId })
+export async function rewriteResumeSection({ selectedText, instruction, action, message, resourceId, currentResumeHtml, onProgress }) {
+    const response = await api.post(`/api/interview/resume/rewrite-section`, {
+        selectedText,
+        instruction,
+        action,
+        message,
+        resourceId,
+        currentResumeHtml
+    })
 
     if (response.data?.jobId) {
         const result = await pollJobUntilComplete(response.data.jobId, onProgress);
         return {
             ...response.data,
             replyText: result.replyText,
+            targetText: result.targetText || selectedText || null,
             suggestedSnippet: result.suggestedSnippet,
             rewrittenText: result.suggestedSnippet
         };
@@ -193,6 +223,8 @@ export async function streamAssistantChatApi({
     selectedText = '',
     action = 'enhance',
     instruction = '',
+    activeTab = '',
+    currentRoute = '',
     onToken = () => {},
     onDone = () => {},
     onError = () => {},
@@ -215,6 +247,8 @@ export async function streamAssistantChatApi({
                 selectedText,
                 action,
                 instruction,
+                activeTab,
+                currentRoute,
                 stream: true
             }),
             signal
@@ -276,6 +310,7 @@ export async function streamAssistantChatApi({
 
         const finalResult = {
             replyText: doneData?.reply || accumulatedText,
+            targetText: doneData?.targetText || selectedText || null,
             suggestedSnippet: doneData?.suggestedSnippet || null,
             resources: doneData?.resources || [],
             profile: doneData?.profile || null
@@ -307,3 +342,23 @@ export async function getAiModelInfo() {
         }
     }
 }
+
+export async function getAssistantHistoryApi() {
+    try {
+        const response = await api.get('/api/assistant/history');
+        return response.data;
+    } catch (err) {
+        console.warn('Failed to fetch assistant history:', err);
+        return { history: [] };
+    }
+}
+
+export async function clearAssistantHistoryApi() {
+    try {
+        const response = await api.delete('/api/assistant/history');
+        return response.data;
+    } catch (err) {
+        console.warn('Failed to clear assistant history:', err);
+        return { message: 'Failed to clear history' };
+    }
+}
