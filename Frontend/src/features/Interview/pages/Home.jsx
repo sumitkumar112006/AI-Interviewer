@@ -434,7 +434,6 @@ const Home = () => {
                         <div className="stat-card__info">
                             <span className="stat-card__label">Total Reports</span>
                             <span className="stat-card__value">{totalReports}</span>
-                            <span className="stat-card__sub">Reports Generated</span>
                         </div>
                     </div>
 
@@ -448,7 +447,6 @@ const Home = () => {
                         <div className="stat-card__info">
                             <span className="stat-card__label">Avg. Match Score</span>
                             <span className="stat-card__value stat-card__value--accent">{avgMatchScore > 0 ? `${avgMatchScore}%` : 'N/A'}</span>
-                            <span className="stat-card__sub">Keep improving!</span>
                         </div>
                     </div>
 
@@ -464,19 +462,13 @@ const Home = () => {
                         <div className="stat-card__info">
                             <span className="stat-card__label">Resumes Added</span>
                             <span className="stat-card__value">{resumesAdded}</span>
-                            <span className="stat-card__sub">Your documents</span>
                         </div>
                     </div>
                 </div>
 
                 {/* Workspace Header */}
                 <div className="workspace-header">
-                    <p className="eyebrow">Assessment Workspace</p>
-                    <h1>Prepare your <span className="h1-accent">interview inputs</span></h1>
-                    <p className="intro">
-                        Add the role details, upload your resume, and include a short self summary for sharper
-                        interview guidance.
-                    </p>
+                    <h1>Prepare Interview Inputs</h1>
                 </div>
 
                 {isReportsBlocked && (
@@ -494,22 +486,15 @@ const Home = () => {
 
                     {/* LEFT: Job Description */}
                     <div className="col-left panel">
-                        <div className="section-heading split">
-                            <div>
-                                <p className="section-kicker">Role Details</p>
-                                <h3>Job Description</h3>
-                            </div>
-                            <span className="tag">Primary Input</span>
+                        <div className="section-heading">
+                            <h3>Job Description</h3>
                         </div>
-                        <p className="helper-copy">
-                            Paste the responsibilities, qualifications, and key expectations for the role.
-                        </p>
                         <textarea
                             value={formData.jobDescription}
                             onChange={handleInputChange}
                             name="jobDescription"
                             id="jobDescription"
-                            placeholder='Paste the detailed job description here. Include responsibilities, qualifications, tools, and company expectations...'
+                            placeholder='Paste the job description (responsibilities, qualifications, and requirements)...'
                         />
                         <div className="field-footer">
                             <span>
@@ -518,11 +503,11 @@ const Home = () => {
                                     <line x1="12" y1="8" x2="12" y2="12" />
                                     <line x1="12" y1="16" x2="12.01" y2="16" />
                                 </svg>
-                                Minimum 200 words recommended
+                                Recommended: 200+ words
                             </span>
                             {isJobDescReady
                                 ? <span className="field-footer__ready">
-                                    Ready for processing
+                                    Ready
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{marginLeft: '4px'}}>
                                         <polyline points="20 6 9 17 4 12" />
                                     </svg>
@@ -536,10 +521,8 @@ const Home = () => {
                     <div className="col-mid">
                         <div className="panel input-group file-group">
                             <div className="section-heading">
-                                <p className="section-kicker">Candidate Profile</p>
                                 <h3>Upload Resume</h3>
                             </div>
-                            <p className='highlight'>Use resume and self description together for better results.</p>
                             <label
                                 className={`file-label ${isDragOver ? 'file-label--drag' : ''}`}
                                 htmlFor="resume"
@@ -572,10 +555,7 @@ const Home = () => {
 
                         <div className="panel input-group textarea-group">
                             <div className="section-heading split">
-                                <div>
-                                    <p className="section-kicker">Candidate Profile</p>
-                                    <label htmlFor="selfDescription">Self Description</label>
-                                </div>
+                                <label htmlFor="selfDescription">Self Description</label>
                                 <button
                                     type="button"
                                     onClick={() => setShowPresetInput(!showPresetInput)}

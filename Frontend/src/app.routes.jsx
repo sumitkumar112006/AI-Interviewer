@@ -15,6 +15,7 @@ import PrivacyPolicy from "./features/Footer/pages/PrivacyPolicy";
 import TermsOfService from "./features/Footer/pages/TermsOfService";
 import ContactUs from "./features/Footer/pages/ContactUs";
 import AboutUs from "./features/Footer/pages/AboutUs";
+import HelpSupport from "./features/HelpSupport/pages/HelpSupport";
 import AdminProtected from "./features/Admin/components/AdminProtected";
 import AdminDashboard from "./features/Admin/pages/AdminDashboard";
 import AdminLogin from "./features/Admin/pages/AdminLogin";
@@ -38,6 +39,7 @@ export const router = createBrowserRouter([
     { path: "/pricing", element: <AdaptiveRoute Component={PricingPage} /> },
     { path: "/about-us", element: <AdaptiveRoute Component={AboutUs} /> },
     { path: "/contact-us", element: <AdaptiveRoute Component={ContactUs} /> },
+    { path: "/help-support", element: <AdaptiveRoute Component={HelpSupport} /> },
     { path: "/privacy-policy", element: <AdaptiveRoute Component={PrivacyPolicy} /> },
     { path: "/terms-of-service", element: <AdaptiveRoute Component={TermsOfService} /> },
 

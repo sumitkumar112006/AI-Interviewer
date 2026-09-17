@@ -403,7 +403,6 @@ const AllReports = () => {
                                 <div className="ar-skill-row" key={i}>
                                     <div className="ar-skill-info">
                                         <span className="ar-skill-name">{sk.name}</span>
-                                        <span className="ar-skill-cat">{sk.category}</span>
                                     </div>
                                     <div className="ar-skill-bar-wrap">
                                         <div className="ar-skill-bar" style={{ width: `${sk.avg}%`, background: getScoreColor(sk.avg) }} />
@@ -415,22 +414,30 @@ const AllReports = () => {
                     ) : (
                         /* Graph Chart View */
                         <div className="ar-skill-graph-wrap">
+                            <div className="ar-graph-y-grid">
+                                <span className="y-mark">100%</span>
+                                <span className="y-mark">75%</span>
+                                <span className="y-mark">50%</span>
+                                <span className="y-mark">25%</span>
+                            </div>
                             <div className="ar-graph-bars">
                                 {skillPerf.map((sk, i) => {
-                                    const maxCount = Math.max(...skillPerf.map(s => s.count)) || 1
-                                    const heightPct = Math.max(25, Math.round((sk.count / maxCount) * 100))
-                                    const colors = ['#6366f1', '#22c55e', '#f59e0b', '#06b6d4', '#a855f7', '#3b82f6', '#ec4899']
-                                    const color = colors[i % colors.length]
+                                    const heightPct = Math.min(100, Math.max(15, sk.avg))
+                                    const color = getScoreColor(sk.avg)
                                     return (
-                                        <div className="ar-graph-col" key={i}>
-                                            <div className="ar-graph-val">{sk.avg}%</div>
+                                        <div className="ar-graph-col" key={i} title={`${sk.name}: ${sk.avg}% Match Score (${sk.count} assessments)`}>
+                                            <div className="ar-graph-val" style={{ color }}>{sk.avg}%</div>
                                             <div className="ar-graph-bar-outer">
                                                 <div
                                                     className="ar-graph-bar-inner"
-                                                    style={{ height: `${heightPct}%`, background: `linear-gradient(180deg, ${color}, ${color}88)` }}
+                                                    style={{ 
+                                                        height: `${heightPct}%`, 
+                                                        background: `linear-gradient(180deg, ${color} 0%, ${color}99 100%)`,
+                                                        boxShadow: `0 0 12px ${color}33`
+                                                    }}
                                                 />
                                             </div>
-                                            <span className="ar-graph-label">{sk.name}</span>
+                                            <span className="ar-graph-label" title={sk.name}>{sk.name}</span>
                                         </div>
                                     )
                                 })}

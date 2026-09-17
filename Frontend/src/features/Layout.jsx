@@ -138,6 +138,9 @@ const Layout = ({ children }) => {
   } else if (path === "/contact-us") {
     activeMenu = "contact-us";
     breadcrumb = "Support > Contact Us";
+  } else if (path === "/help-support") {
+    activeMenu = "help-support";
+    breadcrumb = "Support > Help & Support Center";
   } else if (path === "/about-us") {
     activeMenu = "about-us";
     breadcrumb = "Company > About KIVI-AI";
@@ -211,13 +214,6 @@ const Layout = ({ children }) => {
               </svg>
               <span>My Activity</span>
             </Link>
-
-            <Link to="/coming-soon?feature=saved-items" className={`sidebar-link ${activeMenu === "saved-items" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
-              <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-              </svg>
-              <span>Saved Items</span>
-            </Link>
           </nav>
         </div>
 
@@ -247,7 +243,7 @@ const Layout = ({ children }) => {
               <span>Preferences</span>
             </Link>
 
-            <Link to="/coming-soon?feature=help-support" className={`sidebar-link ${activeMenu === "help-support" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
+            <Link to="/help-support" className={`sidebar-link ${activeMenu === "help-support" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
               <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />

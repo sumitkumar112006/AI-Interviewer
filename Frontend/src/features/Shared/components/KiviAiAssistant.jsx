@@ -161,12 +161,21 @@ export function KiviAiAssistant() {
             const text = sel ? sel.toString().trim() : '';
 
             if (text && text.length > 2) {
-                // Check if selection is inside a TipTap editor or document
-                const editorEl = document.querySelector('.tiptap-prose[contenteditable="true"]') || document.querySelector('[contenteditable="true"]');
-                if (editorEl && sel.rangeCount > 0 && editorEl.contains(sel.anchorNode)) {
+                // Check if selection is strictly inside an active TipTap editor or document contenteditable container
+                const editorEl = document.querySelector('.tiptap-prose[contenteditable="true"]') || 
+                                 document.querySelector('.ProseMirror[contenteditable="true"]') ||
+                                 document.querySelector('.resume-editor-pane [contenteditable="true"]') ||
+                                 document.querySelector('.cover-letter-editor [contenteditable="true"]');
+                const isInsideEditor = Boolean(editorEl && sel.rangeCount > 0 && editorEl.contains(sel.anchorNode));
+
+                if (isInsideEditor) {
                     savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+                    setSelectedSnippet(text);
+                } else {
+                    // Strict containment: Never capture selections from roadmap, reports, chat, or external UI
+                    setSelectedSnippet('');
+                    savedRangeRef.current = null;
                 }
-                setSelectedSnippet(text);
             } else {
                 // Realtime clear when text is unselected
                 setSelectedSnippet('');
@@ -207,12 +216,16 @@ export function KiviAiAssistant() {
 
         const userMsgText = messageToSend.trim() || (actionPreset ? `Apply preset: ${actionPreset}` : 'Refine selection');
         const activeSnippet = selectedSnippet;
+
+        // Clear active selection state immediately after capturing so subsequent queries don't reuse it
+        setSelectedSnippet('');
+        savedRangeRef.current = null;
         
         const userMsg = {
             id: Date.now(),
             sender: 'user',
             text: userMsgText,
-            highlightedContext: activeSnippet ? activeSnippet : null
+            highlightedContext: (actionPreset || activeSnippet) ? activeSnippet : null
         };
 
         const aiMsgId = Date.now() + 1;
@@ -236,8 +249,8 @@ export function KiviAiAssistant() {
             await streamAssistantChatApi({
                 reportId: currentReportId,
                 message: messageToSend,
-                selectedText: activeSnippet,
-                action: actionPreset || 'enhance',
+                selectedText: activeSnippet || '',
+                action: actionPreset || '',
                 instruction: messageToSend,
                 signal: abortControllerRef.current.signal,
                 onToken: (token, accumulated) => {
@@ -518,13 +531,21 @@ export function KiviAiAssistant() {
                                         </div>
                                     )}
                                     {msg.sender === 'ai' ? (
-                                        <div className="msg-content-wrapper">
-                                            <div
-                                                className="msg-markdown-content"
-                                                dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.text) }}
-                                            />
-                                            {msg.isStreaming && <span className="streaming-cursor" />}
-                                        </div>
+                                        msg.isStreaming && !msg.text ? (
+                                            <div className="typing-dots-wrapper" style={{ display: 'inline-flex', gap: '4px', alignItems: 'center', padding: '4px 6px' }}>
+                                                <span className="dot"></span>
+                                                <span className="dot"></span>
+                                                <span className="dot"></span>
+                                            </div>
+                                        ) : (
+                                            <div className="msg-content-wrapper">
+                                                <div
+                                                    className="msg-markdown-content"
+                                                    dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.text) }}
+                                                />
+                                                {msg.isStreaming && <span className="streaming-cursor" />}
+                                            </div>
+                                        )
                                     ) : (
                                         <p className="msg-text">
                                             {msg.text}
@@ -568,16 +589,6 @@ export function KiviAiAssistant() {
                                 </div>
                             </div>
                         ))}
-                        {chatLoading && !chatMessages.some(m => m.isStreaming && m.text) && (
-                            <div className="chat-bubble-row ai">
-                                <img src="/Logo.png" alt="KIVI" className="chat-avatar-img" />
-                                <div className="chat-bubble ai typing">
-                                    <span className="dot"></span>
-                                    <span className="dot"></span>
-                                    <span className="dot"></span>
-                                </div>
-                            </div>
-                        )}
                         <div ref={chatEndRef} />
                     </div>
 

@@ -81,6 +81,7 @@ const subscriptionRouter = require('./routes/subscription.route');
 const invoiceRouter = require('./routes/invoice.route');
 const jobRouter = require('./routes/job.route');
 const assistantRouter = require('./routes/assistant.route');
+const speechRouter = require('./routes/speech.route');
 
 // Mount routes
 app.use("/api/auth", authRouter);
@@ -88,6 +89,7 @@ app.use('/api/interview', interviewRouter);
 app.use('/api/cover-letter', coverLetterRouter);
 app.use('/api/jobs', jobRouter);
 app.use('/api/assistant', assistantRouter);
+app.use('/api/speech', speechRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/notifications', notificationRouter);
 app.use('/api/orders', orderRouter);

@@ -96,7 +96,7 @@ const ASSISTANT_MODEL_TIERS = {
             gemini: 1024,
             openrouter: 1024,
         },
-        temperature: 0.5,
+        temperature: 0.2, // Low temp for grounded, factual, zero-hallucination answers
     },
     pro: {
         groq: "openai/gpt-oss-120b",
@@ -107,7 +107,7 @@ const ASSISTANT_MODEL_TIERS = {
             gemini: 2048,
             openrouter: 2048,
         },
-        temperature: 0.6,
+        temperature: 0.2,
     },
     premium: {
         groq: "openai/gpt-oss-120b",
@@ -118,7 +118,7 @@ const ASSISTANT_MODEL_TIERS = {
             gemini: 4096,
             openrouter: 4096,
         },
-        temperature: 0.6,
+        temperature: 0.2,
     },
 };
 

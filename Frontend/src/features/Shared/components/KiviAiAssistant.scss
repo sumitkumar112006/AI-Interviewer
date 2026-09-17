@@ -509,11 +509,12 @@
             }
         }
 
-        &.typing {
-            display: flex;
-            gap: 0.3rem;
+        &.typing,
+        .typing-dots-wrapper {
+            display: inline-flex;
+            gap: 0.35rem;
             align-items: center;
-            padding: 0.6rem 0.9rem;
+            padding: 0.2rem 0.4rem;
 
             .dot {
                 width: 6px;

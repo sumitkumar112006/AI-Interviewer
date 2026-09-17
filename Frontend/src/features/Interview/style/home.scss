@@ -128,10 +128,7 @@
     letter-spacing: -0.02em;
 
     &--accent {
-        background: linear-gradient(90deg, #0284c7 0%, #10b981 100%);
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
+        color: #10b981;
     }
 }
 
