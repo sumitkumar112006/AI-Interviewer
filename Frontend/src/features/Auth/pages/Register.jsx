@@ -260,6 +260,19 @@ const Register = () => {
                                 </button>
                             </form>
 
+                            {/* Data Protection & Privacy Consent */}
+                            <div className="auth-privacy-consent-box">
+                                <p className="auth-privacy-consent-text">
+                                    By creating an account or continuing with Google, you agree to KIVI-AI's{' '}
+                                    <Link to="/terms-of-service" className="auth-consent-link">Terms of Service</Link>{' '}
+                                    and{' '}
+                                    <Link to="/privacy-policy" className="auth-consent-link">Privacy Policy</Link>.
+                                </p>
+                                <p className="auth-privacy-guarantee">
+                                    🛡️ <strong>Zero Model Training:</strong> Your resumes and interview audio are encrypted (AES-256) and never used to train public AI models or shared with recruiters.
+                                </p>
+                            </div>
+
                             <p className="auth-switch-text">
                                 Already have an account?
                                 <Link to="/login">Sign in</Link>

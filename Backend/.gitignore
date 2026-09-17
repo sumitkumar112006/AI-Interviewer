@@ -1,1 +1,14 @@
-.vercel
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Dependencies & Build
+node_modules/
+.cache/
+.vercel/
+
+# Logs
+*.log
+check-all-keys.js

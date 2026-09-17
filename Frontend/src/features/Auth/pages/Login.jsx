@@ -273,6 +273,16 @@ const Login = () => {
                                 </button>
                             </form>
 
+                            {/* Data Protection & Privacy Consent */}
+                            <div className="auth-privacy-consent-box">
+                                <p className="auth-privacy-consent-text">
+                                    Protected by KIVI-AI Data Governance. View our{' '}
+                                    <Link to="/privacy-policy" className="auth-consent-link">Privacy Policy</Link>{' '}
+                                    &amp;{' '}
+                                    <Link to="/terms-of-service" className="auth-consent-link">Terms</Link>.
+                                </p>
+                            </div>
+
                             <p className="auth-switch-text">
                                 Don't have an account?
                                 <Link to="/register">Create one</Link>

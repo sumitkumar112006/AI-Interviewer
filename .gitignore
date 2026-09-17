@@ -1,20 +1,33 @@
+# Environment Variables & Secrets
 .env
 .env.*
 !.env.example
 !.env.*.example
+
+# Dependencies
 node_modules/
 Backend/node_modules/
 Frontend/node_modules/
+
+# Build & Runtime Caches
 .cache/
 Backend/.cache/
 Frontend/.cache/
-DEPLOYMENT_GUIDE.md
-.vercel
-request_handling_architecture.md
-.agents
-Backend/test-groq-keys.js
-Backend/test-openrouter-keys.js
-Backend/test-anthropic-keys.js
-Backend/test-all-api-keys.js
-Resume_Generator_Obsidian_Vault
-Chat_History.md
+Frontend/dist/
+Backend/dist/
+.vercel/
+strix_runs/
+.agents/
+
+# Logs & Temporary Scratch Files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+response.json
+test.txt
+test_apply_button.txt
+*.tmp
+
+# Local Workspace & Obsidian Notes
+Resume_Generator_Obsidian_Vault/

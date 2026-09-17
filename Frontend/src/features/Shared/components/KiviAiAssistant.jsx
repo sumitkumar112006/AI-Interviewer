@@ -1,8 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { useAuth } from '../../Auth/hooks/useAuth';
-import { streamAssistantChatApi, rewriteResumeSection } from '../../Interview/services/interview.api';
+import { 
+    streamAssistantChatApi, 
+    rewriteResumeSection,
+    getAssistantHistoryApi,
+    clearAssistantHistoryApi 
+} from '../../Interview/services/interview.api';
 import './KiviAiAssistant.scss';
 
 // Configure marked options
@@ -22,10 +28,33 @@ const renderMarkdown = (content) => {
 const DEFAULT_WIDTH = 410;
 const DEFAULT_HEIGHT = 580;
 
+const DEFAULT_WELCOME_MSG = {
+    id: 1,
+    sender: 'ai',
+    text: '👋 Hi! I am KIVI, your AI Assistant. Highlight any text in your Resume or Cover Letter editor, then send me instructions or click quick presets to improve it!',
+    isStreaming: false
+};
+
+const getChatStorageKey = (uid) => uid ? `kivi_chat_history_${uid}` : 'kivi_chat_history_guest';
+
 export function KiviAiAssistant() {
     const { user, fetchUsage } = useAuth();
+    const location = useLocation();
+    const navigate = useNavigate();
+
+    const isResumePage = location.pathname.startsWith('/resume/');
+    const isCoverLetterPage = location.pathname.startsWith('/cover-letter/');
+    const isEditorPage = isResumePage || isCoverLetterPage;
+    const docTypeLabel = isCoverLetterPage ? 'Cover Letter' : 'Resume';
+
+    const currentReportId = useMemo(() => {
+        const m = location.pathname.match(/\/(?:interview|resume|cover-letter)\/([a-f0-9]{24})/i);
+        return m ? m[1] : null;
+    }, [location.pathname]);
+
     const [isKiviOpen, setIsKiviOpen] = useState(false);
     const [showIdleNudge, setShowIdleNudge] = useState(false);
+    const [saveToast, setSaveToast] = useState(false);
     const idleTimerRef = useRef(null);
     const savedRangeRef = useRef(null);
     const abortControllerRef = useRef(null);
@@ -49,14 +78,32 @@ export function KiviAiAssistant() {
     }
 
     const [selectedSnippet, setSelectedSnippet] = useState('');
-    const [chatMessages, setChatMessages] = useState([
-        {
-            id: 1,
-            sender: 'ai',
-            text: '👋 Hi! I am KIVI, your AI Assistant. Highlight any text in your Resume or Cover Letter editor, then send me instructions or click quick presets to improve it!',
-            isStreaming: false
+    const [appliedMsgIds, setAppliedMsgIds] = useState(new Set());
+    const [copiedMsgId, setCopiedMsgId] = useState(null);
+
+    const handleCopySnippet = (msgId, snippet) => {
+        if (!snippet) return;
+        navigator.clipboard.writeText(snippet);
+        setCopiedMsgId(msgId);
+        setTimeout(() => setCopiedMsgId(null), 2500);
+    };
+
+    // Chat messages initialized from persistent local storage
+    const [chatMessages, setChatMessages] = useState(() => {
+        try {
+            const key = getChatStorageKey(user?._id);
+            const saved = localStorage.getItem(key);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    return parsed;
+                }
+            }
+        } catch (e) {
+            console.warn('Error reading stored chat messages:', e);
         }
-    ]);
+        return [DEFAULT_WELCOME_MSG];
+    });
     const [chatInput, setChatInput] = useState('');
     const [chatLoading, setChatLoading] = useState(false);
     const chatEndRef = useRef(null);
@@ -64,6 +111,120 @@ export function KiviAiAssistant() {
     const scrollToBottom = () => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
+
+    // Synchronize chat with user change or load remote history if local is empty
+    useEffect(() => {
+        try {
+            const key = getChatStorageKey(user?._id);
+            const saved = localStorage.getItem(key);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    setChatMessages(parsed);
+                    return;
+                }
+            }
+        } catch (e) {}
+
+        // Fallback: If logged in and local storage is empty, check backend session cache
+        if (user?._id) {
+            getAssistantHistoryApi().then(res => {
+                if (res?.history && Array.isArray(res.history) && res.history.length > 0) {
+                    const formatted = res.history.map((turn, idx) => ({
+                        id: Date.now() - (res.history.length - idx) * 1000,
+                        sender: turn.role === 'assistant' ? 'ai' : 'user',
+                        text: turn.content,
+                        isStreaming: false
+                    }));
+                    setChatMessages(prev => (prev.length <= 1 ? formatted : prev));
+                }
+            }).catch(() => {});
+        }
+    }, [user?._id]);
+
+    // Automatically persist chat messages into localStorage whenever updated and not streaming
+    useEffect(() => {
+        const isStreamingActive = chatMessages.some(m => m.isStreaming);
+        if (isStreamingActive) return;
+
+        try {
+            const key = getChatStorageKey(user?._id);
+            const toSave = chatMessages.slice(-50).map(m => ({
+                id: m.id,
+                sender: m.sender,
+                text: m.text,
+                highlightedContext: m.highlightedContext || null,
+                suggestedSnippet: m.suggestedSnippet || null,
+                targetText: m.targetText || null,
+                resources: m.resources || [],
+                isStreaming: false
+            }));
+            localStorage.setItem(key, JSON.stringify(toSave));
+        } catch (e) {
+            console.warn('Error saving chat messages to localStorage:', e);
+        }
+    }, [chatMessages, user?._id]);
+
+    // Clear entire chat session both locally and on the server
+    const handleClearChatHistory = async () => {
+        if (!window.confirm("Clear this chat history? This will start a fresh session.")) return;
+
+        try {
+            const key = getChatStorageKey(user?._id);
+            localStorage.removeItem(key);
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+            await clearAssistantHistoryApi();
+        } catch (e) {
+            console.warn('Error clearing backend history:', e);
+        }
+
+        setChatMessages([
+            {
+                id: Date.now(),
+                sender: 'ai',
+                text: '👋 Chat history cleared. How can I assist you with your resume or cover letter today?',
+                isStreaming: false
+            }
+        ]);
+        setAppliedMsgIds(new Set());
+    };
+
+    // Save and export current chat history to a clean markdown document
+    const handleExportChatHistory = () => {
+        try {
+            const key = getChatStorageKey(user?._id);
+            localStorage.setItem(key, JSON.stringify(chatMessages));
+
+            const conversationText = chatMessages.map(m => {
+                const author = m.sender === 'ai' ? '🤖 KIVI AI Assistant' : '👤 User';
+                let block = `### ${author}\n\n${m.text || ''}`;
+                if (m.highlightedContext) {
+                    block += `\n\n> **Context:** "${m.highlightedContext}"`;
+                }
+                if (m.suggestedSnippet) {
+                    block += `\n\n**Suggested Snippet:**\n\`\`\`text\n${m.suggestedSnippet}\n\`\`\``;
+                }
+                return block;
+            }).join('\n\n---\n\n');
+
+            const header = `# KIVI AI Assistant Chat History\n**Date:** ${new Date().toLocaleString()}\n**User:** ${user?.name || user?.email || 'User'}\n\n---\n\n`;
+            const blob = new Blob([header + conversationText], { type: 'text/markdown;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `kivi-chat-history-${new Date().toISOString().slice(0, 10)}.md`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            setSaveToast(true);
+            setTimeout(() => setSaveToast(false), 3000);
+        } catch (err) {
+            console.error('Failed to export chat history:', err);
+        }
+    };
+
 
     useEffect(() => {
         if (isKiviOpen) {
@@ -150,7 +311,13 @@ export function KiviAiAssistant() {
     // Selection Tracking across main document and TipTap editor
     useEffect(() => {
         const handleSelectionChange = (e) => {
-            // Ignore mouse clicks/events originating from inside the KIVI AI drawer itself
+            // Ignore if active element or event target is inside KIVI drawer or floating trigger
+            const activeEl = document.activeElement;
+            if (activeEl && typeof activeEl.closest === 'function' && 
+                (activeEl.closest('.ai-chat-copilot-floating-drawer') || activeEl.closest('.kivi-floating-trigger'))) {
+                return;
+            }
+
             const targetEl = e?.target && e.target.nodeType === 1 ? e.target : (e?.target?.parentElement || null);
             if (targetEl && typeof targetEl.closest === 'function' && 
                 (targetEl.closest('.ai-chat-copilot-floating-drawer') || targetEl.closest('.kivi-floating-trigger'))) {
@@ -160,27 +327,22 @@ export function KiviAiAssistant() {
             const sel = window.getSelection();
             const text = sel ? sel.toString().trim() : '';
 
-            if (text && text.length > 2) {
-                // Check if selection is strictly inside an active TipTap editor or document contenteditable container
-                const editorEl = document.querySelector('.tiptap-prose[contenteditable="true"]') || 
-                                 document.querySelector('.ProseMirror[contenteditable="true"]') ||
-                                 document.querySelector('.resume-editor-pane [contenteditable="true"]') ||
-                                 document.querySelector('.cover-letter-editor [contenteditable="true"]');
-                const isInsideEditor = Boolean(editorEl && sel.rangeCount > 0 && editorEl.contains(sel.anchorNode));
+            // Check if selection is strictly inside an active TipTap editor or document contenteditable container
+            const editorEl = document.querySelector('.tiptap-prose[contenteditable="true"]') || 
+                             document.querySelector('.ProseMirror[contenteditable="true"]') ||
+                             document.querySelector('.resume-editor-pane [contenteditable="true"]') ||
+                             document.querySelector('.cover-letter-editor [contenteditable="true"]');
+            const isInsideEditor = Boolean(editorEl && sel && sel.rangeCount > 0 && editorEl.contains(sel.anchorNode));
 
-                if (isInsideEditor) {
-                    savedRangeRef.current = sel.getRangeAt(0).cloneRange();
-                    setSelectedSnippet(text);
-                } else {
-                    // Strict containment: Never capture selections from roadmap, reports, chat, or external UI
-                    setSelectedSnippet('');
-                    savedRangeRef.current = null;
-                }
-            } else {
-                // Realtime clear when text is unselected
+            if (isInsideEditor && text && text.length > 2) {
+                savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+                setSelectedSnippet(text);
+            } else if (isInsideEditor && (!text || text.length === 0)) {
+                // Realtime clear ONLY when user explicitly deselects inside the editor
                 setSelectedSnippet('');
                 savedRangeRef.current = null;
             }
+            // If selection is outside the editor (e.g. clicking anywhere else), keep saved context intact!
         };
 
         document.addEventListener('mouseup', handleSelectionChange);
@@ -217,9 +379,8 @@ export function KiviAiAssistant() {
         const userMsgText = messageToSend.trim() || (actionPreset ? `Apply preset: ${actionPreset}` : 'Refine selection');
         const activeSnippet = selectedSnippet;
 
-        // Clear active selection state immediately after capturing so subsequent queries don't reuse it
+        // Clear active selection state from UI after capturing so subsequent queries don't reuse it
         setSelectedSnippet('');
-        savedRangeRef.current = null;
         
         const userMsg = {
             id: Date.now(),
@@ -235,6 +396,7 @@ export function KiviAiAssistant() {
             text: '',
             isStreaming: true,
             suggestedSnippet: null,
+            targetText: activeSnippet || null,
             resources: []
         };
 
@@ -266,7 +428,8 @@ export function KiviAiAssistant() {
                         if (msg.id === aiMsgId) {
                             return {
                                 ...msg,
-                                text: data.replyText || msg.text || 'Here is information to assist you.',
+                                text: data.replyText || data.reply || msg.text || 'I could not find specific details for that query in your active resume. Please verify your resume content.',
+                                targetText: data.targetText || activeSnippet || msg.targetText || null,
                                 suggestedSnippet: data.suggestedSnippet || null,
                                 resources: data.resources || [],
                                 isStreaming: false
@@ -312,15 +475,45 @@ export function KiviAiAssistant() {
     };
 
     // Apply suggested snippet directly to TipTap editor or active document
-    const handleApplySuggestedSnippet = (snippet) => {
+    const handleApplySuggestedSnippet = (msgId, snippet, targetText = null) => {
         if (!snippet) return;
         if (fetchUsage) fetchUsage();
 
-        // 1. TipTap Prose Editor (Resume & Cover Letter)
+        // 1. Dispatch custom event for Resume.jsx or CoverLetter.jsx to handle in-place replacement via ref!
+        const evt = new CustomEvent('kivi-replace-text', {
+            detail: { targetText, snippet },
+            cancelable: true
+        });
+        window.dispatchEvent(evt);
+
+        // If handled by Resume or Cover Letter editor, mark applied and skip fallback!
+        if (evt.defaultPrevented) {
+            if (msgId) {
+                setAppliedMsgIds(prev => new Set(prev).add(msgId));
+            }
+            return;
+        }
+
+        // 2. TipTap Prose Editor fallback (only if event was not handled)
         const editorEl = document.querySelector('.tiptap-prose[contenteditable="true"]') || document.querySelector('[contenteditable="true"]');
 
         if (editorEl) {
             editorEl.focus();
+
+            // If targetText was identified, search and replace in editor innerText
+            if (targetText && targetText.trim()) {
+                const cleanTarget = targetText.trim();
+                const walker = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT, null, false);
+                let node;
+                while ((node = walker.nextNode())) {
+                    if (node.nodeValue && node.nodeValue.includes(cleanTarget)) {
+                        node.nodeValue = node.nodeValue.replace(cleanTarget, snippet);
+                        editorEl.dispatchEvent(new Event('input', { bubbles: true }));
+                        if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
+                        return;
+                    }
+                }
+            }
 
             // Try restoring saved selection range
             if (savedRangeRef.current) {
@@ -336,6 +529,7 @@ export function KiviAiAssistant() {
                     
                     // Dispatch input event for React state updates
                     editorEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
                     return;
                 } catch (err) {
                     console.warn("Could not restore saved selection range:", err);
@@ -351,6 +545,7 @@ export function KiviAiAssistant() {
                     const textNode = document.createTextNode(snippet);
                     range.insertNode(textNode);
                     editorEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
                     return;
                 }
             }
@@ -358,10 +553,11 @@ export function KiviAiAssistant() {
             // Fallback execCommand insertion
             document.execCommand('insertText', false, snippet);
             editorEl.dispatchEvent(new Event('input', { bubbles: true }));
+            if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
             return;
         }
 
-        // 2. Legacy iframe fallback
+        // 3. Legacy iframe fallback
         const iframe = document.querySelector('iframe.resume-frame') || document.querySelector('iframe');
         if (iframe) {
             const win = iframe.contentWindow;
@@ -378,6 +574,7 @@ export function KiviAiAssistant() {
                     if (doc.body) {
                         doc.body.dispatchEvent(new Event('input', { bubbles: true }));
                     }
+                    if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
                     return;
                 }
             }
@@ -386,6 +583,7 @@ export function KiviAiAssistant() {
                 if (doc.body) {
                     doc.body.dispatchEvent(new Event('input', { bubbles: true }));
                 }
+                if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
             }
         }
     };
@@ -471,6 +669,22 @@ export function KiviAiAssistant() {
                             <button
                                 type="button"
                                 className="drawer-header-btn"
+                                onClick={handleExportChatHistory}
+                                title="Save & Download Chat History (.md)"
+                            >
+                                💾
+                            </button>
+                            <button
+                                type="button"
+                                className="drawer-header-btn"
+                                onClick={handleClearChatHistory}
+                                title="Clear Chat History & Start Fresh"
+                            >
+                                🔄
+                            </button>
+                            <button
+                                type="button"
+                                className="drawer-header-btn"
                                 onClick={() => setIsMaximized(!isMaximized)}
                                 title={isMaximized ? "Restore default window size" : "Maximize / Expand window"}
                             >
@@ -491,6 +705,20 @@ export function KiviAiAssistant() {
                             </button>
                         </div>
                     </div>
+
+                    {saveToast && (
+                        <div style={{
+                            background: 'rgba(16, 185, 129, 0.15)',
+                            borderBottom: '1px solid rgba(16, 185, 129, 0.35)',
+                            color: '#34d399',
+                            padding: '0.45rem 0.8rem',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            textAlign: 'center'
+                        }}>
+                            💾 Chat saved to history & downloaded as Markdown!
+                        </div>
+                    )}
 
                     {isAiBlocked && (
                         <div style={{
@@ -552,18 +780,65 @@ export function KiviAiAssistant() {
                                         </p>
                                     )}
 
-                                    {/* Suggested Snippet Apply Card */}
+                                    {/* Suggested Snippet Apply Card / In-Place Diff View */}
                                     {msg.suggestedSnippet && typeof msg.suggestedSnippet === 'string' && msg.suggestedSnippet.trim() !== '' && msg.suggestedSnippet !== 'null' && (
                                         <div className="suggested-snippet-card">
-                                            <div className="snippet-body">"{msg.suggestedSnippet}"</div>
-                                            <button
-                                                type="button"
-                                                className="apply-snippet-btn"
-                                                onClick={() => handleApplySuggestedSnippet(msg.suggestedSnippet)}
-                                                disabled={isAiBlocked}
-                                            >
-                                                {isAiBlocked ? '❌ Disabled by Admin' : '✅ Apply to Document'}
-                                            </button>
+                                            {msg.targetText ? (
+                                                <div className="snippet-diff-container">
+                                                    <div className="snippet-diff-item diff-original">
+                                                        <span className="diff-tag original">Original Line</span>
+                                                        <p className="diff-text">{msg.targetText}</p>
+                                                    </div>
+                                                    <div className="snippet-diff-divider">⬇ Improved ATS Version</div>
+                                                    <div className="snippet-diff-item diff-replacement">
+                                                        <span className="diff-tag updated">Suggested Update</span>
+                                                        <p className="diff-text">{msg.suggestedSnippet}</p>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="snippet-body">"{msg.suggestedSnippet}"</div>
+                                            )}
+
+                                            <div className="snippet-actions-row">
+                                                {isEditorPage ? (
+                                                    <button
+                                                        type="button"
+                                                        className={`apply-snippet-btn ${appliedMsgIds.has(msg.id) ? 'btn-applied' : msg.targetText ? 'btn-replace-target' : 'btn-insert-target'}`}
+                                                        onClick={() => handleApplySuggestedSnippet(msg.id, msg.suggestedSnippet, msg.targetText || null)}
+                                                        disabled={isAiBlocked || appliedMsgIds.has(msg.id)}
+                                                    >
+                                                        {isAiBlocked
+                                                            ? '❌ Disabled by Admin'
+                                                            : appliedMsgIds.has(msg.id)
+                                                                ? `✅ Applied to ${docTypeLabel}`
+                                                                : msg.targetText
+                                                                    ? `⚡ Replace in ${docTypeLabel}`
+                                                                    : `➕ Insert into ${docTypeLabel}`
+                                                        }
+                                                    </button>
+                                                ) : (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            className={`copy-snippet-btn ${copiedMsgId === msg.id ? 'is-copied' : ''}`}
+                                                            onClick={() => handleCopySnippet(msg.id, msg.suggestedSnippet)}
+                                                            title="Copy to clipboard"
+                                                        >
+                                                            {copiedMsgId === msg.id ? '✅ Copied to Clipboard!' : '📋 Copy Snippet'}
+                                                        </button>
+                                                        {currentReportId && (
+                                                            <button
+                                                                type="button"
+                                                                className="open-editor-link-btn"
+                                                                onClick={() => navigate(`/resume/${currentReportId}`)}
+                                                                title="Open Resume Studio to edit and apply"
+                                                            >
+                                                                📄 Open Resume Studio ↗
+                                                            </button>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
 
@@ -571,19 +846,41 @@ export function KiviAiAssistant() {
                                     {Array.isArray(msg.resources) && msg.resources.length > 0 && (
                                         <div className="verified-resources-panel">
                                             <div className="resources-title">
-                                                <span>📚</span> Verified Study & Video Resources:
+                                                <span>📚</span> Verified Learning & Practice Resources:
                                             </div>
-                                            {msg.resources.map((res, i) => (
-                                                <a 
-                                                    key={i} 
-                                                    href={res.url} 
-                                                    target="_blank" 
-                                                    rel="noopener noreferrer" 
-                                                    className="resource-link-item"
-                                                >
-                                                    {res.type === 'video' ? '▶️' : '🔗'} {res.title}
-                                                </a>
-                                            ))}
+                                            <div className="resources-list-container">
+                                                {msg.resources.map((res, i) => {
+                                                    let icon = '🔗';
+                                                    let badge = 'RESOURCE';
+                                                    if (res.type === 'video') { icon = '▶️'; badge = 'VIDEO'; }
+                                                    else if (res.type === 'github') { icon = '🐙'; badge = 'GITHUB'; }
+                                                    else if (res.type === 'leetcode') { icon = '💡'; badge = 'LEETCODE'; }
+                                                    else if (res.type === 'doc') { icon = '📖'; badge = 'DOCS'; }
+                                                    else if (res.type === 'web') { icon = '🌐'; badge = 'WEB'; }
+
+                                                    return (
+                                                        <a 
+                                                            key={i} 
+                                                            href={res.url} 
+                                                            target="_blank" 
+                                                            rel="noopener noreferrer" 
+                                                            className="resource-link-item"
+                                                            title={res.snippet || res.title}
+                                                        >
+                                                            <div className="resource-item-header">
+                                                                <span className="resource-icon">{icon}</span>
+                                                                <span className="resource-item-title">{res.title}</span>
+                                                                <span className={`resource-type-badge ${res.type || 'web'}`}>{badge}</span>
+                                                            </div>
+                                                            {res.snippet && (
+                                                                <p className="resource-snippet-preview">
+                                                                    {res.snippet.slice(0, 110)}{res.snippet.length > 110 ? '…' : ''}
+                                                                </p>
+                                                            )}
+                                                        </a>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
                                     )}
                                 </div>

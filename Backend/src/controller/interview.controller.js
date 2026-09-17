@@ -10,6 +10,15 @@ const { enqueueAiJob } = require('../jobs/aiQueue')
 const { getCache, setCache, deleteCache } = require('../services/redis.service')
 const { processReportSkills, aggregateSkillAnalytics } = require('../services/skills.service')
 const { getUserGenCredits } = require('../middleware/rateLimiter.middleware')
+const { invalidateChunkCache, invalidateRoadmapChunkCache, invalidateJdChunkCache } = require('../ai-assistant')
+
+function isValidResumeHtmlContent(html) {
+    if (!html || typeof html !== 'string') return false;
+    const clean = html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+    if (clean.length < 30) return false;
+    if (/^[a-f0-9]{24}$/i.test(clean)) return false;
+    return true;
+}
 
 async function generateInterviewReportController(req, res, next) {
     try {
@@ -111,9 +120,14 @@ async function getInterviewReportByIdController(req, res, next) {
         const cachedReport = await getCache(cacheKey)
 
         if (cachedReport) {
-            return res.status(200).json({
-                interviewReport: cachedReport
-            })
+            // Validate cached data doesn't contain corrupted ObjectId resume
+            if (isValidResumeHtmlContent(cachedReport?.generatedResumeHtml)) {
+                return res.status(200).json({
+                    interviewReport: cachedReport
+                })
+            }
+            // If cached report was corrupted, purge cache and reload from DB
+            await deleteCache(cacheKey)
         }
 
         const interviewReport = await interviewReportModle.findOne({
@@ -128,6 +142,23 @@ async function getInterviewReportByIdController(req, res, next) {
             return res.status(404).json({
                 message: "Interview report not found"
             })
+        }
+
+        // Auto-heal corrupted document: if generatedResumeHtml or resume is a raw ObjectId, clear it
+        let reportModified = false;
+        if (interviewReport.generatedResumeHtml && !isValidResumeHtmlContent(interviewReport.generatedResumeHtml)) {
+            interviewReport.generatedResumeHtml = "";
+            reportModified = true;
+        }
+        if (interviewReport.resume && /^[a-f0-9]{24}$/i.test(interviewReport.resume.trim())) {
+            interviewReport.resume = "";
+            reportModified = true;
+        }
+        if (reportModified) {
+            await interviewReportModel.updateOne(
+                { _id: interviewReport._id },
+                { generatedResumeHtml: interviewReport.generatedResumeHtml, resume: interviewReport.resume }
+            );
         }
 
         await setCache(cacheKey, interviewReport, 3600)
@@ -256,9 +287,15 @@ async function generateResumePdfController(req, res, next) {
             })
         }
 
+        const userIdStr = req.user.id || req.user._id?.toString()
+        const userObjectId = mongoose.Types.ObjectId.isValid(userIdStr) ? new mongoose.Types.ObjectId(userIdStr) : userIdStr
+
         const interviewReport = await interviewReportModle.findOne({
             _id: interviewReportId,
-            user: req.user.id
+            $or: [
+                { user: userObjectId },
+                { user: userIdStr }
+            ]
         })
 
         if (!interviewReport) {
@@ -267,14 +304,14 @@ async function generateResumePdfController(req, res, next) {
             })
         }
 
-        // If HTML already exists and force regeneration is not requested, return saved report as-is
-        if (interviewReport.generatedResumeHtml && !forceRegenerate) {
+        // If HTML already exists, is healthy, and force regeneration is not requested, return saved report as-is
+        if (isValidResumeHtmlContent(interviewReport.generatedResumeHtml) && !forceRegenerate) {
             return res.status(200).json({ interviewReport, genCredits: req.genCredits })
         }
 
         // 1. Check for active pending/processing job for this specific report
         const existingJob = await JobModel.findOne({
-            userId: req.user.id,
+            userId: userIdStr,
             type: 'resume_html',
             resourceId: interviewReportId,
             status: { $in: ['pending', 'processing'] }
@@ -362,14 +399,31 @@ async function deleteReportById(req, res, next) {
 async function updateResumeHtmlController(req, res, next) {
     try {
         const { interviewReportId } = req.params;
-        const { generatedResumeHtml } = req.body;
+        const generatedResumeHtml = typeof req.body?.generatedResumeHtml === 'string'
+            ? req.body.generatedResumeHtml
+            : (typeof req.body?.html === 'string' ? req.body.html : null);
 
         if (!mongoose.isValidObjectId(interviewReportId)) {
             return res.status(400).json({ message: "Invalid report id" });
         }
 
+        if (!isValidResumeHtmlContent(generatedResumeHtml)) {
+            return res.status(400).json({ 
+                message: "Valid resume content is required to update resume. Empty content or database IDs are not allowed." 
+            });
+        }
+
+        const userIdStr = req.user.id || req.user._id?.toString();
+        const userObjectId = mongoose.Types.ObjectId.isValid(userIdStr) ? new mongoose.Types.ObjectId(userIdStr) : userIdStr;
+
         const report = await interviewReportModel.findOneAndUpdate(
-            { _id: interviewReportId, user: req.user.id },
+            {
+                _id: interviewReportId,
+                $or: [
+                    { user: userObjectId },
+                    { user: userIdStr }
+                ]
+            },
             { generatedResumeHtml },
             { returnDocument: 'after' }
         );
@@ -378,23 +432,24 @@ async function updateResumeHtmlController(req, res, next) {
             return res.status(404).json({ message: "Interview report not found" });
         }
 
-        // Invalidate report detail cache
-        const cacheKey = `cache:report:${interviewReportId}:${req.user.id}`
+        // Invalidate report detail cache & RAG vector chunk cache
+        const cacheKey = `cache:report:${interviewReportId}:${userIdStr}`
         await deleteCache(cacheKey)
+        await invalidateChunkCache(interviewReportId)
 
         res.status(200).json({
             message: "Resume updated successfully!",
             interviewReport: report
         });
     } catch (error) {
-        next(error)
+        next(error);
     }
 }
 
 async function updateInterviewProgressController(req, res, next) {
     try {
         const { interviewId } = req.params;
-        const { technicalQuestions, behavioralQuestion, completedTasks } = req.body;
+        const { technicalQuestions, behavioralQuestion, completedTasks, preparationPlan, jobDescription } = req.body;
 
         if (!mongoose.isValidObjectId(interviewId)) {
             return res.status(400).json({ message: "Invalid report id" });
@@ -404,9 +459,20 @@ async function updateInterviewProgressController(req, res, next) {
         if (technicalQuestions !== undefined) updateData.technicalQuestions = technicalQuestions;
         if (behavioralQuestion !== undefined) updateData.behavioralQuestion = behavioralQuestion;
         if (completedTasks !== undefined) updateData.completedTasks = completedTasks;
+        if (preparationPlan !== undefined) updateData.preparationPlan = preparationPlan;
+        if (jobDescription !== undefined) updateData.jobDescription = jobDescription;
+
+        const userIdStr = req.user.id || req.user._id?.toString();
+        const userObjectId = mongoose.Types.ObjectId.isValid(userIdStr) ? new mongoose.Types.ObjectId(userIdStr) : userIdStr;
 
         const report = await interviewReportModel.findOneAndUpdate(
-            { _id: interviewId, user: req.user.id },
+            {
+                _id: interviewId,
+                $or: [
+                    { user: userObjectId },
+                    { user: userIdStr }
+                ]
+            },
             updateData,
             { returnDocument: 'after' }
         );
@@ -415,9 +481,11 @@ async function updateInterviewProgressController(req, res, next) {
             return res.status(404).json({ message: "Interview report not found" });
         }
 
-        // Invalidate report detail cache
-        const cacheKey = `cache:report:${interviewId}:${req.user.id}`
-        await deleteCache(cacheKey)
+        // Invalidate report detail cache & RAG chunk caches
+        const cacheKey = `cache:report:${interviewId}:${userIdStr}`;
+        await deleteCache(cacheKey);
+        await invalidateRoadmapChunkCache(interviewId);
+        await invalidateJdChunkCache(interviewId);
 
         res.status(200).json({
             message: "Interview progress updated successfully!",
@@ -430,8 +498,17 @@ async function updateInterviewProgressController(req, res, next) {
 
 async function rewriteResumeSectionController(req, res, next) {
     try {
-        const { selectedText, instruction, action, message, resourceId } = req.body;
+        const { selectedText, instruction, action, message, resourceId, currentResumeHtml } = req.body;
         const plan = (req.user?.plan || 'free').toLowerCase();
+
+        // If currentResumeHtml wasn't passed directly from client, load from MongoDB
+        let effectiveResumeHtml = typeof currentResumeHtml === 'string' ? currentResumeHtml : '';
+        if (!effectiveResumeHtml && resourceId && mongoose.isValidObjectId(resourceId)) {
+            const report = await interviewReportModel.findById(resourceId).select('generatedResumeHtml resume').lean();
+            if (report) {
+                effectiveResumeHtml = report.generatedResumeHtml || report.resume || '';
+            }
+        }
 
         // 1. Check for active pending/processing job
         const existingJob = await JobModel.findOne({
@@ -456,7 +533,15 @@ async function rewriteResumeSectionController(req, res, next) {
             resourceId: resourceId || null,
             resourceModel: 'InterviewReport',
             status: 'pending',
-            input: { selectedText, instruction, action, message, plan }
+            input: {
+                selectedText,
+                instruction,
+                action,
+                message,
+                plan,
+                currentResumeHtml: effectiveResumeHtml,
+                interviewReportId: resourceId
+            }
         });
 
         // 3. Enqueue to BullMQ

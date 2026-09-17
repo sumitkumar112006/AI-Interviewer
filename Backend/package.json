@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "test:batch": "node src/ai-assistant/run-batch.js",
+    "test:batch1": "node src/ai-assistant/run-batch-1.js",
     "dev": "npx nodemon server.js",
     "start": "node server.js",
     "make-admin": "node scripts/makeAdmin.js"

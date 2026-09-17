@@ -160,6 +160,98 @@
   }
 }
 
+.legal-highlight-box {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(99, 102, 241, 0.08));
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 1.25rem;
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+
+  .highlight-header {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+
+    .text-emerald {
+      color: #34d399;
+    }
+
+    h3 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #ffffff;
+      margin: 0;
+    }
+  }
+
+  .highlight-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+
+    .highlight-item {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 0.75rem;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+
+      strong {
+        font-size: 0.92rem;
+        color: #f1f5f9;
+      }
+
+      p {
+        font-size: 0.82rem;
+        color: #94a3b8;
+        line-height: 1.5;
+        margin: 0;
+      }
+    }
+  }
+}
+
+.compliance-contact-card {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+
+  .contact-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    font-size: 0.88rem;
+
+    .label {
+      font-weight: 600;
+      color: #94a3b8;
+      min-width: 140px;
+    }
+
+    .value {
+      color: #f1f5f9;
+
+      a {
+        color: #818cf8;
+        text-decoration: underline;
+        font-weight: 600;
+
+        &:hover {
+          color: #a5b4fc;
+        }
+      }
+    }
+  }
+}
+
 
 /* ===== CONTACT US GRID ===== */
 .contact-grid-container {

@@ -22,7 +22,7 @@ const GoogleIcon = () => (
     </svg>
 );
 
-const GoogleAuthButton = ({ onError, text = "Continue with Google", disabled = false }) => {
+const GoogleAuthButton = ({ onError, text = "Continue with Google", disabled = false, showPrivacyNotice = true }) => {
     const [loading, setLoading] = useState(false);
 
     const handleGoogleAuth = async () => {
@@ -61,23 +61,31 @@ const GoogleAuthButton = ({ onError, text = "Continue with Google", disabled = f
     };
 
     return (
-        <button
-            type="button"
-            className="google-auth-btn"
-            onClick={handleGoogleAuth}
-            disabled={disabled || loading}
-            aria-label={text}
-            id="google-continue-btn"
-        >
-            {loading ? (
-                <span className="google-auth-spinner" />
-            ) : (
-                <GoogleIcon />
+        <div className="google-auth-wrapper">
+            <button
+                type="button"
+                className="google-auth-btn"
+                onClick={handleGoogleAuth}
+                disabled={disabled || loading}
+                aria-label={text}
+                id="google-continue-btn"
+            >
+                {loading ? (
+                    <span className="google-auth-spinner" />
+                ) : (
+                    <GoogleIcon />
+                )}
+                <span className="google-btn-text">
+                    {loading ? "Connecting to Google..." : text}
+                </span>
+            </button>
+            {showPrivacyNotice && (
+                <div className="google-privacy-micro-notice">
+                    <span className="lock-icon">🔒</span>
+                    <span>Only basic profile (Name &amp; Email) is accessed. Encrypted &amp; private.</span>
+                </div>
             )}
-            <span className="google-btn-text">
-                {loading ? "Connecting to Google..." : text}
-            </span>
-        </button>
+        </div>
     );
 };
 

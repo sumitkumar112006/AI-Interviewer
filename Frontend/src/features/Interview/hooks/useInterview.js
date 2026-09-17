@@ -119,13 +119,27 @@ export const useInterview = () => {
         }
     }
 
-    const updateNewResume = async (htmlContent) => {
-        if (!report) return
+    const updateNewResume = async (firstArg, secondArg) => {
+        // Supports: updateNewResume(html) OR updateNewResume(reportId, html)
+        const htmlContent = typeof secondArg === 'string' ? secondArg : (typeof firstArg === 'string' ? firstArg : '')
+        const reportId = (typeof secondArg === 'string' && firstArg)
+            ? firstArg
+            : (report?._id?.$oid || report?._id)
+
+        if (!reportId || !htmlContent) return
+
+        const clean = htmlContent.replace(/<[^>]*>/g, '').trim()
+        if (/^[a-f0-9]{24}$/i.test(clean) || clean.length < 30) {
+            console.warn('[useInterview] Rejecting update with invalid resume content')
+            return
+        }
+
         setLoading(true)
         try {
-            const reportId = report._id?.$oid || report._id
             const res = await updateResumeHtml(reportId, { generatedResumeHtml: htmlContent })
-            setReport(res.interviewReport)
+            if (res?.interviewReport) {
+                setReport(res.interviewReport)
+            }
             return res.interviewReport
         } catch (error) {
             console.error("Error updating centralized resume:", error)

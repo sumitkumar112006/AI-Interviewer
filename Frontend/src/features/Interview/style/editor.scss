@@ -140,7 +140,7 @@ $text-muted:     #8496b4;
     }
 }
 
-// ── Google Docs Font Family Dropdown ───────────────────────────────────────
+// ── Google Docs Font Family & Toolbar Dropdowns ─────────────────────────────
 .tiptap-font-dropdown-wrap {
     position: relative;
     display: inline-flex;
@@ -170,7 +170,7 @@ $text-muted:     #8496b4;
             color: #0f172a;
         }
 
-        &:hover, &.open {
+        &:hover, &.open, &.is-active {
             background: rgba(99, 102, 241, 0.12);
             border-color: rgba(99, 102, 241, 0.4);
             color: #ffffff;
@@ -183,11 +183,32 @@ $text-muted:     #8496b4;
             }
         }
 
-        .font-current-name {
+        &.is-active {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: rgba(99, 102, 241, 0.5);
+            color: #818cf8;
+
+            .light-theme &,
+            [data-theme="light"] & {
+                background: #eef2ff;
+                border-color: #6366f1;
+                color: #4f46e5;
+            }
+        }
+
+        .font-current-name,
+        .font-size-current-val,
+        .heading-current-label {
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
             font-weight: 500;
+        }
+
+        .list-current-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .font-chevron {
@@ -198,6 +219,28 @@ $text-muted:     #8496b4;
 
         &.open .font-chevron {
             transform: rotate(180deg);
+        }
+
+        // Specific Button Variants
+        &.tiptap-size-picker-btn {
+            min-width: 64px;
+            max-width: 78px;
+            padding: 0 0.45rem;
+            font-variant-numeric: tabular-nums;
+        }
+
+        &.tiptap-heading-picker-btn {
+            min-width: 96px;
+            max-width: 120px;
+            padding: 0 0.55rem;
+        }
+
+        &.tiptap-list-picker-btn {
+            min-width: 44px;
+            max-width: 48px;
+            padding: 0 0.35rem;
+            justify-content: center;
+            gap: 0.25rem;
         }
     }
 
@@ -222,6 +265,22 @@ $text-muted:     #8496b4;
             background: #ffffff;
             border-color: #e2e8f0;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        // Menu Size Variants
+        &.tiptap-size-menu {
+            width: 110px;
+            max-height: 240px;
+        }
+
+        &.tiptap-heading-menu {
+            width: 165px;
+            max-height: 240px;
+        }
+
+        &.tiptap-list-menu {
+            width: 175px;
+            max-height: 240px;
         }
 
         .font-menu-header {
@@ -285,6 +344,14 @@ $text-muted:     #8496b4;
                     background: #f1f5f9;
                     color: #0f172a;
                 }
+
+                .item-menu-icon {
+                    color: #ffffff;
+                    .light-theme &,
+                    [data-theme="light"] & {
+                        color: #0f172a;
+                    }
+                }
             }
 
             &.selected {
@@ -297,11 +364,65 @@ $text-muted:     #8496b4;
                     background: #eef2ff;
                     color: #4f46e5;
                 }
+
+                .item-menu-icon {
+                    color: #818cf8;
+                    .light-theme &,
+                    [data-theme="light"] & {
+                        color: #4f46e5;
+                    }
+                }
             }
 
             .font-preview-name {
                 flex-grow: 1;
                 font-size: 0.92rem;
+            }
+
+            .font-size-label {
+                flex-grow: 1;
+                font-size: 0.86rem;
+                font-variant-numeric: tabular-nums;
+            }
+
+            // Headings inside menu
+            .heading-preview-text {
+                flex-grow: 1;
+            }
+
+            &.heading-level-0 .heading-preview-text {
+                font-size: 0.86rem;
+                font-weight: 500;
+            }
+
+            &.heading-level-1 .heading-preview-text {
+                font-size: 1.08rem;
+                font-weight: 700;
+            }
+
+            &.heading-level-2 .heading-preview-text {
+                font-size: 0.98rem;
+                font-weight: 700;
+            }
+
+            &.heading-level-3 .heading-preview-text {
+                font-size: 0.90rem;
+                font-weight: 600;
+            }
+
+            // List items inside menu
+            .item-label-with-icon {
+                display: flex;
+                align-items: center;
+                gap: 0.55rem;
+                flex-grow: 1;
+                font-size: 0.85rem;
+
+                .item-menu-icon {
+                    color: var(--text-muted, #8496b4);
+                    flex-shrink: 0;
+                    transition: color 0.15s ease;
+                }
             }
 
             .font-check-icon {
