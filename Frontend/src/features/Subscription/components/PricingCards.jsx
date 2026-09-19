@@ -149,8 +149,8 @@ export const PricingCards = ({ onUpgradeSuccess }) => {
         <div className="change-preview-row">
           <span className="change-label">Investment:</span>
           <span className="change-value">
-            <span className="new-val" style={{ color: '#818cf8', fontSize: '1.05rem' }}>₹{price}</span>
-            <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}> {cycleLabel}</span>
+            <span className="new-val" style={{ color: 'var(--accent, #ef7b5d)', fontSize: '1.05rem', fontWeight: 800 }}>₹{price}</span>
+            <span style={{ color: 'var(--muted, #bac1b8)', fontSize: '0.85rem' }}> {cycleLabel}</span>
           </span>
         </div>
       ),
@@ -310,54 +310,24 @@ export const PricingCards = ({ onUpgradeSuccess }) => {
 
       {/* Success Modal */}
       {successModal && (
-        <div className="success-modal-overlay" style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.75)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          backdropFilter: 'blur(4px)'
-        }}>
-          <div style={{
-            background: '#1e293b',
-            border: '1px solid #6366f1',
-            borderRadius: '20px',
-            padding: '36px',
-            maxWidth: '440px',
-            width: '90%',
-            textAlign: 'center',
-            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)'
-          }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🎉</div>
-            <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#f8fafc', margin: '0 0 10px' }}>
+        <div className="pricing-success-modal-overlay">
+          <div className="pricing-success-card">
+            <div className="success-icon">🎉</div>
+            <h3>
               Welcome to {successModal.plan.toUpperCase()}!
             </h3>
-            <p style={{ color: '#94a3b8', fontSize: '14px', lineHeight: 1.5, margin: '0 0 24px' }}>
+            <p>
               Your subscription has been successfully activated. Your new interview & AI credit limits are live immediately.
             </p>
             {successModal.invoiceNumber && (
-              <p style={{ fontSize: '13px', color: '#cbd5e1', marginBottom: '24px' }}>
+              <p className="invoice-info">
                 Invoice No: <strong>{successModal.invoiceNumber}</strong>
               </p>
             )}
             <button
               type="button"
+              className="btn-success-action"
               onClick={() => setSuccessModal(null)}
-              style={{
-                width: '100%',
-                padding: '12px 24px',
-                background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
-                color: '#fff',
-                fontWeight: 700,
-                border: 'none',
-                borderRadius: '12px',
-                cursor: 'pointer'
-              }}
             >
               Start Practicing Now →
             </button>

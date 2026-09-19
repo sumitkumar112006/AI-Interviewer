@@ -57,7 +57,7 @@ export const PricingPage = () => {
           </div>
           <div className="stat-item">
             <div className="stat-label">AI Credits Left</div>
-            <div className="stat-val" style={{ color: '#818cf8' }}>
+            <div className="stat-val" style={{ color: 'var(--accent)' }}>
               {Math.max(0, (usage.aiCreditsLimit || 20) - (usage.aiCreditsUsed || 0) + (usage.aiBonusCredits || 0))}
             </div>
           </div>

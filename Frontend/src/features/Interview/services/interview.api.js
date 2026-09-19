@@ -225,6 +225,7 @@ export async function streamAssistantChatApi({
     instruction = '',
     activeTab = '',
     currentRoute = '',
+    onStatus = () => {},
     onToken = () => {},
     onDone = () => {},
     onError = () => {},
@@ -293,7 +294,9 @@ export async function streamAssistantChatApi({
                     const jsonStr = trimmed.slice(6);
                     try {
                         const parsed = JSON.parse(jsonStr);
-                        if (parsed.type === 'token' && parsed.token) {
+                        if (parsed.type === 'status') {
+                            onStatus(parsed);
+                        } else if (parsed.type === 'token' && parsed.token) {
                             accumulatedText += parsed.token;
                             onToken(parsed.token, accumulatedText);
                         } else if (parsed.type === 'done') {

@@ -414,7 +414,7 @@ const Resume = () => {
     ];
 
     if (aiGenerating) return <Loading steps={RESUME_STEPS} title="Resume Studio" subtitle="Drafting your document using AI..." />
-    if (dbLoading && !htmlContent) return <ShimmerLoading type="workspace" title="Loading Resume Studio..." />
+    if (dbLoading && !htmlContent) return <ShimmerLoading type="resume" title="Loading Resume Studio..." />
 
     return (
         <div className="resume-page">

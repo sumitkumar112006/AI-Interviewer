@@ -579,23 +579,27 @@
                     align-items: center;
                     gap: 0.45rem;
                     padding: 0.6rem 1.2rem;
-                    background: var(--button-gradient);
-                    color: #ffffff;
-                    border: none;
-                    border-radius: 0.55rem;
-                    font-size: 0.8rem;
+                    background: var(--text-primary);
+                    color: var(--panel) !important;
+                    border: 1px solid var(--text-primary);
+                    border-radius: 4px;
+                    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+                    font-size: 0.76rem;
                     font-weight: 700;
+                    letter-spacing: 0.04em;
+                    text-transform: uppercase;
                     cursor: pointer;
-                    box-shadow: 0 3px 12px rgba(99, 102, 241, 0.25);
                     transition: all 0.2s ease;
 
                     &:hover:not(:disabled) {
+                        background: var(--accent-color);
+                        border-color: var(--accent-color);
+                        color: #ffffff !important;
                         transform: translateY(-1px);
-                        box-shadow: 0 5px 16px rgba(99, 102, 241, 0.35);
                     }
 
                     &:disabled {
-                        opacity: 0.6;
+                        opacity: 0.5;
                         cursor: not-allowed;
                     }
                 }
@@ -606,7 +610,7 @@
         .presets-manager-card {
             background: var(--bg-card-subtle);
             border: 1px solid var(--border-color);
-            border-radius: 1rem;
+            border-radius: 0.75rem;
             padding: 1.25rem;
             display: flex;
             flex-direction: column;
@@ -620,33 +624,38 @@
                 h4 {
                     font-family: var(--font-heading);
                     font-size: 0.95rem;
-                    font-weight: 700;
+                    font-weight: 800;
                     color: var(--text-primary);
                     margin: 0;
                 }
 
                 .presets-subtitle {
-                    font-size: 0.72rem;
+                    font-family: var(--font-mono, monospace);
+                    font-size: 0.68rem;
                     color: var(--text-muted);
-                    font-weight: 600;
+                    font-weight: 700;
+                    text-transform: uppercase;
                 }
 
                 .add-preset-btn {
                     display: inline-flex;
                     align-items: center;
                     gap: 0.3rem;
-                    padding: 0.35rem 0.7rem;
-                    font-size: 0.75rem;
-                    font-weight: 600;
+                    padding: 0.3rem 0.65rem;
+                    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+                    font-size: 0.72rem;
+                    font-weight: 700;
+                    letter-spacing: 0.02em;
                     color: var(--accent-color);
-                    background: var(--badge-bg);
-                    border: 1px solid var(--border-color);
-                    border-radius: 0.45rem;
+                    background: var(--badge-bg, rgba(223, 105, 77, 0.1));
+                    border: 1px solid var(--accent-color);
+                    border-radius: 4px;
                     cursor: pointer;
                     transition: all 0.15s ease;
 
                     &:hover {
-                        border-color: var(--accent-color);
+                        background: var(--accent-color);
+                        color: #ffffff;
                     }
                 }
             }
@@ -658,7 +667,7 @@
                 padding: 0.75rem;
                 background: var(--bg-main);
                 border: 1px dashed var(--accent-color);
-                border-radius: 0.65rem;
+                border-radius: 4px;
 
                 input, textarea {
                     padding: 0.45rem 0.65rem;
@@ -666,7 +675,7 @@
                     color: var(--text-primary);
                     background: var(--bg-card-subtle);
                     border: 1px solid var(--border-color);
-                    border-radius: 0.4rem;
+                    border-radius: 4px;
                     outline: none;
                     font-family: inherit;
 
@@ -678,13 +687,23 @@
                 .save-new-preset-btn {
                     align-self: flex-end;
                     padding: 0.4rem 0.85rem;
-                    font-size: 0.75rem;
+                    font-family: var(--font-mono, monospace);
+                    font-size: 0.72rem;
                     font-weight: 700;
-                    color: #ffffff;
-                    background: var(--button-gradient);
-                    border: none;
-                    border-radius: 0.4rem;
+                    letter-spacing: 0.04em;
+                    text-transform: uppercase;
+                    color: var(--panel) !important;
+                    background: var(--text-primary);
+                    border: 1px solid var(--text-primary);
+                    border-radius: 4px;
                     cursor: pointer;
+                    transition: all 0.15s ease;
+
+                    &:hover:not(:disabled) {
+                        background: var(--accent-color);
+                        border-color: var(--accent-color);
+                        color: #ffffff !important;
+                    }
 
                     &:disabled {
                         opacity: 0.5;
@@ -696,7 +715,7 @@
             .presets-list-scroll {
                 display: flex;
                 flex-direction: column;
-                gap: 0.6rem;
+                gap: 0.5rem;
                 max-height: 260px;
                 overflow-y: auto;
                 padding-right: 0.2rem;
@@ -707,7 +726,7 @@
                     color: var(--text-muted);
                     font-size: 0.78rem;
                     background: var(--bg-main);
-                    border-radius: 0.65rem;
+                    border-radius: 4px;
                     border: 1px dashed var(--border-color);
                 }
 
@@ -719,12 +738,12 @@
                     padding: 0.65rem 0.75rem;
                     background: var(--bg-main);
                     border: 1px solid var(--border-color);
-                    border-radius: 0.65rem;
+                    border-radius: 4px;
                     transition: all 0.15s ease;
 
                     &.active-default {
                         border-color: var(--accent-color);
-                        background: var(--badge-bg);
+                        background: var(--badge-bg, rgba(223, 105, 77, 0.08));
                     }
 
                     &:hover {
@@ -739,28 +758,29 @@
                             display: flex;
                             align-items: center;
                             gap: 0.45rem;
-                            margin-bottom: 0.25rem;
+                            margin-bottom: 0.2rem;
 
                             .preset-name {
-                                font-size: 0.8rem;
+                                font-size: 0.82rem;
                                 font-weight: 700;
                                 color: var(--text-primary);
                             }
 
                             .default-badge {
-                                font-size: 0.64rem;
+                                font-family: var(--font-mono, monospace);
+                                font-size: 0.62rem;
                                 font-weight: 700;
                                 text-transform: uppercase;
-                                padding: 0.12rem 0.4rem;
-                                border-radius: 0.35rem;
-                                background: rgba(16, 185, 129, 0.15);
-                                color: #10b981;
-                                border: 1px solid rgba(16, 185, 129, 0.3);
+                                padding: 0.1rem 0.35rem;
+                                border-radius: 3px;
+                                background: rgba(110, 142, 104, 0.15);
+                                color: var(--success-color);
+                                border: 1px solid var(--success-color);
                             }
                         }
 
                         .preset-preview-text {
-                            font-size: 0.72rem;
+                            font-size: 0.74rem;
                             color: var(--text-secondary);
                             margin: 0;
                             line-height: 1.35;
@@ -779,12 +799,13 @@
 
                         .set-default-btn {
                             padding: 0.25rem 0.5rem;
-                            font-size: 0.68rem;
-                            font-weight: 600;
+                            font-family: var(--font-mono, monospace);
+                            font-size: 0.66rem;
+                            font-weight: 700;
                             color: var(--text-secondary);
                             background: var(--bg-card-subtle);
                             border: 1px solid var(--border-color);
-                            border-radius: 0.35rem;
+                            border-radius: 3px;
                             cursor: pointer;
                             transition: all 0.15s ease;
 
@@ -800,15 +821,15 @@
                             color: var(--text-muted);
                             cursor: pointer;
                             padding: 0.25rem;
-                            border-radius: 0.35rem;
+                            border-radius: 3px;
                             display: flex;
                             align-items: center;
                             justify-content: center;
                             transition: all 0.15s ease;
 
                             &:hover {
-                                color: #ef4444;
-                                background: rgba(239, 68, 68, 0.12);
+                                color: var(--danger-color, #ef7b5d);
+                                background: rgba(239, 123, 93, 0.12);
                             }
                         }
                     }

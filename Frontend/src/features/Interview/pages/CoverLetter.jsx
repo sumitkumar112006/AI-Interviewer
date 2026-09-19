@@ -186,7 +186,7 @@ const CoverLetter = () => {
         return () => window.removeEventListener('kivi-replace-text', onKiviReplace)
     }, [])
 
-    if (pageLoading) return <main><ShimmerLoading type="workspace" title="Loading Cover Letter..." /></main>
+    if (pageLoading) return <main><ShimmerLoading type="resume" title="Loading Cover Letter..." /></main>
 
     const reportTitle = report?.developerTitle || 'Developer'
 

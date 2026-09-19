@@ -191,7 +191,7 @@ const HelpSupport = () => {
           <div className="card-body">
             <h4>AI Engine Operational</h4>
             <p>Groq 120B & Gemini 2.5 Flash models online with 99.9% uptime.</p>
-            <span className="card-link-action" style={{ color: '#10b981', cursor: 'default' }}>
+            <span className="card-link-action" style={{ color: 'var(--success)', cursor: 'default' }}>
               <Check size={13} /> All Systems Normal
             </span>
           </div>

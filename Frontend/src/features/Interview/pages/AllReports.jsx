@@ -50,15 +50,15 @@ function getStatus(score) {
 }
 
 function getScoreColor(score) {
-    if (score === null) return '#6b7fa8'
-    if (score >= 85) return '#22c55e'
-    if (score >= 75) return '#f59e0b'
-    if (score >= 50) return '#6366f1'
-    return '#ef4444'
+    if (score === null) return '#818a81'
+    if (score >= 85) return '#6e8e68'
+    if (score >= 75) return '#ef7b5d'
+    if (score >= 50) return '#e5a93c'
+    return '#ef7b5d'
 }
 
 /* SVG sparkline from an array of values */
-function Sparkline({ values = [], color = '#6366f1', width = 80, height = 28 }) {
+function Sparkline({ values = [], color = '#ef7b5d', width = 80, height = 28 }) {
     if (values.length < 2) return <svg width={width} height={height} />
     const min = Math.min(...values)
     const max = Math.max(...values)
@@ -199,10 +199,10 @@ const AllReports = () => {
         const poor = allReports.filter(r => { const s = getScore(r); return s !== null && s < 50 }).length
         const total = excellent + good + average + poor || 1
         return [
-            { label: 'Excellent (90-100%)', color: '#22c55e', count: excellent, pct: Math.round(excellent / total * 100) },
-            { label: 'Good (75-89%)', color: '#6366f1', count: good, pct: Math.round(good / total * 100) },
-            { label: 'Average (50-74%)', color: '#f59e0b', count: average, pct: Math.round(average / total * 100) },
-            { label: 'Poor (0-49%)', color: '#ef4444', count: poor, pct: Math.round(poor / total * 100) },
+            { label: 'Excellent (90-100%)', color: '#6e8e68', count: excellent, pct: Math.round(excellent / total * 100) },
+            { label: 'Good (75-89%)', color: '#ef7b5d', count: good, pct: Math.round(good / total * 100) },
+            { label: 'Average (50-74%)', color: '#e5a93c', count: average, pct: Math.round(average / total * 100) },
+            { label: 'Poor (0-49%)', color: '#df694d', count: poor, pct: Math.round(poor / total * 100) },
         ]
     }, [allReports])
 
@@ -324,11 +324,11 @@ const AllReports = () => {
             {/* ── STAT CARDS ── */}
             <div className="ar-stats-row">
                 {[
-                    { label: 'Total Reports', value: stats.total, sub: 'All time interviews', color: '#6366f1', vals: sparkValues },
-                    { label: 'Average Score', value: `${stats.avg}%`, sub: 'Across all interviews', color: '#22c55e', vals: sparkValues },
-                    { label: 'Passed', value: stats.passed, sub: `${stats.total ? Math.round(stats.passed / stats.total * 100) : 0}% of total`, color: '#22c55e', vals: sparkValues.map(v => v >= 75 ? 1 : 0) },
-                    { label: 'Failed', value: stats.failed, sub: `${stats.total ? Math.round(stats.failed / stats.total * 100) : 0}% of total`, color: '#ef4444', vals: sparkValues.map(v => v < 75 ? 1 : 0) },
-                    { label: 'Highest Score', value: `${stats.highest}%`, sub: stats.highestTitle, color: '#f59e0b', vals: sparkValues },
+                    { label: 'Total Reports', value: stats.total, sub: 'All time interviews', color: '#ef7b5d', vals: sparkValues },
+                    { label: 'Average Score', value: `${stats.avg}%`, sub: 'Across all interviews', color: '#6e8e68', vals: sparkValues },
+                    { label: 'Passed', value: stats.passed, sub: `${stats.total ? Math.round(stats.passed / stats.total * 100) : 0}% of total`, color: '#6e8e68', vals: sparkValues.map(v => v >= 75 ? 1 : 0) },
+                    { label: 'Failed', value: stats.failed, sub: `${stats.total ? Math.round(stats.failed / stats.total * 100) : 0}% of total`, color: '#ef7b5d', vals: sparkValues.map(v => v < 75 ? 1 : 0) },
+                    { label: 'Highest Score', value: `${stats.highest}%`, sub: stats.highestTitle, color: '#e5a93c', vals: sparkValues },
                 ].map((s, i) => (
                     <div className="ar-stat-card" key={i}>
                         <div className="ar-stat-header">
@@ -521,7 +521,7 @@ const AllReports = () => {
                                 const score = getScore(r)
                                 const st = getStatus(score)
                                 const dt = formatDateTime(r.createdAt)
-                                const colors = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#a855f7', '#f97316']
+                                const colors = ['#ef7b5d', '#6e8e68', '#e5a93c', '#df694d', '#818a81']
                                 const iconColor = colors[i % colors.length]
                                 return (
                                     <tr key={id} className="ar-table-row" onClick={() => navigate(`/interview/${id}`)}>

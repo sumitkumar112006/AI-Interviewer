@@ -46,6 +46,11 @@ async function chatAssistantController(req, res, next) {
                     activeTab,
                     currentRoute,
                     userPlan,
+                    onStatus: (status) => {
+                        if (!clientAborted) {
+                            res.write(`data: ${JSON.stringify({ type: 'status', ...status })}\n\n`);
+                        }
+                    },
                     onToken: (token) => {
                         if (!clientAborted) {
                             res.write(`data: ${JSON.stringify({ type: 'token', token })}\n\n`);

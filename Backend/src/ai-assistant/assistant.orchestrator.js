@@ -104,7 +104,7 @@ function extractSnippetAndTargetFromReply(replyText, isExplicitRewrite = false) 
 /**
  * Builds formatted prompt and context for KIVI AI Assistant using Smart Intent & Dynamic Context Loading
  */
-async function buildAssistantPromptAndMessages({ userId, reportId = null, message = '', selectedText = '', action = '', instruction = '', activeTab = '', currentRoute = '', userPlan = 'free' }) {
+async function buildAssistantPromptAndMessages({ userId, reportId = null, message = '', selectedText = '', action = '', instruction = '', activeTab = '', currentRoute = '', userPlan = 'free', onStatus = null }) {
     const promptText = (message || instruction || '').trim();
 
     // 1. Step 1: Classify Query Intent (0ms Tier 1 with Tier 2 fallback)
@@ -131,13 +131,33 @@ async function buildAssistantPromptAndMessages({ userId, reportId = null, messag
     let toolContextSnippet = '';
     let foundResources = [];
 
-    const wantsSearch = intentData.web_search || toolFlags.needsResources || toolFlags.needsWebSearch;
+    const wantsSearch = intentData.web_search || toolFlags.needsResources || toolFlags.needsWebSearch || intentData.intent === 'DYNAMIC_SEARCH' || intentData.intent === 'ROADMAP_RESOURCES';
 
     if (wantsSearch) {
         const topic = intentData.extracted_topic || promptText.replace(/give me|tutorials?|videos?|links?|resources?|how to learn|study material|roadmap|according|find|karo/gi, '').trim() || 'Software Engineering';
         const searchTypes = (Array.isArray(intentData.search_strategy) && intentData.search_strategy.length > 0)
             ? intentData.search_strategy
             : ['docs', 'github', 'tutorials'];
+
+        // Build friendly source display list for live streaming UI
+        const sourceLabels = [];
+        if (searchTypes.includes('web') || searchTypes.includes('tutorials')) sourceLabels.push({ name: 'Web Search', icon: '🌐', query: topic });
+        if (searchTypes.includes('docs') || /docs|documentation/i.test(topic)) sourceLabels.push({ name: 'Official Docs', icon: '📖', query: topic });
+        if (searchTypes.includes('github') || /github|repo|code|project/i.test(topic)) sourceLabels.push({ name: 'GitHub Repositories', icon: '🐙', query: topic });
+        if (searchTypes.includes('leetcode') || /leetcode|dsa|problem|algorithm/i.test(topic)) sourceLabels.push({ name: 'LeetCode Problems', icon: '💡', query: topic });
+        if (searchTypes.includes('video') || /video|youtube/i.test(topic)) sourceLabels.push({ name: 'YouTube Tutorials', icon: '▶️', query: topic });
+        if (sourceLabels.length === 0) {
+            sourceLabels.push({ name: 'Web Search', icon: '🌐', query: topic }, { name: 'Official Docs', icon: '📖', query: topic });
+        }
+
+        if (typeof onStatus === 'function') {
+            onStatus({
+                status: 'searching',
+                query: topic,
+                sources: sourceLabels,
+                message: `Searching web & verified resources for "${topic.slice(0, 45)}"...`
+            });
+        }
 
         foundResources = await searchDynamicRoadmapResources({
             topic,
@@ -148,6 +168,40 @@ async function buildAssistantPromptAndMessages({ userId, reportId = null, messag
         if (foundResources.length > 0) {
             toolContextSnippet += `\n[Verified Learning & Practice Resources Found]:\n` + 
                 foundResources.map((r, i) => `${i + 1}. [${r.title}](${r.url}) - ${r.snippet || ''}`).join('\n') + '\n';
+        }
+
+        if (typeof onStatus === 'function') {
+            const scannedDomains = foundResources.map(r => {
+                try {
+                    return new URL(r.url).hostname.replace(/^www\./, '');
+                } catch (e) {
+                    return r.title?.slice(0, 25);
+                }
+            }).filter(Boolean);
+
+            onStatus({
+                status: 'synthesizing',
+                query: topic,
+                sources: sourceLabels,
+                scannedDomains: scannedDomains.slice(0, 4),
+                message: foundResources.length > 0
+                    ? `Gathered ${foundResources.length} verified source${foundResources.length > 1 ? 's' : ''}. Synthesizing answer...`
+                    : 'Synthesizing response...'
+            });
+        }
+    } else if (typeof onStatus === 'function') {
+        if (['RESUME', 'RESUME_EDIT', 'RESUME_JD'].includes(intentData.intent)) {
+            onStatus({
+                status: 'analyzing',
+                sources: [{ name: 'Resume Document', icon: '📄' }],
+                message: 'Analyzing resume context...'
+            });
+        } else if (['ROADMAP', 'ROADMAP_JD', 'RESUME_ROADMAP', 'ALL_THREE'].includes(intentData.intent)) {
+            onStatus({
+                status: 'analyzing',
+                sources: [{ name: '14-Day Roadmap', icon: '🗺️' }, { name: 'Target JD', icon: '🎯' }],
+                message: 'Analyzing roadmap & job requirements...'
+            });
         }
     }
 
@@ -386,7 +440,7 @@ function logAssistantQueryPayload({
  * @param {Function} params.onToken - Callback for streaming tokens (token: string) => void
  * @returns {Promise<Object>} Assembled result with reply, suggestedSnippet, resources, profile, intentData
  */
-async function streamAssistantChat({ userId, reportId, message, selectedText, action, instruction, activeTab = '', currentRoute = '', userPlan = 'free', onToken }) {
+async function streamAssistantChat({ userId, reportId, message, selectedText, action, instruction, activeTab = '', currentRoute = '', userPlan = 'free', onStatus = null, onToken }) {
     const { formattedMessages, promptText, foundResources, profile, intentData, isExplicitRewrite, dbCallsAvoided } = await buildAssistantPromptAndMessages({
         userId,
         reportId,
@@ -396,7 +450,8 @@ async function streamAssistantChat({ userId, reportId, message, selectedText, ac
         instruction,
         activeTab,
         currentRoute,
-        userPlan
+        userPlan,
+        onStatus
     });
 
     const fullReply = await streamLlmWithFallback({

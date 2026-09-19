@@ -15,7 +15,8 @@ import {
     Link as LinkIcon, AlignLeft, AlignCenter, AlignRight, AlignJustify,
     List, ListOrdered, Quote, Undo, Redo, Highlighter, Type,
     Heading1, Heading2, Heading3, Minus, ChevronDown, Check,
-    ExternalLink, Trash2, X, Search, Volume2, VolumeX, Play, Pause, Square, Sparkles
+    ExternalLink, Trash2, X, Search, Volume2, VolumeX, Play, Pause, Square, Sparkles,
+    PaintRoller
 } from 'lucide-react'
 import '../style/editor.scss'
 
@@ -112,11 +113,12 @@ const FONT_OPTIONS = [
 ]
 
 // ── Toolbar button helper ──────────────────────────────────────────────────
-const ToolBtn = ({ onClick, active, disabled, title, children, className = '' }) => (
+const ToolBtn = ({ onClick, onDoubleClick, active, disabled, title, children, className = '' }) => (
     <button
         type="button"
         className={`tiptap-toolbar-btn${active ? ' is-active' : ''}${className ? ` ${className}` : ''}`}
-        onMouseDown={(e) => { e.preventDefault(); onClick?.() }}
+        onMouseDown={(e) => { e.preventDefault(); onClick?.(e) }}
+        onDoubleClick={(e) => { e.preventDefault(); onDoubleClick?.(e) }}
         disabled={disabled}
         title={title}
         aria-label={title}
@@ -126,6 +128,27 @@ const ToolBtn = ({ onClick, active, disabled, title, children, className = '' })
 )
 
 const Divider = () => <span className="tiptap-divider" />
+
+// ── Helper to convert hex / rgb color strings to safe hex for <input type="color"> ──
+function toHexColor(color) {
+    if (!color) return '#1e293b'
+    if (color.startsWith('#')) {
+        if (color.length === 7) return color
+        if (color.length === 4) {
+            return `#${color[1]}${color[1]}${color[2]}${color[2]}${color[3]}${color[3]}`
+        }
+    }
+    if (color.startsWith('rgb')) {
+        const parts = color.match(/\d+/g)
+        if (parts && parts.length >= 3) {
+            const r = Math.min(255, parseInt(parts[0], 10)).toString(16).padStart(2, '0')
+            const g = Math.min(255, parseInt(parts[1], 10)).toString(16).padStart(2, '0')
+            const b = Math.min(255, parseInt(parts[2], 10)).toString(16).padStart(2, '0')
+            return `#${r}${g}${b}`
+        }
+    }
+    return '#1e293b'
+}
 
 // ── Helpers to index all text characters in ProseMirror document to absolute positions ──
 function buildDocTextIndex(doc) {
@@ -222,6 +245,22 @@ const ResumeEditor = forwardRef(function ResumeEditor(
     const linkPopoverRef = useRef(null)
     const linkUrlInputRef = useRef(null)
 
+    // ── Paint format (Copy formatting) state ──────────────────────────────
+    const [paintFormat, setPaintFormat] = useState(null)
+    const [isPaintFormatLocked, setIsPaintFormatLocked] = useState(false)
+    const paintFormatRef = useRef(null)
+    const paintFormatLockedRef = useRef(false)
+    const applyFormatRef = useRef(null)
+
+    paintFormatRef.current = paintFormat
+    paintFormatLockedRef.current = isPaintFormatLocked
+
+    // ── Text & Highlight Color Pickers state & refs ────────────────────────
+    const colorInputRef = useRef(null)
+    const highlightInputRef = useRef(null)
+    const [lastTextColor, setLastTextColor] = useState('#1e293b')
+    const [lastHighlightColor, setLastHighlightColor] = useState('#fef08a')
+
     const editor = useEditor({
         extensions: [
             StarterKit.configure({
@@ -253,6 +292,12 @@ const ResumeEditor = forwardRef(function ResumeEditor(
                 spellcheck: 'true',
             },
             handleKeyDown: (view, event) => {
+                // Escape key cancels paint format mode
+                if (event.key === 'Escape' && paintFormatRef.current) {
+                    setPaintFormat(null)
+                    setIsPaintFormatLocked(false)
+                    return true
+                }
                 // Ctrl+K or Cmd+K to open Link Popover
                 if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
                     event.preventDefault()
@@ -261,6 +306,20 @@ const ResumeEditor = forwardRef(function ResumeEditor(
                 }
                 return false
             },
+            handleDOMEvents: {
+                mouseup: (view, event) => {
+                    if (!paintFormatRef.current) return false
+                    const { from, to } = view.state.selection
+                    if (from < to) {
+                        applyFormatRef.current?.(paintFormatRef.current)
+                        if (!paintFormatLockedRef.current) {
+                            setPaintFormat(null)
+                            setIsPaintFormatLocked(false)
+                        }
+                    }
+                    return false
+                }
+            }
         },
         onSelectionUpdate: ({ editor: ed }) => {
             const { from, to } = ed.state.selection
@@ -269,6 +328,14 @@ const ResumeEditor = forwardRef(function ResumeEditor(
                 if (text) {
                     lastSelectionRef.current = { from, to, text }
                 }
+            }
+            const currentTextColor = ed.getAttributes('textStyle').color
+            if (currentTextColor) {
+                setLastTextColor(currentTextColor)
+            }
+            const currentHighlightColor = ed.getAttributes('highlight').color
+            if (currentHighlightColor) {
+                setLastHighlightColor(currentHighlightColor)
             }
         },
         onUpdate: ({ editor }) => {
@@ -588,6 +655,140 @@ const ResumeEditor = forwardRef(function ResumeEditor(
         setLinkPopover(prev => ({ ...prev, isOpen: false }))
     }, [editor])
 
+    // ── Paint Format (Copy formatting) handlers ───────────────────────────
+    const copyCurrentFormat = useCallback(() => {
+        if (!editor) return null
+        const textStyle = editor.getAttributes('textStyle') || {}
+        const highlightAttr = editor.getAttributes('highlight') || {}
+        const headingLevel = [1, 2, 3].find(level => editor.isActive('heading', { level })) || 0
+
+        return {
+            bold: editor.isActive('bold'),
+            italic: editor.isActive('italic'),
+            underline: editor.isActive('underline'),
+            strike: editor.isActive('strike'),
+            fontFamily: textStyle.fontFamily || null,
+            fontSize: textStyle.fontSize || null,
+            color: textStyle.color || null,
+            highlight: highlightAttr.color || (editor.isActive('highlight') ? '#fef08a' : null),
+            textAlign: ['left', 'center', 'right', 'justify'].find(align => editor.isActive({ textAlign: align })) || 'left',
+            headingLevel: headingLevel,
+            isParagraph: editor.isActive('paragraph'),
+        }
+    }, [editor])
+
+    const applyFormatToSelection = useCallback((format) => {
+        if (!editor || !format) return
+        let chain = editor.chain().focus()
+
+        // 1. Font Family
+        if (format.fontFamily) {
+            chain = chain.setFontFamily(format.fontFamily)
+        }
+
+        // 2. Font Size
+        if (format.fontSize) {
+            chain = chain.setFontSize(format.fontSize)
+        }
+
+        // 3. Text Color
+        if (format.color) {
+            chain = chain.setColor(format.color)
+        } else {
+            chain = chain.unsetColor()
+        }
+
+        // 4. Highlight
+        if (format.highlight) {
+            chain = chain.setHighlight({ color: format.highlight })
+        } else {
+            chain = chain.unsetHighlight()
+        }
+
+        // 5. Basic Marks: Bold, Italic, Underline, Strike
+        if (format.bold) {
+            if (!editor.isActive('bold')) chain = chain.setBold()
+        } else {
+            if (editor.isActive('bold')) chain = chain.unsetBold()
+        }
+
+        if (format.italic) {
+            if (!editor.isActive('italic')) chain = chain.setItalic()
+        } else {
+            if (editor.isActive('italic')) chain = chain.unsetItalic()
+        }
+
+        if (format.underline) {
+            if (!editor.isActive('underline')) chain = chain.setUnderline()
+        } else {
+            if (editor.isActive('underline')) chain = chain.unsetUnderline()
+        }
+
+        if (format.strike) {
+            if (!editor.isActive('strike')) chain = chain.setStrike()
+        } else {
+            if (editor.isActive('strike')) chain = chain.unsetStrike()
+        }
+
+        // 6. Text Alignment
+        if (format.textAlign) {
+            chain = chain.setTextAlign(format.textAlign)
+        }
+
+        // 7. Heading or Paragraph level
+        if (format.headingLevel && format.headingLevel > 0) {
+            chain = chain.setHeading({ level: format.headingLevel })
+        } else if (format.isParagraph) {
+            chain = chain.setParagraph()
+        }
+
+        chain.run()
+        onChange?.(editor.getHTML())
+    }, [editor, onChange])
+
+    applyFormatRef.current = applyFormatToSelection
+
+    const handlePaintFormatClick = useCallback(() => {
+        if (paintFormat) {
+            setPaintFormat(null)
+            setIsPaintFormatLocked(false)
+        } else {
+            const format = copyCurrentFormat()
+            if (format) {
+                setPaintFormat(format)
+                setIsPaintFormatLocked(false)
+            }
+        }
+    }, [paintFormat, copyCurrentFormat])
+
+    const handlePaintFormatDoubleClick = useCallback(() => {
+        const format = copyCurrentFormat()
+        if (format) {
+            setPaintFormat(format)
+            setIsPaintFormatLocked(true)
+        }
+    }, [copyCurrentFormat])
+
+    // ── Text & Highlight Color Handlers & Active State ────────────────────
+    const activeTextColor = editor?.getAttributes('textStyle').color || lastTextColor || '#1e293b'
+    const activeHighlightColor = editor?.getAttributes('highlight').color || lastHighlightColor || '#fef08a'
+
+    const handleTextColorChange = useCallback((e) => {
+        const newColor = e.target.value
+        if (!editor || !newColor) return
+        editor.chain().focus().setColor(newColor).run()
+        setLastTextColor(newColor)
+        onChange?.(editor.getHTML())
+    }, [editor, onChange])
+
+    const handleHighlightColorChange = useCallback((e) => {
+        const newColor = e.target.value
+        if (!editor || !newColor) return
+        editor.chain().focus().setHighlight({ color: newColor }).run()
+        setLastHighlightColor(newColor)
+        onChange?.(editor.getHTML())
+    }, [editor, onChange])
+
     // ── Speech Synthesis & "Listen to this tab" state ─────────────────────────
     const [audioState, setAudioState] = useState({
         isPlaying: false,
@@ -606,32 +807,55 @@ const ResumeEditor = forwardRef(function ResumeEditor(
         }
     }, [])
 
-    // Helper to get natural reading text with proper pauses
+    // Helper to get natural, professional reading text with cleaned symbols & pauses
     const getReadingText = useCallback(() => {
         if (!editor) return ''
         const { from, to } = editor.state.selection
+        let rawText = ''
         const selected = editor.state.doc.textBetween(from, to, ' ').trim()
         if (selected && selected.length > 3) {
-            return selected
+            rawText = selected
+        } else {
+            const html = editor.getHTML()
+            if (!html) return ''
+
+            const temp = document.createElement('div')
+            temp.innerHTML = html
+
+            // Ensure natural pauses between blocks and headings
+            const blocks = temp.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, blockquote, tr')
+            blocks.forEach(el => {
+                const text = el.innerText.trim()
+                if (text && !/[.!?:]$/.test(text)) {
+                    el.innerText = text + '. '
+                }
+            })
+
+            rawText = temp.innerText || temp.textContent || ''
         }
 
-        const html = editor.getHTML()
-        if (!html) return ''
-
-        const temp = document.createElement('div')
-        temp.innerHTML = html
-
-        // Ensure natural pauses between blocks and headings
-        const blocks = temp.querySelectorAll('h1, h2, h3, h4, p, li, blockquote, tr')
-        blocks.forEach(el => {
-            const text = el.innerText.trim()
-            if (text && !/[.!?:]$/.test(text)) {
-                el.innerText = text + '. '
-            }
-        })
-
-        return (temp.innerText || temp.textContent || '').replace(/\s+/g, ' ').trim()
+        // Clean & polish symbols for natural professional human speech
+        return rawText
+            .replace(/\bC\+\+/gi, 'C plus plus')
+            .replace(/\bC#/gi, 'C sharp')
+            .replace(/\bTCP\/IP\b/gi, 'TCP, IP')
+            .replace(/([a-zA-Z0-9]+)\/([a-zA-Z0-9]+)/g, '$1 and $2') // Linux/Unix -> Linux and Unix
+            .replace(/^[•\-\*\·▪▫–—\d\.]+\s*/gm, '') // Remove bullet glyphs
+            .replace(/[•\·▪▫–—]/g, ', ')
+            .replace(/\s+/g, ' ')
+            .trim()
     }, [editor])
+
+    const getBestVoice = useCallback(() => {
+        if (typeof window === 'undefined' || !window.speechSynthesis) return null
+        const voices = window.speechSynthesis.getVoices() || []
+        const naturalVoices = voices.filter(v => (v.lang.startsWith('en') || v.lang.includes('EN')))
+        return naturalVoices.find(v => v.name.includes('Natural') || v.name.includes('Neural') || v.name.includes('Online (Natural)'))
+            || naturalVoices.find(v => v.name.includes('Google') || v.name.includes('Jenny') || v.name.includes('Guy') || v.name.includes('Andrew') || v.name.includes('Aria') || v.name.includes('Christopher'))
+            || naturalVoices.find(v => v.name.includes('Samantha') || v.name.includes('Zira') || v.name.includes('David'))
+            || naturalVoices[0]
+            || null
+    }, [])
 
     const handleStartSpeech = useCallback((rateOverride = null) => {
         if (typeof window === 'undefined' || !window.speechSynthesis) {
@@ -651,8 +875,7 @@ const ResumeEditor = forwardRef(function ResumeEditor(
         utterance.rate = currentRate
         utterance.pitch = 1.0
 
-        const voices = window.speechSynthesis.getVoices() || []
-        const preferredVoice = voices.find(v => (v.lang.includes('en') || v.lang.includes('EN')) && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Jenny') || v.name.includes('Samantha') || v.name.includes('English')))
+        const preferredVoice = getBestVoice()
         if (preferredVoice) {
             utterance.voice = preferredVoice
         }
@@ -680,7 +903,7 @@ const ResumeEditor = forwardRef(function ResumeEditor(
 
         synthUtteranceRef.current = utterance
         window.speechSynthesis.speak(utterance)
-    }, [getReadingText, audioState.rate])
+    }, [getReadingText, getBestVoice, audioState.rate])
 
     const handleToggleListen = useCallback(() => {
         if (typeof window === 'undefined' || !window.speechSynthesis) return
@@ -726,7 +949,7 @@ const ResumeEditor = forwardRef(function ResumeEditor(
     if (!editor) return null
 
     return (
-        <div className="tiptap-editor-root">
+        <div className={`tiptap-editor-root ${paintFormat ? 'paint-format-mode' : ''}`}>
             {/* ── Formatting Toolbar ── */}
             <div className="tiptap-toolbar" role="toolbar" aria-label="Text formatting">
                 {/* History */}
@@ -735,6 +958,21 @@ const ResumeEditor = forwardRef(function ResumeEditor(
                 </ToolBtn>
                 <ToolBtn onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} title="Redo (Ctrl+Y)">
                     <Redo size={14} />
+                </ToolBtn>
+                <ToolBtn
+                    onClick={handlePaintFormatClick}
+                    onDoubleClick={handlePaintFormatDoubleClick}
+                    active={Boolean(paintFormat)}
+                    className={paintFormat ? 'paint-format-active' : ''}
+                    title={
+                        isPaintFormatLocked
+                            ? "Paint format locked (Click or Esc to exit)"
+                            : paintFormat
+                            ? "Paint format active (Click text/selection to apply, double-click for persistent mode)"
+                            : "Paint format (Copy formatting: click to copy, double-click for persistent)"
+                    }
+                >
+                    <PaintRoller size={14} />
                 </ToolBtn>
 
                 <Divider />
@@ -1098,27 +1336,59 @@ const ResumeEditor = forwardRef(function ResumeEditor(
 
                 <Divider />
 
-                {/* Color picker */}
-                <div className="tiptap-color-wrap" title="Text Color">
-                    <Type size={14} />
+                {/* ── Dynamic Text Color Picker (with current/last color indicator bar) ── */}
+                <div className="tiptap-color-btn-wrap" title={`Text color (${activeTextColor})`}>
+                    <button
+                        type="button"
+                        className="tiptap-color-trigger-btn"
+                        onClick={() => colorInputRef.current?.click()}
+                        title={`Text color (${activeTextColor})`}
+                        aria-label="Text color"
+                    >
+                        <span className="tiptap-color-icon-inner">
+                            <span className="color-icon-letter">A</span>
+                            <span
+                                className="color-bar-indicator"
+                                style={{ backgroundColor: activeTextColor }}
+                            />
+                        </span>
+                    </button>
                     <input
+                        ref={colorInputRef}
                         type="color"
-                        className="tiptap-color-input"
-                        value={editor.getAttributes('textStyle').color || '#000000'}
-                        onChange={(e) => editor.chain().focus().setColor(e.target.value).run()}
-                        title="Text Color"
+                        className="tiptap-hidden-color-input"
+                        value={toHexColor(activeTextColor)}
+                        onChange={handleTextColorChange}
+                        title="Choose text color"
+                        aria-label="Choose text color"
                     />
                 </div>
 
-                {/* Highlight */}
-                <div className="tiptap-color-wrap" title="Highlight">
-                    <Highlighter size={14} />
+                {/* ── Dynamic Highlight Color Picker (with current/last color indicator bar) ── */}
+                <div className="tiptap-color-btn-wrap" title={`Highlight color (${activeHighlightColor})`}>
+                    <button
+                        type="button"
+                        className="tiptap-color-trigger-btn"
+                        onClick={() => highlightInputRef.current?.click()}
+                        title={`Highlight color (${activeHighlightColor})`}
+                        aria-label="Highlight color"
+                    >
+                        <span className="tiptap-color-icon-inner">
+                            <Highlighter size={14} />
+                            <span
+                                className="color-bar-indicator"
+                                style={{ backgroundColor: activeHighlightColor }}
+                            />
+                        </span>
+                    </button>
                     <input
+                        ref={highlightInputRef}
                         type="color"
-                        className="tiptap-color-input"
-                        defaultValue="#fef08a"
-                        onChange={(e) => editor.chain().focus().toggleHighlight({ color: e.target.value }).run()}
-                        title="Highlight Color"
+                        className="tiptap-hidden-color-input"
+                        value={toHexColor(activeHighlightColor)}
+                        onChange={handleHighlightColorChange}
+                        title="Choose highlight color"
+                        aria-label="Choose highlight color"
                     />
                 </div>
 

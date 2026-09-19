@@ -26,33 +26,40 @@ const overlayStyle = {
     right: 0,
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    backdropFilter: 'blur(4px)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 100000,
+    padding: '1rem',
 };
 
 const modalStyle = {
-    background: '#1e1e2e',
-    border: '1px solid #33334d',
-    padding: '28px',
-    borderRadius: '16px',
+    background: 'var(--bg-sidebar, #171b18)',
+    border: '1px solid var(--border-color, rgba(243, 240, 233, 0.14))',
+    padding: '1.75rem',
+    borderRadius: '0.75rem',
     maxWidth: '420px',
     width: '90%',
     textAlign: 'center',
-    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
+    boxShadow: '0 25px 50px rgba(0, 0, 0, 0.6), 0 0 25px rgba(223, 105, 77, 0.08)',
+    color: 'var(--text-primary, #f3f0e9)',
 };
 
 const buttonStyle = {
-    backgroundColor: '#6366f1',
+    backgroundColor: 'var(--accent-color, #ef7b5d)',
     color: '#ffffff',
     border: 'none',
-    padding: '10px 28px',
-    borderRadius: '8px',
-    fontWeight: '600',
+    padding: '0.65rem 1.75rem',
+    borderRadius: '4px',
+    fontFamily: 'var(--font-mono, monospace)',
+    fontWeight: '700',
+    fontSize: '0.78rem',
+    letterSpacing: '0.04em',
+    textTransform: 'uppercase',
     cursor: 'pointer',
-    fontSize: '0.95rem',
+    transition: 'all 0.2s ease',
 };
 
 export default ErrorModal;

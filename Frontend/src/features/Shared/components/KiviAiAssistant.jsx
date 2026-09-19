@@ -415,6 +415,14 @@ export function KiviAiAssistant() {
                 action: actionPreset || '',
                 instruction: messageToSend,
                 signal: abortControllerRef.current.signal,
+                onStatus: (statusData) => {
+                    setChatMessages(prev => prev.map(msg => {
+                        if (msg.id === aiMsgId) {
+                            return { ...msg, searchStatus: statusData };
+                        }
+                        return msg;
+                    }));
+                },
                 onToken: (token, accumulated) => {
                     setChatMessages(prev => prev.map(msg => {
                         if (msg.id === aiMsgId) {
@@ -432,6 +440,7 @@ export function KiviAiAssistant() {
                                 targetText: data.targetText || activeSnippet || msg.targetText || null,
                                 suggestedSnippet: data.suggestedSnippet || null,
                                 resources: data.resources || [],
+                                searchStatus: null,
                                 isStreaming: false
                             };
                         }
@@ -760,13 +769,59 @@ export function KiviAiAssistant() {
                                     )}
                                     {msg.sender === 'ai' ? (
                                         msg.isStreaming && !msg.text ? (
-                                            <div className="typing-dots-wrapper" style={{ display: 'inline-flex', gap: '4px', alignItems: 'center', padding: '4px 6px' }}>
-                                                <span className="dot"></span>
-                                                <span className="dot"></span>
-                                                <span className="dot"></span>
-                                            </div>
+                                            msg.searchStatus ? (
+                                                <div className="kivi-searching-card">
+                                                    <div className="searching-header">
+                                                        <span className="searching-radar-icon">
+                                                            <span className="radar-ping"></span>
+                                                            <span className="radar-core">🔍</span>
+                                                        </span>
+                                                        <div className="searching-header-info">
+                                                            <span className="searching-title">{msg.searchStatus.message || 'Searching web & developer resources...'}</span>
+                                                            {msg.searchStatus.query && (
+                                                                <span className="searching-query-tag">Query: {msg.searchStatus.query}</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    {Array.isArray(msg.searchStatus.sources) && msg.searchStatus.sources.length > 0 && (
+                                                        <div className="searching-sources-pills">
+                                                            {msg.searchStatus.sources.map((src, idx) => (
+                                                                <span key={idx} className="searching-source-pill">
+                                                                    <span className="source-pill-icon">{src.icon || '🌐'}</span>
+                                                                    <span className="source-pill-name">{src.name || src}</span>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    {Array.isArray(msg.searchStatus.scannedDomains) && msg.searchStatus.scannedDomains.length > 0 && (
+                                                        <div className="searching-scanned-domains">
+                                                            <span className="scanned-label">Scanning:</span>
+                                                            {msg.searchStatus.scannedDomains.map((dom, dIdx) => (
+                                                                <span key={dIdx} className="scanned-domain-tag">{dom}</span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="typing-dots-wrapper">
+                                                    <span className="dot"></span>
+                                                    <span className="dot"></span>
+                                                    <span className="dot"></span>
+                                                </div>
+                                            )
                                         ) : (
                                             <div className="msg-content-wrapper">
+                                                {msg.isStreaming && msg.searchStatus && (
+                                                    <div className="kivi-searching-card mini">
+                                                        <div className="searching-header">
+                                                            <span className="searching-radar-icon mini">
+                                                                <span className="radar-ping"></span>
+                                                                <span className="radar-core">🔍</span>
+                                                            </span>
+                                                            <span className="searching-title">{msg.searchStatus.message || 'Grounded in verified search resources'}</span>
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 <div
                                                     className="msg-markdown-content"
                                                     dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.text) }}
@@ -838,48 +893,6 @@ export function KiviAiAssistant() {
                                                         )}
                                                     </>
                                                 )}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Verified Resources Links */}
-                                    {Array.isArray(msg.resources) && msg.resources.length > 0 && (
-                                        <div className="verified-resources-panel">
-                                            <div className="resources-title">
-                                                <span>📚</span> Verified Learning & Practice Resources:
-                                            </div>
-                                            <div className="resources-list-container">
-                                                {msg.resources.map((res, i) => {
-                                                    let icon = '🔗';
-                                                    let badge = 'RESOURCE';
-                                                    if (res.type === 'video') { icon = '▶️'; badge = 'VIDEO'; }
-                                                    else if (res.type === 'github') { icon = '🐙'; badge = 'GITHUB'; }
-                                                    else if (res.type === 'leetcode') { icon = '💡'; badge = 'LEETCODE'; }
-                                                    else if (res.type === 'doc') { icon = '📖'; badge = 'DOCS'; }
-                                                    else if (res.type === 'web') { icon = '🌐'; badge = 'WEB'; }
-
-                                                    return (
-                                                        <a 
-                                                            key={i} 
-                                                            href={res.url} 
-                                                            target="_blank" 
-                                                            rel="noopener noreferrer" 
-                                                            className="resource-link-item"
-                                                            title={res.snippet || res.title}
-                                                        >
-                                                            <div className="resource-item-header">
-                                                                <span className="resource-icon">{icon}</span>
-                                                                <span className="resource-item-title">{res.title}</span>
-                                                                <span className={`resource-type-badge ${res.type || 'web'}`}>{badge}</span>
-                                                            </div>
-                                                            {res.snippet && (
-                                                                <p className="resource-snippet-preview">
-                                                                    {res.snippet.slice(0, 110)}{res.snippet.length > 110 ? '…' : ''}
-                                                                </p>
-                                                            )}
-                                                        </a>
-                                                    );
-                                                })}
                                             </div>
                                         </div>
                                     )}
