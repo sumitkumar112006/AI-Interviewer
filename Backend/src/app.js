@@ -19,7 +19,7 @@ function normalizeOrigin(origin) {
 }
 
 const allowedOrigins = [
-    "https://kivi-ai-production.up.railway.app",
+    "https://kivi-ai.onrender.com",
     "https://ai-interviewer-silk.vercel.app",
     "http://localhost:5173",
     "http://localhost:3000",
@@ -69,6 +69,22 @@ app.use(cookieParser());
 // Global Rate Limiter
 app.use(globalLimiter);
 
+// Health check routes (for Render & cron-job.org keep-alive)
+app.get('/', (req, res) => {
+    res.status(200).json({
+        status: 'success',
+        message: 'Kivi AI Backend is running smoothly',
+        timestamp: new Date().toISOString()
+    });
+});
+
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'healthy',
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString()
+    });
+});
 
 // Require all routes
 const { authRouter } = require('./routes/auth.route');
