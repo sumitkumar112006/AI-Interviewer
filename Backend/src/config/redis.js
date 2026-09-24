@@ -4,25 +4,25 @@ let redisClient = null;
 
 function connectToRedis() {
     const isProduction = process.env.NODE_ENV === 'production';
-    const isRailwayEnv = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_STATIC_URL || process.env.REDISHOST || isProduction);
+    const isCloudEnv = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_STATIC_URL || process.env.REDISHOST || isProduction);
 
     let redisUrl = null;
 
-    if (isRailwayEnv) {
-        // --- PRODUCTION (RAILWAY REDIS) ---
-        // Priority 1: Railway provided REDISHOST credentials
-        if (process.env.REDISHOST) {
+    if (isCloudEnv) {
+        // Priority 1: Full REDIS_URL (Upstash / Cloud / Railway)
+        if (process.env.REDIS_URL && !process.env.REDIS_URL.includes('127.0.0.1') && !process.env.REDIS_URL.includes('localhost')) {
+            redisUrl = process.env.REDIS_URL;
+        } 
+        // Priority 2: REDISHOST credentials
+        else if (process.env.REDISHOST) {
             const user = process.env.REDISUSER || 'default';
             const pass = process.env.REDISPASSWORD ? `:${process.env.REDISPASSWORD}@` : '';
             const host = process.env.REDISHOST;
             const port = process.env.REDISPORT || 6379;
-            redisUrl = `redis://${user}${pass}${host}:${port}`;
+            const isTls = host.includes('upstash.io') || process.env.REDIS_TLS === 'true';
+            redisUrl = `${isTls ? 'rediss' : 'redis'}://${user}${pass}${host}:${port}`;
         } 
-        // Priority 2: Railway REDIS_URL (non-localhost)
-        else if (process.env.REDIS_URL && !process.env.REDIS_URL.includes('127.0.0.1') && !process.env.REDIS_URL.includes('localhost')) {
-            redisUrl = process.env.REDIS_URL;
-        } 
-        // Priority 3: Railway REDIS_PUBLIC_URL
+        // Priority 3: REDIS_PUBLIC_URL
         else if (process.env.REDIS_PUBLIC_URL) {
             redisUrl = process.env.REDIS_PUBLIC_URL;
         }
@@ -33,11 +33,12 @@ function connectToRedis() {
         redisUrl = process.env.LOCAL_REDIS_URL || process.env.REDIS_URL || 'redis://127.0.0.1:6379';
     }
 
+    const isTlsRequired = redisUrl.startsWith('rediss://') || redisUrl.includes('upstash.io');
     const maskedUrl = redisUrl.replace(/:[^:@]+@/, ':****@');
-    console.log(`Connecting to Redis [${isRailwayEnv ? 'Railway Production' : 'Localhost Redis'}]... [${maskedUrl}]`);
+    console.log(`Connecting to Redis [${isCloudEnv ? 'Cloud/Upstash Production' : 'Localhost Redis'}]... [${maskedUrl}] (TLS: ${isTlsRequired})`);
 
     try {
-        redisClient = new Redis(redisUrl, {
+        const redisOptions = {
             maxRetriesPerRequest: 3,
             retryStrategy(times) {
                 if (times > 5) {
@@ -48,11 +49,14 @@ function connectToRedis() {
                 return delay;
             },
             lazyConnect: false,
-            connectTimeout: 5000,
-        });
+            connectTimeout: 10000,
+            ...(isTlsRequired ? { tls: { rejectUnauthorized: false } } : {})
+        };
+
+        redisClient = new Redis(redisUrl, redisOptions);
 
         redisClient.on('connect', () => {
-            console.log(`✅ Connected to Redis successfully [${isRailwayEnv ? 'Railway Production' : 'Localhost Redis'}] [${maskedUrl}]`);
+            console.log(`✅ Connected to Redis successfully [${isRailwayEnv ? 'upstash Production' : 'Localhost Redis'}] [${maskedUrl}]`);
         });
 
         redisClient.on('error', (err) => {
