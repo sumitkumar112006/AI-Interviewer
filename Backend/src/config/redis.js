@@ -56,7 +56,7 @@ function connectToRedis() {
         redisClient = new Redis(redisUrl, redisOptions);
 
         redisClient.on('connect', () => {
-            console.log(`✅ Connected to Redis successfully [${isRailwayEnv ? 'upstash Production' : 'Localhost Redis'}] [${maskedUrl}]`);
+            console.log(`✅ Connected to Redis successfully [${isCloudEnv ? 'Cloud/Upstash Production' : 'Localhost Redis'}] [${maskedUrl}]`);
         });
 
         redisClient.on('error', (err) => {

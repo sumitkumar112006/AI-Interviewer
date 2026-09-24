@@ -3,6 +3,7 @@ import { Link, Outlet } from 'react-router-dom';
 import { ArrowRight, Sun, Moon, Sparkles } from 'lucide-react';
 import Footer from '../../Footer/components/Footer';
 import '../landing.scss';
+import '../publicLayout.scss';
 
 const PublicLayout = ({ children }) => {
   const [theme, setTheme] = useState(() => {

@@ -34,6 +34,7 @@ const Register = () => {
 
     const [step, setStep] = useState(1)
     const [otp, setOtp] = useState('')
+    const [agreedToTerms, setAgreedToTerms] = useState(false)
     const [error, setError] = useState('')
     const [infoMessage, setInfoMessage] = useState('')
     const [validationError, setValidationError] = useState('')
@@ -57,6 +58,11 @@ const Register = () => {
 
         if (password !== confirmPassword) {
             setValidationError('Passwords do not match. Please verify.')
+            return
+        }
+
+        if (!agreedToTerms) {
+            setValidationError('Please agree to the Terms of Service and Privacy Policy.')
             return
         }
 
@@ -250,6 +256,33 @@ const Register = () => {
                                     )}
                                 </div>
 
+                                {/* Terms of Service & Privacy Policy Checkbox */}
+                                <div className="auth-consent-checkbox-group">
+                                    <label className="auth-checkbox-label" htmlFor="reg-consent-checkbox">
+                                        <input
+                                            id="reg-consent-checkbox"
+                                            type="checkbox"
+                                            checked={agreedToTerms}
+                                            onChange={(e) => {
+                                                setAgreedToTerms(e.target.checked)
+                                                if (e.target.checked) setValidationError('')
+                                            }}
+                                            className="auth-checkbox-input"
+                                            required
+                                        />
+                                        <span className="auth-checkbox-text">
+                                            I agree to the{' '}
+                                            <Link to="/terms-of-service" target="_blank" rel="noopener noreferrer" className="auth-consent-link">
+                                                Terms of Service
+                                            </Link>{' '}
+                                            and{' '}
+                                            <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" className="auth-consent-link">
+                                                Privacy Policy
+                                            </Link>
+                                        </span>
+                                    </label>
+                                </div>
+
                                 {/* Submit Button */}
                                 <button
                                     type="submit"
@@ -260,14 +293,8 @@ const Register = () => {
                                 </button>
                             </form>
 
-                            {/* Data Protection & Privacy Consent */}
+                            {/* Data Security Guarantee */}
                             <div className="auth-privacy-consent-box">
-                                <p className="auth-privacy-consent-text">
-                                    By creating an account or continuing with Google, you agree to KIVI-AI's{' '}
-                                    <Link to="/terms-of-service" className="auth-consent-link">Terms of Service</Link>{' '}
-                                    and{' '}
-                                    <Link to="/privacy-policy" className="auth-consent-link">Privacy Policy</Link>.
-                                </p>
                                 <p className="auth-privacy-guarantee">
                                     🛡️ <strong>Zero Model Training:</strong> Your resumes and interview audio are encrypted (AES-256) and never used to train public AI models or shared with recruiters.
                                 </p>

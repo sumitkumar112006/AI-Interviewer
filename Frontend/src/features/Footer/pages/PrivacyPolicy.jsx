@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Shield, 
   Lock, 
@@ -12,200 +12,529 @@ import {
   AlertCircle, 
   CheckCircle2, 
   Globe,
-  Share2
+  Share2,
+  Download,
+  Printer,
+  Scale,
+  Clock,
+  ExternalLink,
+  ChevronRight,
+  HelpCircle,
+  FileCheck
 } from 'lucide-react';
 import '../footer.pages.scss';
 
 const PrivacyPolicy = () => {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const sections = [
+    { id: 'sec-fiduciary', title: '1. Data Fiduciary & Applicability' },
+    { id: 'sec-collection', title: '2. Personal Data We Collect' },
+    { id: 'sec-purpose', title: '3. Lawful Grounds & Purpose of Processing' },
+    { id: 'sec-processors', title: '4. AI Inference & Sub-Processors' },
+    { id: 'sec-security', title: '5. Security Safeguards & Encryption' },
+    { id: 'sec-retention', title: '6. Data Retention & Account Deletion' },
+    { id: 'sec-rights', title: '7. Statutory Rights of the Data Principal' },
+    { id: 'sec-children', title: '8. Protection of Children’s Personal Data' },
+    { id: 'sec-breach', title: '9. Data Breach Notification Protocol' },
+    { id: 'sec-grievance', title: '10. Grievance Redressal & Board Details' }
+  ];
+
   return (
     <div className="footer-page-container">
-      {/* Banner Header */}
+      {/* ===== BANNER HEADER ===== */}
       <div className="footer-page-banner">
         <div className="banner-icon-badge">
           <Shield size={32} />
         </div>
-        <h1>Privacy Policy & Data Protection</h1>
-        <p className="subtitle">
-          Transparent, government-compliant data governance. Learn how KIVI-AI protects your personal resumes, interview audio, and account information under international data protection laws (DPDP Act, GDPR, and CCPA).
-        </p>
-        <span className="last-updated">Last Updated: September 2026 · Version 2.4</span>
-      </div>
 
-      <div className="footer-page-content">
-        {/* Core Principles Summary Box */}
-        <div className="legal-highlight-box">
-          <div className="highlight-header">
-            <CheckCircle2 size={20} className="text-emerald" />
-            <h3>Our Core Privacy Guarantees</h3>
+        <span className="banner-compliance-pill">
+          <Scale size={13} /> DPDP ACT, 2023 & RULES, 2025 COMPLIANT
+        </span>
+
+        <h1>Privacy Policy & Data Governance</h1>
+        
+        <p className="subtitle">
+          Transparent, statutory data governance framework. Learn how KIVI-AI protects your candidate profile, uploaded resumes, audio responses, and AI interview evaluations under the <strong>Digital Personal Data Protection (DPDP) Act, 2023</strong>, <strong>DPDP Rules, 2025</strong>, and international privacy standards.
+        </p>
+
+        <div className="banner-meta-row">
+          <div className="meta-item">
+            <span>Jurisdiction:</span> <strong>Republic of India</strong>
           </div>
-          <div className="highlight-grid">
-            <div className="highlight-item">
-              <strong>🔒 Zero Public Model Training</strong>
-              <p>Your uploaded resumes, cover letters, and interview voice recordings are NEVER used to train public AI foundation models.</p>
-            </div>
-            <div className="highlight-item">
-              <strong>🛡️ Bank-Grade Encryption</strong>
-              <p>All data is encrypted with TLS 1.3 in transit and AES-256 at rest across secure cloud infrastructure.</p>
-            </div>
-            <div className="highlight-item">
-              <strong>🚫 No Selling or Renting</strong>
-              <p>We do not monetize, sell, or share your candidate profile with recruiters, advertisers, or third-party brokers.</p>
-            </div>
-            <div className="highlight-item">
-              <strong>⚡ 100% User Data Ownership</strong>
-              <p>You can export, download, or permanently delete your resumes, interview transcripts, and account anytime.</p>
-            </div>
+          <div className="meta-item">
+            <span>Version:</span> <strong>v2.5 (Statutory Edition)</strong>
+          </div>
+          <div className="meta-item">
+            <span>Effective Date:</span> <strong>September 2026</strong>
+          </div>
+          <div className="meta-item">
+            <span>Classification:</span> <strong>Public Legal Policy</strong>
           </div>
         </div>
 
-        {/* Section 1: Information We Collect */}
-        <section className="legal-section">
-          <div className="section-title">
-            <FileText className="section-icon" size={20} />
-            <h2>1. Information We Collect</h2>
-          </div>
-          <p>
-            In accordance with digital data minimization principles, KIVI-AI collects only the information strictly required to provide personalized AI mock interviews, resume matching, and career preparation tools:
-          </p>
-          <ul className="legal-list">
-            <li>
-              <strong>Account & Profile Information:</strong> When you register via email or Google OAuth, we collect your full name, email address, password hash (salted and encrypted), and Google avatar (if using Google Sign-In).
-            </li>
-            <li>
-              <strong>Resume & Professional Background:</strong> PDF resumes uploaded, self-description summaries, educational history, work experience, skill tags, and targeted job descriptions you submit for analysis.
-            </li>
-            <li>
-              <strong>AI Interview Simulations & Audio:</strong> Spoken audio inputs recorded during voice simulations (processed in temporary memory buffers for speech-to-text), typed interview responses, performance metrics, STAR breakdown evaluations, and AI scorecards.
-            </li>
-            <li>
-              <strong>Technical, Device & Usage Data:</strong> Anonymized IP addresses, browser user-agents, operating systems, and authentication session tokens used strictly to safeguard your account against unauthorized access and brute-force attacks.
-            </li>
-          </ul>
-        </section>
+        <div className="banner-actions">
+          <a 
+            href="/DPDP_Privacy_Policy_and_Compliance_Guide.pdf" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="btn-banner-action primary"
+            download
+          >
+            <Download size={14} />
+            <span>Download Official DPDP Guide (PDF)</span>
+          </a>
+          <button 
+            type="button" 
+            onClick={handlePrint} 
+            className="btn-banner-action"
+            title="Print Policy Document"
+          >
+            <Printer size={14} />
+            <span>Print Policy</span>
+          </button>
+        </div>
+      </div>
 
-        {/* Section 2: How We Use Your Data */}
-        <section className="legal-section">
-          <div className="section-title">
-            <Eye className="section-icon" size={20} />
-            <h2>2. Purpose & How We Use Your Data</h2>
+      {/* ===== CORE STATUTORY PRIVACY GUARANTEES ===== */}
+      <div className="legal-highlight-box">
+        <div className="highlight-header">
+          <div className="highlight-title">
+            <CheckCircle2 size={20} style={{ color: '#22c55e' }} />
+            <span>Statutory Privacy Guarantees</span>
           </div>
-          <p>
-            We process your personal information strictly under legal bases of contract performance and explicit user consent:
-          </p>
-          <ul className="legal-list">
-            <li>
-              <strong>AI Mock Interview Evaluation:</strong> To generate relevant technical questions, conduct voice/text interview loops, and provide real-time STAR scoring and tradeoff analysis.
-            </li>
-            <li>
-              <strong>ATS Resume Match Scoring:</strong> To parse and benchmark your qualifications against job specifications and generate ATS-friendly resumes and cover letters in the TipTap Resume Studio.
-            </li>
-            <li>
-              <strong>Personalized Study Roadmaps:</strong> To create day-wise structured study plans tailored to your upcoming interview dates and target seniority levels.
-            </li>
-            <li>
-              <strong>Account Security & Authentication:</strong> To verify your identity, send one-time verification codes (OTP), handle password resets, and secure session states.
-            </li>
-          </ul>
-        </section>
+          <span className="highlight-tag">ENFORCEABLE GUARANTEES</span>
+        </div>
 
-        {/* Section 3: AI Processing & Third-Party Processors */}
-        <section className="legal-section">
-          <div className="section-title">
-            <Cpu className="section-icon" size={20} />
-            <h2>3. AI Architecture & Third-Party Processors</h2>
-          </div>
-          <p>
-            KIVI-AI utilizes industry-leading enterprise cloud APIs (such as Groq LPU inference, Google Gemini API, and Supabase) to deliver real-time career intelligence:
-          </p>
-          <ul className="legal-list">
-            <li>
-              <strong>Enterprise Zero-Retention Processing:</strong> Data transmitted to our AI model providers (Groq and Google Gemini) is processed over secure TLS 1.3 connections under strict enterprise agreements where your prompts and outputs are <em>stateless</em> and are <strong>never retained or used for foundation model training</strong>.
-            </li>
-            <li>
-              <strong>Google OAuth Protocol:</strong> When you choose "Continue with Google", we only request standard openid profile scopes (Name and Email). We never request access to your Google Drive, emails, or personal contacts.
-            </li>
-            <li>
-              <strong>No Advertising Trackers:</strong> We do not deploy third-party advertising cookies or cross-site tracking pixels on our platform.
-            </li>
-          </ul>
-        </section>
-
-        {/* Section 4: Data Security & Storage */}
-        <section className="legal-section">
-          <div className="section-title">
-            <Server className="section-icon" size={20} />
-            <h2>4. Data Storage, Security & Retention</h2>
-          </div>
-          <p>
-            We implement comprehensive technical and organizational safeguards conforming to ISO 27001 and SOC 2 standards:
-          </p>
-          <ul className="legal-list">
-            <li>
-              <strong>Cryptographic Storage:</strong> User credentials and generated career reports are encrypted at rest using AES-256 and transmitted with end-to-end TLS 1.3 encryption.
-            </li>
-            <li>
-              <strong>Retention Schedule:</strong> Your resume versions and interview reports are maintained only for as long as your account remains active.
-            </li>
-            <li>
-              <strong>Instant Erasure:</strong> When you delete an individual resume or interview session, it is immediately expunged from primary application databases.
-            </li>
-          </ul>
-        </section>
-
-        {/* Section 5: Your Statutory Legal Rights */}
-        <section className="legal-section">
-          <div className="section-title">
-            <UserCheck className="section-icon" size={20} />
-            <h2>5. Your Statutory Legal Rights (DPDP, GDPR & CCPA)</h2>
-          </div>
-          <p>
-            Regardless of your geographical location, KIVI-AI provides all users with universal data rights:
-          </p>
-          <ul className="legal-list">
-            <li>
-              <strong>Right to Access & Portability:</strong> You can view and download all generated resumes, cover letters, and interview evaluation reports in standard PDF or text formats at any time.
-            </li>
-            <li>
-              <strong>Right to Rectification:</strong> You can edit and update your profile, resume content, and preferences whenever you wish.
-            </li>
-            <li>
-              <strong>Right to Erasure ("Right to be Forgotten"):</strong> You have the absolute right to delete individual reports or submit an account deletion request to purge all personal records completely.
-            </li>
-            <li>
-              <strong>Right to Withdraw Consent:</strong> You may revoke OAuth access or withdraw consent for data processing by notifying our Data Protection team.
-            </li>
-          </ul>
-        </section>
-
-        {/* Section 6: Data Protection Officer & Grievance Contact */}
-        <section className="legal-section contact-card-section">
-          <div className="section-title">
-            <Mail className="section-icon" size={20} />
-            <h2>6. Data Protection Officer & Grievance Redressal</h2>
-          </div>
-          <p>
-            In compliance with government data protection regulations, we have appointed a dedicated Grievance & Data Protection Officer (DPO) to handle any questions or concerns regarding your privacy:
-          </p>
-          
-          <div className="compliance-contact-card">
-            <div className="contact-row">
-              <span className="label">Compliance Officer:</span>
-              <span className="value">KIVI-AI Data Governance Team</span>
+        <div className="highlight-grid">
+          <div className="highlight-item">
+            <div className="item-icon-title">
+              <Cpu size={18} style={{ color: 'var(--pub-accent)' }} />
+              <span>Zero Model Training</span>
             </div>
-            <div className="contact-row">
-              <span className="label">Official Email:</span>
-              <span className="value"><a href="mailto:privacy@kivi-ai.com">privacy@kivi-ai.com</a></span>
+            <p>
+              Your uploaded resumes, cover letters, and interview voice recordings are <strong>NEVER used to train or fine-tune public AI models</strong> (e.g. Groq, OpenAI, Gemini).
+            </p>
+          </div>
+
+          <div className="highlight-item">
+            <div className="item-icon-title">
+              <Lock size={18} style={{ color: 'var(--pub-accent)' }} />
+              <span>Bank-Grade Encryption</span>
             </div>
-            <div className="contact-row">
-              <span className="label">Support Inquiries:</span>
-              <span className="value"><a href="mailto:support@kivi-ai.com">support@kivi-ai.com</a></span>
+            <p>
+              All traffic is protected with <strong>TLS 1.3 in-transit</strong> and sensitive career data is encrypted with <strong>AES-256 at-rest</strong> across enterprise cloud databases.
+            </p>
+          </div>
+
+          <div className="highlight-item">
+            <div className="item-icon-title">
+              <Shield size={18} style={{ color: 'var(--pub-accent)' }} />
+              <span>Zero Data Selling</span>
             </div>
-            <div className="contact-row">
-              <span className="label">Response Timeframe:</span>
-              <span className="value">All privacy requests are resolved within 48 to 72 business hours.</span>
+            <p>
+              We do not sell, rent, or monetize your candidate profile with recruiters, third-party brokers, or advertisers. You have 100% data ownership.
+            </p>
+          </div>
+
+          <div className="highlight-item">
+            <div className="item-icon-title">
+              <Clock size={18} style={{ color: 'var(--pub-accent)' }} />
+              <span>30-Day Permanent Purge</span>
+            </div>
+            <p>
+              When you delete your account, all your resumes, audio transcripts, feedback scorecards, and tokens are permanently purged from active systems within 30 days.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ===== QUICK JUMP NAVIGATION ===== */}
+      <nav className="legal-toc-bar" aria-label="Privacy Policy Table of Contents">
+        <div className="toc-label">
+          <FileCheck size={14} /> Jump To:
+        </div>
+        <div className="toc-pills">
+          {sections.map((sec) => (
+            <a key={sec.id} href={`#${sec.id}`} className="toc-pill">
+              {sec.title}
+            </a>
+          ))}
+        </div>
+      </nav>
+
+      {/* ===== LEGAL CONTENT SECTIONS ===== */}
+      <div className="footer-page-content">
+
+        {/* Section 1: Data Fiduciary & Applicability */}
+        <section id="sec-fiduciary" className="legal-section">
+          <div className="section-title">
+            <div className="title-left">
+              <FileText className="section-icon" size={22} />
+              <h2>1. Data Fiduciary & Statutory Scope</h2>
+            </div>
+            <span className="law-cite-badge">DPDP ACT § 2(i) & § 8(1)</span>
+          </div>
+
+          <p>
+            This Privacy Policy (the <strong>"Policy"</strong>) sets forth the principles and practices of <strong>KIVI-AI Technologies Inc.</strong> (<strong>"Company"</strong>, <strong>"We"</strong>, <strong>"Us"</strong>, <strong>"Our"</strong>), operating as a <strong>Data Fiduciary</strong> under the <em>Digital Personal Data Protection Act, 2023 (Act No. 22 of 2023, Republic of India)</em> and the <em>DPDP Rules, 2025</em>, in collecting, storing, processing, and safeguarding the digital personal data of registered users, candidates, and visitors (<strong>"Data Principals"</strong>, <strong>"You"</strong>, <strong>"Your"</strong>).
+          </p>
+
+          <p>
+            This Policy applies to all digital personal data processed via the KIVI-AI web platform, API endpoints, mock interview simulators, resume studio, and career diagnostic tools. Under Section 8(1) of the Act, KIVI-AI remains legally responsible for complying with the provisions of the Act for any processing undertaken by it or on its behalf.
+          </p>
+
+          <div className="legal-callout-box">
+            <AlertCircle size={18} className="callout-icon" />
+            <div>
+              <strong>Legal Binding:</strong> By registering an account, checking the consent confirmation box, or using our AI interview features, you acknowledge that you have read and agreed to this statutory policy.
             </div>
           </div>
         </section>
+
+        {/* Section 2: Categories of Personal Data We Collect */}
+        <section id="sec-collection" className="legal-section">
+          <div className="section-title">
+            <div className="title-left">
+              <Database className="section-icon" size={22} />
+              <h2>2. Categories of Personal Data We Collect</h2>
+            </div>
+            <span className="law-cite-badge">DPDP ACT § 8(3) & DATA MINIMIZATION</span>
+          </div>
+
+          <p>
+            In strict compliance with data minimization principles under Section 8(3), we collect only the personal information essential for conducting AI mock interviews, generating ATS resumes, and managing your account:
+          </p>
+
+          <div className="legal-table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Data Elements Collected</th>
+                  <th>DPDP Lawful Purpose</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Account Credentials</strong></td>
+                  <td>Full Name, Email Address, Salted Password Hash (Bcrypt), Email Verification Status</td>
+                  <td>User authentication, identity verification, password reset OTPs, session security.</td>
+                </tr>
+                <tr>
+                  <td><strong>Professional Profile</strong></td>
+                  <td>Uploaded PDF/Doc Resumes, Target Job Roles, Target Companies, Experience Level, Skill Tags</td>
+                  <td>Tailoring mock interview scenarios, STAR questions, and ATS keyword scoring.</td>
+                </tr>
+                <tr>
+                  <td><strong>Interview Telemetry & Audio</strong></td>
+                  <td>Microphone audio streams, voice-to-text transcripts, typed responses, STAR scorecards</td>
+                  <td>Real-time speech-to-text transcription, AI communication analysis, and metric reports.</td>
+                </tr>
+                <tr>
+                  <td><strong>Billing & Orders</strong></td>
+                  <td>Plan Tier (Free/Pro/Premium), Razorpay/Stripe Order IDs, Tax Invoice History</td>
+                  <td>Fulfilling subscription orders, processing payments, and statutory tax accounting.</td>
+                </tr>
+                <tr>
+                  <td><strong>System Telemetry</strong></td>
+                  <td>IP Address, Browser User-Agent, Operating System, Timestamp of Consent Checkbox</td>
+                  <td>Audit logging, preventing brute-force attacks, and statutory compliance evidence.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Section 3: Lawful Grounds for Processing */}
+        <section id="sec-purpose" className="legal-section">
+          <div className="section-title">
+            <div className="title-left">
+              <CheckCircle2 className="section-icon" size={22} />
+              <h2>3. Lawful Grounds & Purpose of Processing</h2>
+            </div>
+            <span className="law-cite-badge">DPDP ACT § 4 & § 7</span>
+          </div>
+
+          <p>
+            Under Section 4 and Section 7 of the DPDP Act 2023, digital personal data is processed solely under two lawful grounds:
+          </p>
+
+          <ul className="legal-list">
+            <li>
+              <strong>1. Explicit, Affirmative Consent (Section 6):</strong> Obtained during registration via an unticked, mandatory checkbox. Used for AI mock interview voice recording, resume generation, ATS scoring, and career analytics.
+            </li>
+            <li>
+              <strong>2. Specified Legitimate Uses (Section 7):</strong> For fulfilling transactions voluntarily requested (e.g. issuing payment invoices, delivering transactional OTP emails, account security audits).
+            </li>
+          </ul>
+
+          <div className="legal-callout-box">
+            <Lock size={18} className="callout-icon" />
+            <div>
+              <strong>Strict Purpose Limitation:</strong> We never repurpose your data for third-party advertising, commercial profiling, or recruiter databases without your explicit, separate opt-in consent.
+            </div>
+          </div>
+        </section>
+
+        {/* Section 4: AI Inference & Sub-Processors */}
+        <section id="sec-processors" className="legal-section">
+          <div className="section-title">
+            <div className="title-left">
+              <Cpu className="section-icon" size={22} />
+              <h2>4. AI Inference & Third-Party Sub-Processors</h2>
+            </div>
+            <span className="law-cite-badge">DPDP ACT § 8(2) & RULE 6(1)(f)</span>
+          </div>
+
+          <p>
+            In accordance with Section 8(2) and Rule 6(1)(f), KIVI-AI executes legally binding <strong>Data Processing Addendums (DPAs)</strong> with all third-party infrastructure providers. These agreements enforce enterprise-grade security and prohibit third parties from training public AI models on your personal data:
+          </p>
+
+          <div className="legal-table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data Processor</th>
+                  <th>Role / Service</th>
+                  <th>Data Processed</th>
+                  <th>DPA & Training Restrictions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Groq / OpenAI</strong></td>
+                  <td>AI LLM Inference Engine</td>
+                  <td>Anonymized prompt text & interview answers</td>
+                  <td><strong>Zero Data Retention (ZDR)</strong>. Strict contractual ban on model training.</td>
+                </tr>
+                <tr>
+                  <td><strong>MongoDB Atlas</strong></td>
+                  <td>Encrypted Cloud Database</td>
+                  <td>Encrypted user accounts, reports, resumes</td>
+                  <td>AES-256 storage encryption at-rest, SOC-2 Type II & ISO 27001 certified.</td>
+                </tr>
+                <tr>
+                  <td><strong>Razorpay / Stripe</strong></td>
+                  <td>PCI-DSS Payment Gateway</td>
+                  <td>Billing order info, payment tokens</td>
+                  <td>PCI-DSS Level 1 compliant. Raw credit card numbers are never stored on KIVI-AI.</td>
+                </tr>
+                <tr>
+                  <td><strong>Vercel / AWS</strong></td>
+                  <td>Global CDN & Compute</td>
+                  <td>Encrypted web traffic & SSL certificates</td>
+                  <td>TLS 1.3 in-transit encryption, DDoS mitigation, rate-limiting.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Section 5: Security Safeguards */}
+        <section id="sec-security" className="legal-section">
+          <div className="section-title">
+            <div className="title-left">
+              <Lock className="section-icon" size={22} />
+              <h2>5. Security Safeguards & Encryption</h2>
+            </div>
+            <span className="law-cite-badge">DPDP ACT § 8(5) & RULE 6</span>
+          </div>
+
+          <p>
+            Under Section 8(5) and Rule 6 of the DPDP Rules 2025, KIVI-AI implements state-of-the-art technical, physical, and organizational safeguards:
+          </p>
+
+          <ul className="legal-list">
+            <li>
+              <strong>End-to-End In-Transit Encryption:</strong> All traffic between your browser and our servers is secured via <strong>TLS 1.3</strong> with automated HSTS enforcement.
+            </li>
+            <li>
+              <strong>At-Rest Encryption:</strong> All database clusters, disk volumes, and backups utilize <strong>AES-256</strong> hardware-level encryption.
+            </li>
+            <li>
+              <strong>Role-Based Access Control (RBAC):</strong> Administrative access to user records is strictly partitioned (`user`, `admin`, `super_admin`) and guarded with immutable audit logs.
+            </li>
+            <li>
+              <strong>Credential Security:</strong> User passwords are encrypted using high-cost salted Bcrypt algorithms and are never stored in plaintext.
+            </li>
+          </ul>
+        </section>
+
+        {/* Section 6: Data Retention & Account Deletion */}
+        <section id="sec-retention" className="legal-section">
+          <div className="section-title">
+            <div className="title-left">
+              <Clock className="section-icon" size={22} />
+              <h2>6. Data Retention & One-Click Erasure</h2>
+            </div>
+            <span className="law-cite-badge">DPDP ACT § 8(7) & RULE 8</span>
+          </div>
+
+          <p>
+            We adhere strictly to purpose limitation. Your digital personal data is retained only for as long as your account remains active or as required by law:
+          </p>
+
+          <ul className="legal-list">
+            <li>
+              <strong>One-Click Account Deletion:</strong> You can permanently delete your account at any time via your Profile Settings. Upon initiation, all personal resumes, cover letters, audio transcripts, and interview feedback records are permanently erased within <strong>30 days</strong>.
+            </li>
+            <li>
+              <strong>Statutory Tax Records:</strong> Transaction receipts, GST invoices, and order IDs are retained for the statutory period mandated under Indian Goods and Services Tax (GST) and Income Tax laws before automated purging.
+            </li>
+          </ul>
+        </section>
+
+        {/* Section 7: Rights of the Data Principal */}
+        <section id="sec-rights" className="legal-section">
+          <div className="section-title">
+            <div className="title-left">
+              <UserCheck className="section-icon" size={22} />
+              <h2>7. Enforceable Rights of the Data Principal</h2>
+            </div>
+            <span className="law-cite-badge">DPDP ACT CHAPTER III (§ 11–14)</span>
+          </div>
+
+          <p>
+            As a Data Principal under Indian law, you possess enforceable statutory rights that you may exercise free of charge:
+          </p>
+
+          <div className="legal-table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Statutory Right</th>
+                  <th>Legal Section</th>
+                  <th>How to Exercise on KIVI-AI</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Right to Access Information</strong></td>
+                  <td>DPDP Act § 11</td>
+                  <td>View and download your full interview history, ATS resumes, and reports directly from your dashboard or request a machine-readable JSON/PDF export.</td>
+                </tr>
+                <tr>
+                  <td><strong>Right to Correction & Completion</strong></td>
+                  <td>DPDP Act § 12</td>
+                  <td>Edit, update, or complete your career profile, experience level, target roles, or resume content at any time in the Resume Studio.</td>
+                </tr>
+                <tr>
+                  <td><strong>Right to Withdraw Consent</strong></td>
+                  <td>DPDP Act § 6(4)</td>
+                  <td>Withdraw consent for processing in Account Settings. Processing ceases immediately upon withdrawal.</td>
+                </tr>
+                <tr>
+                  <td><strong>Right to Nominate</strong></td>
+                  <td>DPDP Act § 14, Rule 14(4)</td>
+                  <td>Designate an authorized representative in Profile Settings to exercise your data rights in the event of death or permanent incapacity.</td>
+                </tr>
+                <tr>
+                  <td><strong>Right of Grievance Redressal</strong></td>
+                  <td>DPDP Act § 13</td>
+                  <td>Submit complaints directly to our designated Grievance Officer with guaranteed resolution within 30 days.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Section 8: Protection of Children */}
+        <section id="sec-children" className="legal-section">
+          <div className="section-title">
+            <div className="title-left">
+              <Shield className="section-icon" size={22} />
+              <h2>8. Protection of Children’s Personal Data</h2>
+            </div>
+            <span className="law-cite-badge">DPDP ACT § 9 & RULES 10, 12</span>
+          </div>
+
+          <p>
+            Under Section 9 of the DPDP Act, processing data of individuals under 18 years of age is subject to verifiable parental consent, and all forms of behavioral tracking, profiling, and targeted advertising directed at children are prohibited by law.
+          </p>
+          <p>
+            <strong>Age Restriction:</strong> KIVI-AI is strictly intended for adult job seekers, university students, and professionals aged <strong>18 and older</strong>. We do not knowingly collect personal data from minors. If you are under 18, you must not use or register on this platform.
+          </p>
+        </section>
+
+        {/* Section 9: Breach Notification Protocol */}
+        <section id="sec-breach" className="legal-section">
+          <div className="section-title">
+            <div className="title-left">
+              <AlertCircle className="section-icon" size={22} />
+              <h2>9. Personal Data Breach Notification Protocol</h2>
+            </div>
+            <span className="law-cite-badge">DPDP ACT § 8(6) & RULE 7</span>
+          </div>
+
+          <p>
+            In the event of a personal data breach affecting confidentiality or integrity, KIVI-AI maintains an automated Incident Response Protocol adhering to Section 8(6) and Rule 7:
+          </p>
+
+          <ul className="legal-list">
+            <li>
+              <strong>Notification to Affected Users:</strong> We will notify all affected Data Principals via registered email without undue delay, describing the nature of the breach, affected data categories, and recommended safety steps.
+            </li>
+            <li>
+              <strong>Mandatory Notification to the Board:</strong> A formal, detailed security report will be filed with the <strong>Data Protection Board of India</strong> within <strong>72 hours</strong> of confirmation.
+            </li>
+          </ul>
+        </section>
+
+        {/* Section 10: Grievance Officer & Data Protection Board */}
+        <section id="sec-grievance" className="legal-section contact-card-section">
+          <div className="section-title">
+            <div className="title-left">
+              <Mail className="section-icon" size={22} />
+              <h2>10. Grievance Redressal & Data Protection Board</h2>
+            </div>
+            <span className="law-cite-badge">DPDP ACT § 13 & § 18</span>
+          </div>
+
+          <p>
+            Under Section 13 and Rule 9 of the DPDP Rules 2025, you have the right to lodge complaints regarding your personal data. We have appointed a dedicated <strong>Data Grievance Officer</strong>:
+          </p>
+
+          <div className="grievance-contact-grid">
+            <div className="contact-card">
+              <span className="contact-card-label">Designated Grievance Officer</span>
+              <span className="contact-card-val">Data Protection & Privacy Lead</span>
+              <span className="contact-card-sub">KIVI-AI Technologies Inc.</span>
+            </div>
+
+            <div className="contact-card">
+              <span className="contact-card-label">Grievance & Legal Email</span>
+              <span className="contact-card-val">
+                <a href="mailto:grievance@kivi-ai.com">grievance@kivi-ai.com</a>
+              </span>
+              <span className="contact-card-sub">Monitored 24/7 for privacy inquiries</span>
+            </div>
+
+            <div className="contact-card">
+              <span className="contact-card-label">Statutory Resolution Window</span>
+              <span className="contact-card-val">15 to 30 Business Days</span>
+              <span className="contact-card-sub">Acknowledged within 48 hours (DPDP Cap: 90 days)</span>
+            </div>
+
+            <div className="contact-card">
+              <span className="contact-card-label">Appellate Regulatory Body</span>
+              <span className="contact-card-val">Data Protection Board of India</span>
+              <span className="contact-card-sub">Statutory authority under Section 18 of DPDP Act</span>
+            </div>
+          </div>
+
+          <div className="legal-callout-box" style={{ marginTop: '0.75rem' }}>
+            <Scale size={18} className="callout-icon" />
+            <div>
+              <strong>Right to Appeal:</strong> If your grievance is not resolved satisfactorily by our Grievance Officer within the published period, you have the statutory right to escalate the matter to the <strong>Data Protection Board of India</strong>.
+            </div>
+          </div>
+        </section>
+
       </div>
     </div>
   );
