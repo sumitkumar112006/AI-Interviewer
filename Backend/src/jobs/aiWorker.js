@@ -45,12 +45,28 @@ function initAiWorker() {
                 case 'interview_report': {
                     const { resumeText, selfDescription, jobDescription, userPlan } = jobDoc.input;
 
-                    const interviewReportByAI = await generateInterviewReport({
-                        resume: resumeText,
-                        selfDescription,
-                        jobDescription,
-                        plan: userPlan || 'free'
-                    });
+                    // Concurrently generate the interview report and the structured ATS resume HTML
+                    const [reportResult, resumeResult] = await Promise.allSettled([
+                        generateInterviewReport({
+                            resume: resumeText,
+                            selfDescription,
+                            jobDescription,
+                            plan: userPlan || 'free'
+                        }),
+                        generateResumeHtml({
+                            resume: resumeText || selfDescription || jobDescription,
+                            selfDescription,
+                            jobDescription,
+                            plan: userPlan || 'free'
+                        })
+                    ]);
+
+                    if (reportResult.status === 'rejected') {
+                        throw reportResult.reason;
+                    }
+
+                    const interviewReportByAI = reportResult.value;
+                    const generatedResumeHtml = resumeResult.status === 'fulfilled' ? (resumeResult.value || '') : '';
 
                     const detectedSkills = processReportSkills({
                         resume: resumeText,
@@ -70,18 +86,20 @@ function initAiWorker() {
                         selfDescription,
                         jobDescription,
                         detectedSkills,
+                        generatedResumeHtml,
                         ...interviewReportByAI
                     });
 
                     // Invalidate reports list cache
                     await deleteCache(`cache:reports:user:${userIdStr}`);
 
-                    // Non-blocking background chunk & embedding pre-warming for Roadmap & JD RAG
+                    // Non-blocking background chunk & embedding pre-warming for Roadmap, JD, and Resume RAG
                     setImmediate(async () => {
                         try {
-                            const { parseRoadmap, parseJobDescription } = require('../ai-assistant/Chunker');
-                            const { getOrEmbedRoadmapChunks, getOrEmbedJdChunks } = require('../ai-assistant/Embedder');
+                            const { parseRoadmap, parseJobDescription, parseResumeHtml } = require('../ai-assistant/Chunker');
+                            const { getOrEmbedRoadmapChunks, getOrEmbedJdChunks, getOrEmbedChunks } = require('../ai-assistant/Embedder');
                             const repIdStr = interviewReport._id.toString();
+
                             if (Array.isArray(interviewReport.preparationPlan) && interviewReport.preparationPlan.length > 0) {
                                 const rChunks = parseRoadmap(interviewReport.preparationPlan, interviewReport.completedTasks || []);
                                 await getOrEmbedRoadmapChunks(repIdStr, rChunks);
@@ -89,6 +107,10 @@ function initAiWorker() {
                             if (interviewReport.jobDescription) {
                                 const jdChunks = parseJobDescription(interviewReport.jobDescription, interviewReport.developerTitle || '');
                                 await getOrEmbedJdChunks(repIdStr, jdChunks);
+                            }
+                            if (generatedResumeHtml) {
+                                const resumeChunks = parseResumeHtml(generatedResumeHtml);
+                                await getOrEmbedChunks(repIdStr, resumeChunks);
                             }
                         } catch (ragErr) {
                             console.warn('[AI Worker] Non-critical RAG pre-warming notice:', ragErr.message);

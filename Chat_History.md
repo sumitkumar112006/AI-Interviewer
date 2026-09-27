@@ -223,9 +223,31 @@
 
   6. **Smooth 60 FPS Word-by-Word SSE Streaming Pipeline ([KiviAiAssistant.jsx](file:///Frontend/src/features/Shared/components/KiviAiAssistant.jsx))**:
      - Built an adaptive `requestAnimationFrame` token buffer queue that eliminates network chunk stuttering and renders smooth word-to-word text.
-     - Implemented `autoCloseMarkdown` to keep code blocks, bold text, lists, and tables syntactically closed during streaming (preventing visual layout jumping).
      - Memoized message bubbles (`ChatMessageBubble`) so past chat history is not re-parsed on every streaming frame.
      - Added glowing cursor animation and smart scroll tracking.
+
+---
+
+### 🔹 Session: 2026-09-27 (Part 2)
+- **Topic**: AI Resume HTML Generation, TipTap Compatibility, and Report Creation Pipeline Overhaul
+- **Problem & Root Cause**:
+  - When candidates generated an interview report, `generatedResumeHtml` was not created concurrently in the `interview_report` background worker job.
+  - As a result, when users navigated to the Resume Studio tab, `Resume.jsx` encountered an empty `generatedResumeHtml` and fell back to wrapping the candidate's raw unformatted uploaded resume text into `<p>` paragraphs.
+  - This caused unstyled raw text dumps on the TipTap A4 canvas and in some cases displayed bracketed coaching questions (e.g. `[Question: ...]`) extracted from the candidate's raw notes.
+- **Comprehensive Solution Implemented**:
+  1. **Parallel Report & Resume Generation ([aiWorker.js](file:///Backend/src/jobs/aiWorker.js))**:
+     - Updated the `interview_report` job handler to execute both `generateInterviewReport` and `generateResumeHtml` concurrently in `Promise.allSettled`.
+     - Stored the structured `generatedResumeHtml` directly on the `InterviewReport` document upon report creation.
+     - Pre-warmed background RAG vector embeddings for Roadmap, Job Description, and Resume simultaneously.
+  2. **Strict Prompt Refinement & Semantic HTML ([ai.service.js](file:///Backend/src/services/ai.service.js))**:
+     - Refined the `generateResumeHtml` prompt with strict negative constraints: strictly forbidden from generating critique questions, bracketed notes (`[Question: ...]`, `[Insert Metric]`), or pseudo-bullet characters in `<p>`.
+     - Enforced semantic HTML tags (`<h1>`, `<h2>`, `<h3>`, `<p>`, `<ul>`, `<li>`, `<strong>`, `<em>`, `<a>`) that map 1:1 into TipTap prose nodes.
+  3. **Sanitization & List Normalization ([sanitizeResumeHtml.js](file:///Frontend/src/features/Interview/utils/sanitizeResumeHtml.js))**:
+     - Added regex sanitizers to strip any stray bracketed coaching notes (`[Question: ...]`, `[Note: ...]`).
+     - Automatically converts any pseudo-bullet paragraphs (`<p>• ...</p>`, `<p>- ...</p>`) into semantic `<ul><li>` list structures for clean rendering in TipTap.
+     - Strips unwanted outer wrappers, scripts, styles, and inline layout styles to ensure seamless A4 sheet formatting.
+  4. **Eliminated Raw Paragraph Fallback ([Resume.jsx](file:///Frontend/src/features/Interview/pages/Resume.jsx))**:
+     - Removed the legacy raw text `<p>` fallback. If `generatedResumeHtml` is missing or corrupted, the client automatically triggers clean AI resume generation (`generateResumePdf(interviewId, { force: true })`).
 
 ---
 
@@ -260,6 +282,7 @@
 - [x] Link MongoDB `preparationPlan` into Assistant Dynamic Context Loader.
 - [x] Overhaul Intent Classifier into Tiered Semantic Context & Intent Router (Replacing Brittle Regex Rules).
 - [x] Implement 60 FPS Word-to-Word Smooth Streaming Buffer & Layout Auto-Closer.
+- [x] Fix AI Resume Structured HTML Generation, TipTap Sanitization, & Auto Report Worker Pipeline.
 - [ ] Add Live ATS Score Gauge & Diff Highlighter in Resume Editor.
 - [ ] Test Google Supabase login & OTP flow end-to-end.
 - [ ] Finalize deployment pipelines (Vercel Frontend + Railway/Render Backend).

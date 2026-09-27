@@ -991,66 +991,49 @@ Job Description: ${roleDescription}
 
 
 async function generateResumeHtml({ resume, selfDescription, jobDescription, plan = "free" }) {
-    const systemPrompt = `You are an expert resume writer. You MUST respond ONLY with valid JSON — no markdown, no explanation. The JSON must have exactly one key: "html", whose value is a complete HTML string for a professional resume. Never wrap the JSON in code fences.`
+    const systemPrompt = `You are an expert resume writer and ATS optimization specialist. You MUST respond ONLY with valid JSON — no markdown code fences, no commentary. The JSON must have exactly one top-level key: "html", whose value is a complete HTML string for a professional, single-column A4 resume.`
 
     const userPrompt = `
-Generate a professional one-two page resume in valid JSON only.
+Generate a professional, modern, ATS-optimized one-to-two page resume in valid JSON only.
 
-Rules:
-- ATS Keyword & Skill Optimization: Deeply analyze the provided Job Description for target skills, technologies, frameworks, and domain keywords. Match and emphasize the candidate's verified skills, technologies, and achievements that align with the target role. Highlight transferable technical competencies and relevant project/experience evidence provided by the candidate. Do NOT fabricate unverified degrees, companies, certifications, or false work experience that the candidate did not provide.
-- Use exactly one top-level key: "html".
-- The "html" value must be a string.
-- The string must contain complete printable HTML for an A4 resume.
-- Do not return markdown fences.
-- Do not return undefined or null.
-- Do not feel like AI generated content. Write like a human creating a resume.
-- Focus on clarity, professionalism, and relevance to the job description.
-- Use the candidate details to create a tailored resume that highlights strengths and fits the target role.
-- Resume should be ATS friendly it should rank in ATS systems and also visually appealing for human recruiters.
-- Resume should be concise and ideally fit in one-two page when converted to PDF.
-- If any link assosiated with any Word in resume that make use extract link and add them carfully with new resume with same name. (eg:-Portfolio, Linkedin, Github, Preview, etc.) 
-Generate a complete, self-contained HTML document for a 1 to 2 page A4 resume, single-column, ATS-friendly, styled clean and professional.
+JSON STRUCTURE:
+{
+  "html": "<!DOCTYPE html><html lang=\\"en\\"><head><meta charset=\\"utf-8\\"/><style>...</style></head><body>...</body></html>"
+}
 
-SETUP
-- Full doc: <!DOCTYPE html> to </html>. One <style> block in <head>. No external CSS/fonts/images/JS.
-- Font: 'Calibri', 'Arial', sans-serif. Body #1a1a1a on white, 11 to 12pt, line-height 1.35.
-- @page { size: A4; margin: 12mm 16mm; } body { margin:0; width:210mm; }
+CRITICAL RULES & FORMATTING REQUIREMENTS:
+1. SEMANTIC HTML & TIPTAP COMPATIBILITY:
+   - Use clean, standard semantic HTML tags: <h1>, <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>, <a>, <hr>.
+   - Candidate Header:
+     <h1>Candidate Full Name</h1>
+     <p>City, State / Country | +1 (555) 000-0000 | email@example.com</p>
+     <p><a href="https://linkedin.com/in/...">LinkedIn</a> | <a href="https://github.com/...">GitHub</a> | <a href="...">Portfolio</a></p>
+   - Section Headings: <h2>SUMMARY</h2>, <h2>TECHNICAL SKILLS</h2>, <h2>PROFESSIONAL EXPERIENCE</h2>, <h2>PROJECTS</h2>, <h2>EDUCATION</h2>, <h2>CERTIFICATIONS & ACHIEVEMENTS</h2>.
+   - Job/Project Titles: <h3>Role Title - Company Name | <em>Date - Date</em></h3>
+   - Bullet Points: ALWAYS use <ul><li>...</li></ul>. NEVER type bullet points as raw "•", "*", or "-" inside <p> tags!
+   - Skills Breakdown: Use "<p><strong>Category:</strong> Skill 1, Skill 2, Skill 3</p>".
 
-HEADER
-- Name (h1, 20 to 22pt bold) → title line (11pt, gray) → contact line (location | phone | email, 9pt) → links line (GitHub | LinkedIn | Portfolio as real <a> tags, one accent color e.g. navy #1a3a6b) → thin gray rule.
+2. STRICT NEGATIVE CONSTRAINTS (MANDATORY):
+   - NEVER output coaching notes, critique questions, or template placeholders (e.g. NEVER write "[Question: ...]", "[Insert metric]", "[Action Required]", "[Explain X]", "[How much did this...]", or any bracketed text like "[...]").
+   - Every single bullet point must be a finalized, polished, quantifiable accomplishment ready for an executive recruiter.
+   - Do NOT fabricate fake degrees or unverified companies. If details in the source resume are brief, write high-impact, industry-standard bullet points based on the candidate's verified tech stack and the target job description.
+   - Do NOT invent fake URLs. If a valid URL is not provided in source data, use plain text or omit the link.
 
-SECTIONS (in order)
-Summary → Technical Skills → Soft Skills → Experience → Projects → Achievements → Education.
-- h2 for section titles: uppercase, 11 to 12pt bold, bottom border, accent or near-black.
-- Every section and entry block MUST have style="page-break-inside: avoid; break-inside: avoid;".
+3. ATS KEYWORD & JOB ALIGNMENT:
+   - Deeply analyze the provided Job Description for target skills, technologies, frameworks, and domain keywords.
+   - Match and highlight transferable technical competencies and relevant project/experience evidence provided by the candidate.
+   - Use strong action verbs (Architected, Engineered, Spearheaded, Optimized, Streamlined, Implemented).
 
-CONTENT RULES
-- Summary: one dense <p>, 3 to 4 lines.
-- Skills: "<strong>Category:</strong> items" per line, tight spacing.
-- Soft Skills: one comma-separated line.
-- Experience/Projects: h3 title + dates/stack right-aligned or inline; 2 to 4 real <ul><li> bullets, action-verb-led; links (Live/GitHub) below in small text.
-- BULLET LENGTH & ORPHAN RULE: Each <li> bullet must fit within 1 or 2 complete text lines (approx 12-14 words per line). Never leave a single orphaned word wrapping onto a new line or across pages.
-- Achievements: flat bullet list.
-- Education: degree + institution one line, graduation date aligned right.
-- Never invent facts, metrics, dates, or employers not in source data.
-
-LAYOUT / ATS SAFETY & PAGINATION
-- Strict single column, no floats/multi-column/tables-for-layout, no fixed/absolute positioning, no animations/gradients/icon fonts.
-- Real semantic h1/h2/h3/ul/li only — never typed "•" in a <p>.
-- One accent color max; everything else near-black/gray.
-- STRICT PAGE BOUNDARY RULE: All <li>, <p>, <h2>, <h3>, and section block wrappers MUST specify page-break-inside: avoid !important; break-inside: avoid !important;. Never split or cut a bullet point across a page line.
-- If content extends onto Page 2, insert an explicit clean section page break (<div style="page-break-before: always; break-before: page; margin-top: 1.5rem;"></div>) before a major section (e.g. before PROJECTS or EDUCATION) so Page 2 starts cleanly at the top with a fresh header instead of splitting a bullet list mid-way.
-- If content overflows 2 pages: tighten spacing first, then trim oldest/least relevant bullets — never cut contact info or most recent role.
+4. LAYOUT & PAGE BOUNDARIES:
+   - Full doc: <!DOCTYPE html> to </html> with one clean <style> block in <head>.
+   - Font: 'Calibri', 'Arial', sans-serif. Body #1a1a1a on white, 11pt to 12pt, line-height 1.4.
+   - Strict single column, no floats/multi-column/tables-for-layout, no fixed/absolute positioning.
+   - All <li>, <p>, <h2>, <h3> MUST have break-inside: avoid !important;.
 
 Candidate details:
-Resume: ${resume}
-Self Description: ${selfDescription}
-Job Description: ${jobDescription}
-- Return only valid JSON.
-- Do not add fake or unreal information, Knowledge, or data which is not present in the resume, self description or job description.
-- If the Resume Data is less or incomplete and the Job description requires more information then the Job description should guide the resume html to be generated, it should align with the job description.
-- Do not use fake hyper links for email address, github, linkedin.
-- Every link should be varified and real in you are not able to verify then leave it blank.
+Resume: ${resume || 'None provided'}
+Self Description: ${selfDescription || 'None provided'}
+Job Description: ${jobDescription || 'None provided'}
 `
 
     const rawText = await callGroq(systemPrompt, userPrompt, plan)

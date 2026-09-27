@@ -127,23 +127,7 @@ const Resume = () => {
                     console.warn('[Resume] Active job check notice:', jobErr.message)
                 }
 
-                // 6. Fallback: If generatedResumeHtml is missing, use original DB resume text (if healthy)
-                if (isHealthyResumeHtml(fetched?.resume)) {
-                    const paragraphs = fetched.resume
-                        .split(/\n{2,}/)
-                        .map(p => `<p>${p.replace(/\n/g, '<br/>')}</p>`)
-                        .join('')
-                    const fallbackHtml = `<h2>${fetched.developerTitle || 'Resume'}</h2>${paragraphs}`
-                    const sanitized = sanitizeResumeHtml(fallbackHtml)
-                    setHtmlContent(sanitized)
-                    try {
-                        localStorage.setItem(`resume_draft_${interviewId}`, sanitized)
-                    } catch {}
-                    setDbLoading(false)
-                    return
-                }
-
-                // 7. If neither exists, trigger AI generation with force to guarantee clean generation
+                // 6. If generatedResumeHtml is missing or unhealthy, trigger AI generation with force
                 setDbLoading(false)
                 setAiGenerating(true)
                 const genRes = await generateResumePdf(interviewId, { force: true })
