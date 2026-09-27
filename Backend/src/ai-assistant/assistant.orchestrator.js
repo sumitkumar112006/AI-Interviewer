@@ -1,31 +1,91 @@
 const { classifyIntent } = require('./intentClassifier');
 const { loadDynamicContext } = require('./dynamicContextLoader');
-const { searchWeb, searchLearningResources, searchDynamicRoadmapResources } = require('./searchTool.service');
+const { 
+    searchWeb, 
+    searchGitHubProjects, 
+    searchLeetCodeProblems, 
+    searchOfficialDocs, 
+    searchDynamicRoadmapResources, 
+    searchLearningResources 
+} = require('./searchTool.service');
 const { processTurnInBackground } = require('./memoryExtractor');
 const { callLlmWithFallback, streamLlmWithFallback } = require('../services/ai.service');
 
 /**
- * Heuristic to detect if query explicitly asks for external tutorials or live web search
+ * LLM-First Tool Decider:
+ * Sends the user prompt and context summary to the LLM to decide
+ * whether any real-time external tool (Web Search, GitHub, LeetCode, Docs) is required.
+ */
+async function decideToolCallWithLlm({ promptText, selectedText, candidateContextSnippet, intentData, userPlan = 'free' }) {
+    if (!promptText || promptText.trim().length === 0) {
+        return { needs_tool: false, tool: null, query: null };
+    }
+
+    const deciderSystemPrompt = `You are the Tool Decision Engine for KIVI AI (Career & Technical Interview Assistant).
+Evaluate the user's message and context. Decide if any real-time external tool is strictly required to answer accurately, or if internal knowledge and provided candidate context are sufficient.
+
+AVAILABLE TOOLS:
+- "video": YouTube video tutorials, crash courses, video explanations, or interview preparation playlists.
+- "web": Live web search for recent events, salary data, market trends, latest releases (2025/2026), or specific external articles.
+- "github": Open-source GitHub repository recommendations, starter templates, or real production codebases.
+- "leetcode": LeetCode coding problems, specific DSA algorithmic problems, or hands-on coding challenges.
+- "docs": Official framework/library documentation, language specifications, or official syntax cheat sheets.
+- "none": No external tool needed (e.g. general programming concepts, resume analysis/editing, career guidance, interview Q&A with existing context, debugging logic).
+
+DECISION RULES:
+1. ALWAYS default to "none" if the question can be answered using general software engineering knowledge or the candidate's resume/JD/roadmap context.
+2. Only select a tool if the user explicitly asks for live links/resources/repositories/problems/videos, or if real-time/external data is essential.
+3. If the user asks for video/youtube tutorials for a role or skill, choose "video" and formulate a clear search query (e.g. including role or topic from context).
+4. If a tool is needed, extract a clean, concise search keyword query.
+
+Respond with ONLY a valid JSON object in this exact format:
+{
+  "needs_tool": true or false,
+  "tool": "video" | "web" | "github" | "leetcode" | "docs" | "none",
+  "query": "concise search query string" | null
+}`;
+
+    const deciderUserPrompt = `Candidate Context Summary:
+${candidateContextSnippet ? candidateContextSnippet.slice(0, 400) + '...' : 'None'}
+
+${selectedText ? `Highlighted Selection: "${selectedText.slice(0, 150)}"\n` : ''}User Query: "${promptText}"
+
+JSON Decision:`;
+
+    try {
+        const rawDecision = await callLlmWithFallback({
+            systemPrompt: deciderSystemPrompt,
+            userPrompt: deciderUserPrompt,
+            plan: userPlan,
+            isAssistant: true
+        });
+
+        const jsonText = typeof rawDecision === 'string' ? rawDecision : (rawDecision?.content || '');
+        const match = jsonText.match(/\{[\s\S]*?\}/);
+        if (match) {
+            const parsed = JSON.parse(match[0]);
+            const tool = String(parsed.tool || '').toLowerCase().trim();
+            const needs_tool = Boolean(parsed.needs_tool && tool !== 'none' && tool !== 'null' && tool !== '');
+            return {
+                needs_tool,
+                tool: needs_tool ? tool : null,
+                query: parsed.query ? String(parsed.query).trim() : promptText
+            };
+        }
+    } catch (err) {
+        console.warn('[AI Tool Decider] LLM tool decision failed, falling back to direct answer (no search):', err.message);
+    }
+
+    return { needs_tool: false, tool: null, query: null };
+}
+
+/**
+ * Backward-compatible helper
  */
 function detectToolRequirement(message) {
-    const text = (message || '').toLowerCase();
-    
-    // Only trigger external tool searches when explicitly requested by user
-    const isResourceQuery = text.includes('youtube') || 
-                           text.includes('video tutorial') || 
-                           text.includes('video links') || 
-                           text.includes('course recommendation') || 
-                           text.includes('where to study online') || 
-                           text.includes('best youtube channel');
-
-    const isLiveSearchQuery = text.includes('latest in 2025') || 
-                             text.includes('latest in 2026') || 
-                             text.includes('current market trend') || 
-                             text.includes('salary benchmark');
-
     return {
-        needsResources: isResourceQuery,
-        needsWebSearch: isLiveSearchQuery
+        needsResources: false,
+        needsWebSearch: false
     };
 }
 
@@ -126,44 +186,67 @@ async function buildAssistantPromptAndMessages({ userId, reportId = null, messag
         selectedText
     });
 
-    // 3. Step 3: Evaluate Tool Requirements (Dynamic Search / Learning Resources / GitHub / LeetCode / Docs)
-    const toolFlags = detectToolRequirement(promptText);
+    // 3. Step 3: LLM-First Tool Orchestration (LLM decides which tool to call)
     let toolContextSnippet = '';
     let foundResources = [];
 
-    const wantsSearch = intentData.web_search || toolFlags.needsResources || toolFlags.needsWebSearch || intentData.intent === 'DYNAMIC_SEARCH' || intentData.intent === 'ROADMAP_RESOURCES';
+    // Bypass tool decider if user selected a 1-click in-place text rewrite preset
+    const isDirectEditPreset = ['enhance', 'shorten', 'fix_grammar', 'align_job', 'rephrase', 'make_ats'].includes(action);
 
-    if (wantsSearch) {
-        const topic = intentData.extracted_topic || promptText.replace(/give me|tutorials?|videos?|links?|resources?|how to learn|study material|roadmap|according|find|karo/gi, '').trim() || 'Software Engineering';
-        const searchTypes = (Array.isArray(intentData.search_strategy) && intentData.search_strategy.length > 0)
-            ? intentData.search_strategy
-            : ['docs', 'github', 'tutorials'];
+    let toolDecision = { needs_tool: false, tool: null, query: null };
+    if (!isDirectEditPreset) {
+        toolDecision = await decideToolCallWithLlm({
+            promptText,
+            selectedText,
+            candidateContextSnippet,
+            intentData,
+            userPlan
+        });
+    }
+
+    if (toolDecision.needs_tool && toolDecision.tool) {
+        const toolName = toolDecision.tool;
+        const searchQuery = toolDecision.query || promptText;
 
         // Build friendly source display list for live streaming UI
-        const sourceLabels = [];
-        if (searchTypes.includes('web') || searchTypes.includes('tutorials')) sourceLabels.push({ name: 'Web Search', icon: '🌐', query: topic });
-        if (searchTypes.includes('docs') || /docs|documentation/i.test(topic)) sourceLabels.push({ name: 'Official Docs', icon: '📖', query: topic });
-        if (searchTypes.includes('github') || /github|repo|code|project/i.test(topic)) sourceLabels.push({ name: 'GitHub Repositories', icon: '🐙', query: topic });
-        if (searchTypes.includes('leetcode') || /leetcode|dsa|problem|algorithm/i.test(topic)) sourceLabels.push({ name: 'LeetCode Problems', icon: '💡', query: topic });
-        if (searchTypes.includes('video') || /video|youtube/i.test(topic)) sourceLabels.push({ name: 'YouTube Tutorials', icon: '▶️', query: topic });
-        if (sourceLabels.length === 0) {
-            sourceLabels.push({ name: 'Web Search', icon: '🌐', query: topic }, { name: 'Official Docs', icon: '📖', query: topic });
+        let sourceLabels = [];
+        if (toolName === 'github') {
+            sourceLabels.push({ name: 'GitHub Repositories', icon: '🐙', query: searchQuery });
+        } else if (toolName === 'leetcode') {
+            sourceLabels.push({ name: 'LeetCode Problems', icon: '💡', query: searchQuery });
+        } else if (toolName === 'docs') {
+            sourceLabels.push({ name: 'Official Docs', icon: '📖', query: searchQuery });
+        } else if (toolName === 'video' || toolName === 'youtube') {
+            sourceLabels.push({ name: 'YouTube Tutorials', icon: '▶️', query: searchQuery });
+        } else {
+            sourceLabels.push({ name: 'Web Search', icon: '🌐', query: searchQuery });
         }
 
         if (typeof onStatus === 'function') {
             onStatus({
                 status: 'searching',
-                query: topic,
+                query: searchQuery,
                 sources: sourceLabels,
-                message: `Searching web & verified resources for "${topic.slice(0, 45)}"...`
+                message: `Searching ${sourceLabels[0].name} for "${searchQuery.slice(0, 45)}"...`
             });
         }
 
-        foundResources = await searchDynamicRoadmapResources({
-            topic,
-            searchTypes,
-            maxResults: 4
-        });
+        // Execute targeted tool requested by LLM
+        if (toolName === 'github') {
+            foundResources = await searchGitHubProjects(searchQuery, 3);
+        } else if (toolName === 'leetcode') {
+            foundResources = await searchLeetCodeProblems(searchQuery, 3);
+        } else if (toolName === 'docs') {
+            foundResources = await searchOfficialDocs(searchQuery, 3);
+        } else if (toolName === 'video' || toolName === 'youtube') {
+            foundResources = await searchLearningResources(searchQuery, 3);
+        } else {
+            foundResources = await searchDynamicRoadmapResources({
+                topic: searchQuery,
+                searchTypes: ['web', 'docs'],
+                maxResults: 4
+            });
+        }
 
         if (foundResources.length > 0) {
             toolContextSnippet += `\n[Verified Learning & Practice Resources Found]:\n` + 
@@ -181,7 +264,7 @@ async function buildAssistantPromptAndMessages({ userId, reportId = null, messag
 
             onStatus({
                 status: 'synthesizing',
-                query: topic,
+                query: searchQuery,
                 sources: sourceLabels,
                 scannedDomains: scannedDomains.slice(0, 4),
                 message: foundResources.length > 0
@@ -210,7 +293,10 @@ async function buildAssistantPromptAndMessages({ userId, reportId = null, messag
 
 CRITICAL ANTI-HALLUCINATION & CONCISENESS RULES:
 1. ANSWER ONLY WHAT IS ASKED: Do NOT provide unrequested sections, unsolicited document outlines, generic summaries, or conversational filler (e.g. "Sure!", "Certainly!", "Here is the information"). Jump straight into the direct answer.
-2. ZERO HALLUCINATION: Do NOT invent fictional personas, artificial metrics (e.g. SUS scores), fake project details, or essay templates.
+2. ZERO HALLUCINATION & NO FAKE LINKS:
+   - NEVER invent, guess, or synthesize URLs/links from memory.
+   - You may ONLY format links as [Title](URL) if that EXACT URL is explicitly provided in the "[Verified Learning & Practice Resources Found]" context below.
+   - If no verified URL is present in the context, name the official documentation, problem title, or tool in bold or plain text (e.g. **React Official Documentation**, **LeetCode #704 - Binary Search**), and suggest search keywords without outputting a synthetic markdown link.
 3. GROUNDED RETRIEVAL: When the user asks for their roadmap, interview score, or candidate data, use ONLY the exact data provided in the context below. If data is not provided, state that clearly in one brief sentence.
 4. CLEAN MARKDOWN: Format with neat headings and bullet points. Never use raw HTML.`;
 
