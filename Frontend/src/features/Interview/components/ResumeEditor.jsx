@@ -376,44 +376,9 @@ const ResumeEditor = forwardRef(function ResumeEditor(
             const strippedTarget = cleanTarget.replace(/^[•\-\*\d\.]+\s*/, '').trim()
             const strippedReplacement = cleanReplacement.replace(/^[•\-\*\d\.]+\s*/, '').trim()
 
-            // Candidate targets to search for, ordered from exact to stripped
-            const targetsToTry = [cleanTarget, strippedTarget].filter(Boolean)
+            const targetsToTry = [cleanTarget, strippedTarget].filter(t => t && t.length >= 2)
 
-            // 1. Check if user has an active/saved selection that matches targetText or non-empty
-            if (lastSelectionRef.current && lastSelectionRef.current.from < lastSelectionRef.current.to) {
-                const { from, to } = lastSelectionRef.current
-                const docSize = editor.state.doc.content.size
-                if (from <= docSize && to <= docSize) {
-                    const textAtSel = editor.state.doc.textBetween(from, to, ' ').trim()
-                    const textAtSelNorm = textAtSel.replace(/[\u00a0\s]+/g, ' ')
-                    const cleanTargetNorm = cleanTarget.replace(/[\u00a0\s]+/g, ' ')
-                    const strippedTargetNorm = strippedTarget.replace(/[\u00a0\s]+/g, ' ')
-
-                    const isMatch = !cleanTarget ||
-                        textAtSelNorm === cleanTargetNorm ||
-                        textAtSelNorm === strippedTargetNorm ||
-                        textAtSelNorm.includes(cleanTargetNorm) ||
-                        cleanTargetNorm.includes(textAtSelNorm) ||
-                        textAtSelNorm.includes(strippedTargetNorm)
-
-                    if (isMatch) {
-                        const $pos = editor.state.doc.resolve(from)
-                        const isInsideList = $pos.parent.type.name === 'listItem' ||
-                            $pos.node(-1)?.type.name === 'listItem' ||
-                            $pos.node(-2)?.type.name === 'listItem'
-                        const rep = (isInsideList || (strippedTarget && cleanReplacement.startsWith('•')))
-                            ? strippedReplacement
-                            : cleanReplacement
-
-                        editor.chain().focus().setTextSelection({ from, to }).insertContent(rep).run()
-                        lastSelectionRef.current = null
-                        onChange?.(editor.getHTML())
-                        return true
-                    }
-                }
-            }
-
-            // 2. Search across the ProseMirror doc by mapping character indices (immune to inline marks)
+            // 1. PRIMARY SEARCH: Search across the ProseMirror doc by character index (immune to marks)
             const doc = editor.state.doc
             const { charToPos, plainText } = buildDocTextIndex(doc)
 
@@ -438,16 +403,54 @@ const ResumeEditor = forwardRef(function ResumeEditor(
                 }
             }
 
-            // 3. Textblock fallback (matches whole paragraph / heading / list item content)
+            // 2. SECONDARY SEARCH: Match user's active/saved selection ONLY IF it genuinely matches targetText
+            if (lastSelectionRef.current && lastSelectionRef.current.from < lastSelectionRef.current.to) {
+                const { from, to } = lastSelectionRef.current
+                const docSize = editor.state.doc.content.size
+                if (from <= docSize && to <= docSize) {
+                    const textAtSel = editor.state.doc.textBetween(from, to, ' ').trim()
+                    const textAtSelNorm = textAtSel.replace(/[\u00a0\s]+/g, ' ').toLowerCase()
+                    const cleanTargetNorm = cleanTarget.replace(/[\u00a0\s]+/g, ' ').toLowerCase()
+                    const strippedTargetNorm = strippedTarget.replace(/[\u00a0\s]+/g, ' ').toLowerCase()
+
+                    const isGenuineMatch = (cleanTargetNorm && (
+                        textAtSelNorm === cleanTargetNorm ||
+                        textAtSelNorm === strippedTargetNorm ||
+                        (textAtSelNorm.length >= 10 && textAtSelNorm.includes(cleanTargetNorm)) ||
+                        (cleanTargetNorm.length >= 10 && cleanTargetNorm.includes(textAtSelNorm) && textAtSelNorm.length / cleanTargetNorm.length >= 0.75)
+                    ))
+
+                    if (isGenuineMatch) {
+                        const $pos = editor.state.doc.resolve(from)
+                        const isInsideList = $pos.parent.type.name === 'listItem' ||
+                            $pos.node(-1)?.type.name === 'listItem' ||
+                            $pos.node(-2)?.type.name === 'listItem'
+                        const rep = (isInsideList || (strippedTarget && cleanReplacement.startsWith('•')))
+                            ? strippedReplacement
+                            : cleanReplacement
+
+                        editor.chain().focus().setTextSelection({ from, to }).insertContent(rep).run()
+                        lastSelectionRef.current = null
+                        onChange?.(editor.getHTML())
+                        return true
+                    }
+                }
+            }
+
+            // 3. TERTIARY SEARCH: Textblock fallback (matches whole paragraph / heading / list item content)
             if (targetsToTry.length > 0) {
                 let textblockMatch = null
                 doc.descendants((node, pos) => {
                     if (textblockMatch) return false
                     if (node.isTextblock && node.textContent.trim()) {
-                        const blockText = node.textContent.trim().replace(/[\u00a0\s]+/g, ' ')
+                        const blockText = node.textContent.trim().replace(/[\u00a0\s]+/g, ' ').toLowerCase()
                         for (const t of targetsToTry) {
-                            const normT = t.replace(/[\u00a0\s]+/g, ' ')
-                            if (blockText === normT || blockText.includes(normT) || normT.includes(blockText)) {
+                            const normT = t.replace(/[\u00a0\s]+/g, ' ').toLowerCase()
+                            if (
+                                blockText === normT ||
+                                blockText.includes(normT) ||
+                                (normT.includes(blockText) && blockText.length >= 15 && blockText.length / normT.length >= 0.75)
+                            ) {
                                 textblockMatch = {
                                     from: pos + 1,
                                     to: pos + node.nodeSize - 1,
@@ -476,7 +479,7 @@ const ResumeEditor = forwardRef(function ResumeEditor(
                 }
             }
 
-            // 4. Safe HTML replacement fallback (for complex spans or entities)
+            // 4. QUATERNARY SEARCH: Safe HTML replacement fallback (for complex spans or entities)
             if (targetsToTry.length > 0) {
                 const currentHtml = editor.getHTML()
                 for (const t of targetsToTry) {

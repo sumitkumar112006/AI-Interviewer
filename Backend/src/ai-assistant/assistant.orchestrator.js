@@ -350,6 +350,7 @@ CRITICAL DOCUMENT REWRITE RULES (STRICT COMPLIANCE REQUIRED):
 3. When updating an existing line or adding skills/keywords to a section:
    - Wrap the EXACT original text as it currently appears in candidate context inside \`\`\`original ... \`\`\`
    - Wrap ONLY the exact improved replacement snippet inside \`\`\`suggestion ... \`\`\`
+   - Format \`\`\`suggestion ... \`\`\` with clean semantic formatting (e.g. **Category:** items for skills, <strong> metrics for bullets, <h3> titles with right-aligned dates) so TipTap parses and styles it with 1:1 resume typography.
 4. When adding skills to an existing Technical Skills or Summary section:
    - Identify the existing skills/summary line from candidate context and put it in \`\`\`original ... \`\`\`.
    - Put the updated skills/summary line containing the new skills inside \`\`\`suggestion ... \`\`\`.

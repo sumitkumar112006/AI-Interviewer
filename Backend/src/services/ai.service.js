@@ -1264,17 +1264,23 @@ async function rewriteResumeSection({ selectedText = "", instruction = "", actio
 You have access to the candidate's FULL RESUME content provided in the prompt.
 When the user asks to rewrite, enhance, shorten, update, or replace any line, bullet point, or section (e.g. "update second line of devchat", "make my summary more impactful", "enhance bullet 1 of my current job"):
 1. Locate the EXACT original text in the candidate's resume that the user is referring to. Set this in "targetText".
-2. Generate the improved, high-impact replacement text. Set this in "suggestedSnippet".
-3. Provide a friendly, concise explanation of your improvement in "replyText" (1-2 sentences).
+2. Generate the improved, high-impact replacement HTML in "suggestedSnippet".
+   - FORMATTING REQUIREMENT: "suggestedSnippet" MUST be formatted in valid, clean, semantic HTML matching TipTap editor typography:
+     - For Skills: "<p><strong>Category:</strong> Item 1, Item 2, Item 3</p>" or "<li><strong>Category:</strong> Item 1, Item 2</li>"
+     - For Role/Experience Titles: "<h3><strong>Job Title</strong> — <em>Company Name</em> <span style=\"float: right;\">2024 – Present</span></h3>"
+     - For Bullet Points: "<li>Engineered high-performance microservices reducing latency by 45%...</li>" or high-impact text with <strong> metrics.
+     - For Summary: "<p>Results-oriented Software Engineer with 4+ years experience...</p>"
+     - For Hyperlinks: "<a href=\"https://...\">Link Name</a>"
+3. Provide a friendly, concise explanation of your improvement in "replyText" (1-2 sentences) in clean markdown.
 
 If the user highlighted text manually, "targetText" should be that highlighted text.
 If the user didn't highlight text, identify the exact corresponding line or sentence from the provided resume as "targetText".
 If the user is asking a general question, career advice, or info about the platform, set "targetText" to null and "suggestedSnippet" to null!
 
 Respond in valid JSON ONLY with three keys:
-1. "replyText": string
-2. "targetText": string or null
-3. "suggestedSnippet": string or null
+1. "replyText": string (Conversational markdown reply)
+2. "targetText": string or null (Exact original text to replace)
+3. "suggestedSnippet": string or null (Rich semantic HTML replacement snippet ready for TipTap injection)
 
 Rules:
 - Return ONLY valid JSON with keys "replyText", "targetText", and "suggestedSnippet".
