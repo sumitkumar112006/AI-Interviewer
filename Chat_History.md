@@ -248,6 +248,14 @@
      - Strips unwanted outer wrappers, scripts, styles, and inline layout styles to ensure seamless A4 sheet formatting.
   4. **Eliminated Raw Paragraph Fallback ([Resume.jsx](file:///Frontend/src/features/Interview/pages/Resume.jsx))**:
      - Removed the legacy raw text `<p>` fallback. If `generatedResumeHtml` is missing or corrupted, the client automatically triggers clean AI resume generation (`generateResumePdf(interviewId, { force: true })`).
+  5. **Executive Layout & Compact Typography Styling ([editor.scss](file:///Frontend/src/features/Interview/style/editor.scss) & [ai.service.js](file:///Backend/src/services/ai.service.js))**:
+     - Reduced line height from `1.55` to `1.35` and tightened paragraph margins (`0.22em`) and bullet margins (`0.12em`) to eliminate wide spacing.
+     - Added Deep Navy Blue accent section headings (`<h2>`) with crisp `2px solid #0f3d68` divider bars.
+     - Styled centered candidate header blocks (`<h1>`, italic tagline, contact info, and links).
+     - Formatted Technical Skills as compact bullet lists and Experience/Projects rows with right-aligned dates.
+  6. **AI Assistant Snippet & Replacement Parsing Pipeline ([sanitizeResumeHtml.js](file:///Frontend/src/features/Interview/utils/sanitizeResumeHtml.js), [Resume.jsx](file:///Frontend/src/features/Interview/pages/Resume.jsx), [ResumeEditor.jsx](file:///Frontend/src/features/Interview/components/ResumeEditor.jsx), [KiviAiAssistant.jsx](file:///Frontend/src/features/Shared/components/KiviAiAssistant.jsx))**:
+     - Built `parseAndSanitizeSnippet(snippet)` to parse markdown code fences (` ```suggestion...``` `, ` ```html...``` `), convert inline markdown (`**bold**`, `*italic*`, `[link](url)`) to semantic HTML, and sanitize HTML tags before applying updates to TipTap.
+     - Ensured replacement text seamlessly blends into the A4 document structure without breaking list items or leaking raw markdown syntax.
 
 ---
 

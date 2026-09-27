@@ -9,6 +9,7 @@ import {
     getAssistantHistoryApi,
     clearAssistantHistoryApi 
 } from '../../Interview/services/interview.api';
+import { parseAndSanitizeSnippet } from '../../Interview/utils/sanitizeResumeHtml';
 import './KiviAiAssistant.scss';
 
 // Configure marked options with custom link renderer for safe external links
@@ -844,10 +845,12 @@ export function KiviAiAssistant() {
     // Apply suggested snippet directly to TipTap editor or active document
     const handleApplySuggestedSnippet = useCallback((msgId, snippet, targetText = null) => {
         if (!snippet) return;
+        const cleanSnippet = parseAndSanitizeSnippet(snippet);
+        if (!cleanSnippet) return;
         if (fetchUsage) fetchUsage();
 
         const evt = new CustomEvent('kivi-replace-text', {
-            detail: { targetText, snippet },
+            detail: { targetText, snippet: cleanSnippet },
             cancelable: true
         });
         window.dispatchEvent(evt);
@@ -870,7 +873,7 @@ export function KiviAiAssistant() {
                 let node;
                 while ((node = walker.nextNode())) {
                     if (node.nodeValue && node.nodeValue.includes(cleanTarget)) {
-                        node.nodeValue = node.nodeValue.replace(cleanTarget, snippet);
+                        node.nodeValue = node.nodeValue.replace(cleanTarget, cleanSnippet);
                         editorEl.dispatchEvent(new Event('input', { bubbles: true }));
                         if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
                         return;

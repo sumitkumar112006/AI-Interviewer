@@ -882,10 +882,10 @@ $text-muted:     var(--text-secondary, #bac1b8);
 
 // ── TipTap prose content inside A4 ────────────────────────────────────────
 .tiptap-prose {
-    font-family: 'Georgia', 'Times New Roman', serif;
-    font-size: 10.5pt;
-    line-height: 1.55;
-    color: #1e293b;
+    font-family: 'Calibri', 'Arial', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 10pt;
+    line-height: 1.35;
+    color: #1a1a1a;
     background: #ffffff !important;
     outline: none;
     min-height: 1010px;
@@ -925,34 +925,39 @@ $text-muted:     var(--text-secondary, #bac1b8);
     }
 
     h1 {
-        font-size: 18pt;
+        font-size: 20pt;
         font-weight: 700;
-        line-height: 1.2;
-        margin: 0 0 0.2em;
-        letter-spacing: -0.02em;
+        line-height: 1.15;
+        margin: 0 0 0.15em;
+        letter-spacing: 0.02em;
+        text-align: center;
+        color: #0f172a;
     }
 
     h2 {
-        font-size: 12pt;
+        font-size: 11pt;
         font-weight: 700;
-        line-height: 1.25;
-        margin: 1.2em 0 0.4em;
+        line-height: 1.2;
+        margin: 0.85em 0 0.28em;
         text-transform: uppercase;
-        letter-spacing: 0.06em;
-        border-bottom: 1.5px solid #334155;
-        padding-bottom: 0.2em;
+        letter-spacing: 0.04em;
+        color: #0f3d68; /* Navy Blue Section Title */
+        border-bottom: 2px solid #0f3d68; /* Section Divider Bar */
+        padding-bottom: 0.12em;
     }
 
     h3 {
-        font-size: 10.5pt;
+        font-size: 10pt;
         font-weight: 700;
-        line-height: 1.3;
-        margin: 0.9em 0 0.25em;
+        line-height: 1.25;
+        margin: 0.55em 0 0.15em;
+        color: #1a1a1a;
     }
 
-    p, li {
-        color: #334155;
-        margin: 0 0 0.6em;
+    p {
+        color: #1a1a1a;
+        margin: 0 0 0.22em;
+        line-height: 1.35;
 
         &:last-child { margin-bottom: 0; }
     }
@@ -970,23 +975,30 @@ $text-muted:     var(--text-secondary, #bac1b8);
     }
 
     a {
-        color: #2563eb !important;
+        color: #0f3d68 !important;
         text-decoration: underline;
-        &:hover { color: #1d4ed8 !important; }
+        font-weight: 500;
+        &:hover { color: #0369a1 !important; }
     }
 
     ul, ol {
-        padding-left: 1.4em;
-        margin: 0.4em 0 0.6em;
+        padding-left: 1.25em;
+        margin: 0.18em 0 0.35em;
         page-break-inside: avoid;
         break-inside: avoid;
     }
 
     li {
-        margin: 0.2em 0;
-        line-height: 1.5;
+        margin: 0.12em 0;
+        line-height: 1.35;
+        color: #1a1a1a;
         page-break-inside: avoid !important;
         break-inside: avoid !important;
+
+        p {
+            margin: 0;
+            display: inline;
+        }
     }
 
     p, h1, h2, h3, h4, section, div {
@@ -995,9 +1007,9 @@ $text-muted:     var(--text-secondary, #bac1b8);
     }
 
     blockquote {
-        border-left: 3px solid #94a3b8;
-        padding-left: 1em;
-        margin: 0.8em 0;
+        border-left: 3px solid #0f3d68;
+        padding-left: 0.85em;
+        margin: 0.5em 0;
         color: #475569;
         font-style: italic;
     }
@@ -1005,7 +1017,7 @@ $text-muted:     var(--text-secondary, #bac1b8);
     hr {
         border: none;
         border-top: 1px solid #cbd5e1;
-        margin: 0.75em 0;
+        margin: 0.5em 0;
     }
 }
 

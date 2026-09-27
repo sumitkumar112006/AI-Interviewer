@@ -440,10 +440,45 @@ function normalizeResumeHtmlDocument(htmlContent) {
             padding: 12mm 16mm;
             box-sizing: border-box;
             font-family: 'Calibri', 'Arial', sans-serif;
-            color: #111827;
+            color: #1a1a1a;
             background: #ffffff;
-            line-height: 1.4;
+            line-height: 1.35;
             -webkit-print-color-adjust: exact;
+        }
+        h1 {
+            font-size: 20pt;
+            font-weight: 700;
+            line-height: 1.15;
+            margin: 0 0 0.15em;
+            text-align: center;
+            color: #0f172a;
+        }
+        h2 {
+            font-size: 11pt;
+            font-weight: 700;
+            line-height: 1.2;
+            margin: 0.85em 0 0.28em;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #0f3d68;
+            border-bottom: 2px solid #0f3d68;
+            padding-bottom: 0.12em;
+        }
+        h3 {
+            font-size: 10pt;
+            font-weight: 700;
+            line-height: 1.25;
+            margin: 0.55em 0 0.15em;
+            color: #1a1a1a;
+        }
+        p {
+            margin: 0 0 0.22em;
+            line-height: 1.35;
+            color: #1a1a1a;
+        }
+        a {
+            color: #0f3d68;
+            text-decoration: underline;
         }
         li, ul, ol, p, h1, h2, h3, h4, section, .section, .experience-item, .project-item {
             page-break-inside: avoid !important;
@@ -455,11 +490,13 @@ function normalizeResumeHtmlDocument(htmlContent) {
         }
         ul, ol {
             padding-left: 1.25rem;
-            margin-top: 0.25rem;
-            margin-bottom: 0.5rem;
+            margin-top: 0.18rem;
+            margin-bottom: 0.35rem;
         }
         li {
-            margin-bottom: 0.35rem;
+            margin-bottom: 0.12rem;
+            line-height: 1.35;
+            color: #1a1a1a;
         }
     </style>
 </head>
@@ -1004,14 +1041,26 @@ JSON STRUCTURE:
 CRITICAL RULES & FORMATTING REQUIREMENTS:
 1. SEMANTIC HTML & TIPTAP COMPATIBILITY:
    - Use clean, standard semantic HTML tags: <h1>, <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>, <a>, <hr>.
-   - Candidate Header:
-     <h1>Candidate Full Name</h1>
-     <p>City, State / Country | +1 (555) 000-0000 | email@example.com</p>
-     <p><a href="https://linkedin.com/in/...">LinkedIn</a> | <a href="https://github.com/...">GitHub</a> | <a href="...">Portfolio</a></p>
-   - Section Headings: <h2>SUMMARY</h2>, <h2>TECHNICAL SKILLS</h2>, <h2>PROFESSIONAL EXPERIENCE</h2>, <h2>PROJECTS</h2>, <h2>EDUCATION</h2>, <h2>CERTIFICATIONS & ACHIEVEMENTS</h2>.
-   - Job/Project Titles: <h3>Role Title - Company Name | <em>Date - Date</em></h3>
-   - Bullet Points: ALWAYS use <ul><li>...</li></ul>. NEVER type bullet points as raw "•", "*", or "-" inside <p> tags!
-   - Skills Breakdown: Use "<p><strong>Category:</strong> Skill 1, Skill 2, Skill 3</p>".
+   - Candidate Header (Centered):
+     <h1 style="text-align: center;">CANDIDATE FULL NAME</h1>
+     <p style="text-align: center;"><em>Software Engineer | Backend & Systems</em></p>
+     <p style="text-align: center;">City, State / Country | +1 (555) 000-0000 | <a href="mailto:email@example.com">email@example.com</a></p>
+     <p style="text-align: center;"><a href="https://github.com/...">GitHub</a> | <a href="https://linkedin.com/in/...">LinkedIn</a> | <a href="...">Portfolio</a></p>
+   - Section Headings: <h2>PROFESSIONAL SUMMARY</h2>, <h2>TECHNICAL SKILLS</h2>, <h2>SOFT SKILLS</h2>, <h2>EXPERIENCE</h2>, <h2>PROJECTS</h2>, <h2>EDUCATION</h2>.
+   - Technical Skills: MUST be formatted as a clean, compact bulleted list:
+     <ul>
+       <li><strong>Languages:</strong> Java, Python, JavaScript, TypeScript, SQL</li>
+       <li><strong>Frontend:</strong> React.js, Next.js, HTML5, CSS3, Tailwind CSS</li>
+       <li><strong>Backend & APIs:</strong> Node.js, Express, FastAPI, RESTful APIs, Microservices</li>
+       <li><strong>Databases:</strong> MongoDB, PostgreSQL, Redis</li>
+       <li><strong>Cloud & DevOps:</strong> AWS (S3, EC2), Docker, Git, CI/CD</li>
+       <li><strong>AI/ML Tools:</strong> OpenAI API, Gemini API, LangChain</li>
+       <li><strong>Testing:</strong> Jest, PyTest, JUnit</li>
+     </ul>
+   - Soft Skills: Use a concise comma-separated paragraph: "<p>Leadership, Communication, Problem-Solving, Time Management, Adaptability</p>".
+   - Experience / Projects Titles: Include right-aligned date/timeline:
+     <h3><strong>Software Engineering Intern</strong> — <em>Company Name</em> <span style="float: right;">2024 – Present</span></h3>
+   - Bullet Points: ALWAYS use <ul><li>...</li></ul> with strong action verbs (Architected, Engineered, Spearheaded, Optimized, Streamlined). NEVER type raw "•", "*", or "-" inside <p> tags!
 
 2. STRICT NEGATIVE CONSTRAINTS (MANDATORY):
    - NEVER output coaching notes, critique questions, or template placeholders (e.g. NEVER write "[Question: ...]", "[Insert metric]", "[Action Required]", "[Explain X]", "[How much did this...]", or any bracketed text like "[...]").
@@ -1022,11 +1071,10 @@ CRITICAL RULES & FORMATTING REQUIREMENTS:
 3. ATS KEYWORD & JOB ALIGNMENT:
    - Deeply analyze the provided Job Description for target skills, technologies, frameworks, and domain keywords.
    - Match and highlight transferable technical competencies and relevant project/experience evidence provided by the candidate.
-   - Use strong action verbs (Architected, Engineered, Spearheaded, Optimized, Streamlined, Implemented).
 
 4. LAYOUT & PAGE BOUNDARIES:
    - Full doc: <!DOCTYPE html> to </html> with one clean <style> block in <head>.
-   - Font: 'Calibri', 'Arial', sans-serif. Body #1a1a1a on white, 11pt to 12pt, line-height 1.4.
+   - Font: 'Calibri', 'Arial', sans-serif. Body #1a1a1a on white, 10pt to 11pt, line-height 1.35.
    - Strict single column, no floats/multi-column/tables-for-layout, no fixed/absolute positioning.
    - All <li>, <p>, <h2>, <h3> MUST have break-inside: avoid !important;.
 

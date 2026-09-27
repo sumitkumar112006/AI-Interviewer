@@ -56,11 +56,11 @@ export function sanitizeResumeHtml(html) {
                 return
             }
 
-            // Clean style attribute: strip background, color, height, width, float, position
+            // Clean style attribute: strip disruptive backgrounds, absolute positioning, and overflows
             if (name === 'style') {
                 let styleVal = attr.value
                 styleVal = styleVal
-                    .replace(/(width|min-width|max-width|height|min-height|max-height|position|float|clear|background|background-color|color|font-family|overflow|overflow-x|overflow-y|margin|padding)\s*:[^;]+(;|$)/gi, '')
+                    .replace(/(min-width|max-width|min-height|max-height|position\s*:\s*(?:absolute|fixed)|clear|background|background-color|color\s*:\s*(?:#fff|white)|overflow|overflow-x|overflow-y|margin-top|margin-bottom|padding-top|padding-bottom)\s*:[^;]+(;|$)/gi, '')
                     .trim()
 
                 if (!styleVal) {
@@ -115,5 +115,45 @@ export function htmlToPlainText(html) {
     const cleaned = html.replace(/\\n/g, '\n').replace(/\\r/g, '')
     const doc = new DOMParser().parseFromString(cleaned, 'text/html')
     return doc.body?.textContent || ''
+}
+
+/**
+ * Parses and sanitizes a replacement snippet or section update from the AI Assistant before applying to the document.
+ *
+ * - Strips markdown code fences (```suggestion...```, ```html...```, etc.)
+ * - Strips coaching brackets ([Question: ...], [Insert Metric], etc.)
+ * - Converts inline Markdown formatting (bold **text**, italic *text*, links [text](url)) into clean semantic HTML
+ * - Cleans HTML tags via DOMParser (strips dangerous tags, scripts, dark theme CSS classes)
+ * - Returns clean, TipTap-compatible HTML or text
+ */
+export function parseAndSanitizeSnippet(snippet) {
+    if (!snippet || typeof snippet !== 'string') return ''
+
+    let text = snippet
+        // Strip markdown fences: ```suggestion, ```html, ```markdown, etc.
+        .replace(/^```[a-zA-Z0-9_-]*\s*\n?/gm, '')
+        .replace(/\n?```$/gm, '')
+        .replace(/\\n/g, ' ')
+        .replace(/\\r/g, '')
+        // Strip coaching questions / placeholders
+        .replace(/\[\s*(?:Question|Note|Tip|Critique|Action|Clarify|Metric|Insert|TODO)[^\]]*\]/gi, '')
+        .trim()
+
+    // If it contains full HTML markup, sanitize through sanitizeResumeHtml
+    if (/<[a-z][\s\S]*>/i.test(text)) {
+        return sanitizeResumeHtml(text)
+    }
+
+    // Convert common inline Markdown to semantic HTML
+    text = text
+        // Markdown links: [text](url) -> <a href="url">text</a>
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+        // Markdown bold: **text** or __text__ -> <strong>text</strong>
+        .replace(/(\*\*|__)(.*?)\1/g, '<strong>$2</strong>')
+        // Markdown italic: *text* or _text_ -> <em>text</em>
+        .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
+        .replace(/(?<!_)_([^_]+)_(?!_)/g, '<em>$1</em>')
+
+    return text.trim()
 }
 

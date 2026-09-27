@@ -18,6 +18,7 @@ import {
     ExternalLink, Trash2, X, Search, Volume2, VolumeX, Play, Pause, Square, Sparkles,
     PaintRoller
 } from 'lucide-react'
+import { parseAndSanitizeSnippet } from '../utils/sanitizeResumeHtml'
 import '../style/editor.scss'
 
 // ── Custom FontSize Extension for Tiptap ───────────────────────────────────
@@ -357,7 +358,10 @@ const ResumeEditor = forwardRef(function ResumeEditor(
     useImperativeHandle(ref, () => ({
         getHtml: () => editor?.getHTML() ?? '',
         setContent: (html) => editor?.commands.setContent(html, false),
-        insertContent: (html) => editor?.commands.insertContent(html),
+        insertContent: (html) => {
+            const clean = parseAndSanitizeSnippet(html) || html
+            return editor?.commands.insertContent(clean)
+        },
         focus: () => editor?.commands.focus(),
         isEmpty: () => editor?.isEmpty ?? true,
         isFocused: () => editor?.isFocused ?? false,
@@ -366,7 +370,7 @@ const ResumeEditor = forwardRef(function ResumeEditor(
             if (!editor || !replacementText) return false
 
             const cleanTarget = (targetText || '').trim()
-            const cleanReplacement = replacementText.trim()
+            const cleanReplacement = parseAndSanitizeSnippet(replacementText) || replacementText.trim()
 
             // Prepare stripped versions (strip leading bullet markers or numbers)
             const strippedTarget = cleanTarget.replace(/^[•\-\*\d\.]+\s*/, '').trim()
