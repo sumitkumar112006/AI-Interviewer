@@ -33,7 +33,6 @@ const PublicLayout = ({ children }) => {
             <ul className="nav-links">
               <li><Link to="/#features">Features</Link></li>
               <li><Link to="/#workflow">How It Works</Link></li>
-              <li><Link to="/pricing">Pricing</Link></li>
               <li><Link to="/about-us">About Us</Link></li>
               <li><Link to="/contact-us">Contact</Link></li>
             </ul>

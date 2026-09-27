@@ -20,7 +20,6 @@ import AdminProtected from "./features/Admin/components/AdminProtected";
 import AdminDashboard from "./features/Admin/pages/AdminDashboard";
 import AdminLogin from "./features/Admin/pages/AdminLogin";
 import UserEvaluationPage from "./features/Admin/pages/UserEvaluationPage";
-import PricingPage from "./features/Subscription/pages/PricingPage";
 import LandingPage from "./features/Landing/pages/LandingPage";
 import RootIndex from "./features/Landing/components/RootIndex";
 import AdaptiveRoute from "./features/Landing/components/AdaptiveRoute";
@@ -35,8 +34,8 @@ export const router = createBrowserRouter([
     { path: "/logout", element: <Login /> },
     { path: "/admin-login-secret", element: <AdminLogin /> },
 
-    // Public / Adaptive Informational & Pricing Routes
-    { path: "/pricing", element: <AdaptiveRoute Component={PricingPage} /> },
+    // Public / Adaptive Informational Routes
+    { path: "/pricing", element: <RootIndex /> },
     { path: "/about-us", element: <AdaptiveRoute Component={AboutUs} /> },
     { path: "/contact-us", element: <AdaptiveRoute Component={ContactUs} /> },
     { path: "/help-support", element: <AdaptiveRoute Component={HelpSupport} /> },

@@ -199,11 +199,6 @@ const Footer = ({ theme = 'dark' }) => {
                   Skill Gap Diagnostics
                 </Link>
               </li>
-              <li>
-                <Link to="/pricing" className="kivi-footer__nav-link">
-                  Pricing & Pro Plans
-                </Link>
-              </li>
             </ul>
           </div>
 
@@ -229,11 +224,6 @@ const Footer = ({ theme = 'dark' }) => {
               <li>
                 <Link to={appHome} className="kivi-footer__nav-link">
                   Career Roadmaps
-                </Link>
-              </li>
-              <li>
-                <Link to="/pricing" className="kivi-footer__nav-link">
-                  Free vs Pro Comparison
                 </Link>
               </li>
             </ul>

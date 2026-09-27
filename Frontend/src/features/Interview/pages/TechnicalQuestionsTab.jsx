@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { updateInterviewProgress } from '../services/interview.api';
 import { Search, Filter } from 'lucide-react';
+import ShimmerLoading from '../../Shared/components/ShimmerLoading';
 
-const TechnicalQuestionsTab = ({ interviewId, initialQuestions, onUpdateReport }) => {
+const TechnicalQuestionsTab = ({ interviewId, initialQuestions, onUpdateReport, loading = false }) => {
   const navigate = useNavigate();
   const [questions, setQuestions] = useState(initialQuestions || []);
   const [searchQuery, setSearchQuery] = useState('');
@@ -12,6 +13,10 @@ const TechnicalQuestionsTab = ({ interviewId, initialQuestions, onUpdateReport }
   const [responses, setResponses] = useState({});
   const [savingIndex, setSavingIndex] = useState(null);
   const [saveSuccess, setSaveSuccess] = useState({});
+
+  if (loading) {
+    return <ShimmerLoading type="questions" />;
+  }
 
   useEffect(() => {
     setQuestions(initialQuestions || []);

@@ -220,13 +220,6 @@ const Layout = ({ children }) => {
         <div className="sidebar-section">
           <p className="sidebar-section-title">SETTINGS</p>
           <nav className="sidebar-nav">
-            <Link to="/pricing" className={`sidebar-link ${activeMenu === "pricing" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
-              <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-              </svg>
-              <span>Pricing & Plans</span>
-            </Link>
-
             <Link to="/profile" className={`sidebar-link ${activeMenu === "profile" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
               <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
@@ -261,17 +254,6 @@ const Layout = ({ children }) => {
               <span>Logout</span>
             </button>
           </nav>
-        </div>
-
-        <div className="upgrade-card">
-          <div className="upgrade-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
-            </svg>
-          </div>
-          <h3>Upgrade to Pro</h3>
-          <p>Unlock advanced features and boost your interview prep.</p>
-          <Link to="/pricing" className="upgrade-btn" onClick={() => setIsSidebarOpen(false)}>Upgrade Now</Link>
         </div>
       </aside>
 
@@ -314,15 +296,15 @@ const Layout = ({ children }) => {
               {/* Remaining Attempts Pills */}
               <div
                 className="usage-attempts-pill"
-                title={`Plan: ${user?.plan?.toUpperCase() || 'FREE'} | Full Generations (Monthly): ${usage?.fullGenerations?.remaining ?? 2}/${usage?.fullGenerations?.limit ?? 2} left | AI Assistant (Daily): ${usage?.aiAssistant?.remaining ?? 10}/${usage?.aiAssistant?.limit ?? 10} left`}
+                title={`Plan: ${user?.plan?.toUpperCase() || 'FREE'} | Full Generations (Monthly): ${usage?.fullGenerations?.remaining ?? 100}/${usage?.fullGenerations?.limit ?? 100} left | AI Assistant (Daily): ${usage?.aiAssistant?.remaining ?? 500}/${usage?.aiAssistant?.limit ?? 500} left`}
               >
                 <span className="attempts-badge plan-badge">{user?.plan?.toUpperCase() || 'FREE'}</span>
                 <span className="attempts-item" title="Full Resume & Cover Letter Generations (Monthly Reset)">
-                  ⚡ {usage?.fullGenerations?.remaining ?? 2}/{usage?.fullGenerations?.limit ?? 2}<span className="attempts-unit"> Gens/mo</span>
+                  ⚡ {usage?.fullGenerations?.remaining ?? 100}/{usage?.fullGenerations?.limit ?? 100}<span className="attempts-unit"> Gens/mo</span>
                 </span>
                 <span className="attempts-divider">|</span>
                 <span className="attempts-item" title="AI Assistant & Writer Rewrites (Daily 24h Reset)">
-                  🤖 {usage?.aiAssistant?.remaining ?? 10}/{usage?.aiAssistant?.limit ?? 10}<span className="attempts-unit"> AI/day</span>
+                  🤖 {usage?.aiAssistant?.remaining ?? 500}/{usage?.aiAssistant?.limit ?? 500}<span className="attempts-unit"> AI/day</span>
                 </span>
               </div>
 

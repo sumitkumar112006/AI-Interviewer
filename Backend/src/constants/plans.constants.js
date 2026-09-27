@@ -14,14 +14,15 @@ const PLANS = {
     priceInRupees: 0,
     currency: 'INR',
     billingCycle: 'MONTHLY',
-    generationLimit: 3,
-    aiCreditsLimit: 20,
+    generationLimit: 100,
+    aiCreditsLimit: 500,
     features: [
-      '3 AI Mock Interviews / month',
-      '20 AI Credits',
-      'Standard Feedback & Scoring',
-      'Basic Resume Template',
-      'Community Support'
+      '100 AI Mock Interviews / month',
+      '500 AI Assistant Credits / day',
+      'In-depth Detailed Feedback & Analysis',
+      'ATS Resume Builder & Live Editor',
+      'AI Cover Letter Generator',
+      'Community & Email Support'
     ],
     isPopular: false
   },

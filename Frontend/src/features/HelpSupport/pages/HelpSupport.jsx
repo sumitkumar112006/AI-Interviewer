@@ -41,8 +41,8 @@ const FAQ_DATA = [
     a: "100% private and confidential. Your data is encrypted using TLS 1.3 in transit and AES-256 at rest. We never share your data with third parties or recruiters, and private documents are never used to train public models."
   },
   {
-    q: "How can I upgrade or manage my subscription plan?",
-    a: "Navigate to the 'Pricing & Plans' tab in your sidebar to upgrade to Pro Candidate or Lifetime Pass. We support instant secure checkout via Razorpay with immediate plan activation."
+    q: "Are there any usage limits or paid plans?",
+    a: "All candidate features are currently 100% free! Every account gets 100 full mock interview & resume generations every month, along with 500 AI Copilot credits daily with zero paywalls."
   }
 ];
 

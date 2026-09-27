@@ -360,6 +360,288 @@
     }
 }
 
+/* ===== TECHNICAL & BEHAVIORAL QUESTIONS SHIMMER LAYOUT ===== */
+.shimmer-questions-view {
+    padding: 0;
+    min-height: auto;
+    background: transparent;
+}
+
+.shimmer-questions-layout {
+    width: 100%;
+    max-width: 1160px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    box-sizing: border-box;
+
+    /* Context Overview Skeleton */
+    .shimmer-context-panel {
+        width: 100%;
+        box-sizing: border-box;
+        background: var(--panel, var(--skel-bg-sheet));
+        border: 1px solid var(--border, var(--skel-border-sheet));
+        border-radius: 0.85rem;
+        padding: 1.25rem 1.5rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+
+        .shimmer-context-left {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            flex: 1;
+
+            .shimmer-context-eyebrow {
+                width: 140px;
+                height: 12px;
+                border-radius: 3px;
+            }
+
+            .shimmer-context-title {
+                width: 290px;
+                height: 24px;
+                border-radius: 4px;
+            }
+        }
+
+        .shimmer-context-right {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+
+            .shimmer-score-badge {
+                width: 85px;
+                height: 32px;
+                border-radius: 999px;
+            }
+
+            .shimmer-chevron {
+                width: 20px;
+                height: 20px;
+                border-radius: 4px;
+            }
+        }
+    }
+
+    /* Tab Switcher Skeleton */
+    .shimmer-tabs-bar {
+        display: flex;
+        gap: 0.65rem;
+        padding: 0.35rem;
+        background: var(--panel, var(--skel-bg-sheet));
+        border: 1px solid var(--border, var(--skel-border-sheet));
+        border-radius: 0.75rem;
+        width: fit-content;
+        box-sizing: border-box;
+
+        .shimmer-tab-btn {
+            width: 175px;
+            height: 38px;
+            border-radius: 0.5rem;
+
+            &.active {
+                background: linear-gradient(
+                    90deg,
+                    var(--skel-primary-btn-base) 0%,
+                    var(--skel-primary-btn-high) 50%,
+                    var(--skel-primary-btn-base) 100%
+                );
+                background-size: 250% 100%;
+            }
+        }
+
+        @media (max-width: 640px) {
+            width: 100%;
+            overflow-x: auto;
+        }
+    }
+
+    /* Premium Header Banner Skeleton */
+    .shimmer-questions-banner {
+        width: 100%;
+        box-sizing: border-box;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: var(--panel, var(--skel-bg-sheet));
+        border: 1px solid var(--border, var(--skel-border-sheet));
+        border-radius: 0.85rem;
+        padding: 1.75rem 2rem;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+
+        .shimmer-banner-text {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            flex: 1;
+            padding-right: 1.5rem;
+
+            .shimmer-back-link {
+                width: 130px;
+                height: 12px;
+                border-radius: 3px;
+                margin-bottom: 0.25rem;
+            }
+
+            .shimmer-banner-title {
+                width: 270px;
+                height: 34px;
+                border-radius: 6px;
+            }
+
+            .shimmer-banner-desc {
+                width: 80%;
+                max-width: 520px;
+                height: 16px;
+                border-radius: 4px;
+            }
+        }
+
+        .shimmer-banner-icon-box {
+            width: 72px;
+            height: 72px;
+            border-radius: 0.85rem;
+            background: var(--card, var(--skel-bg-sheet));
+            border: 1px solid var(--border, var(--skel-border-sheet));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+
+            .code-icon-tag {
+                font-size: 1.6rem;
+                font-weight: 800;
+                color: var(--accent, #ef7b5d);
+                font-family: monospace;
+                opacity: 0.55;
+            }
+        }
+
+        @media (max-width: 640px) {
+            padding: 1.25rem;
+            .shimmer-banner-icon-box {
+                display: none;
+            }
+        }
+    }
+
+    /* Filter & Search Bar Skeleton */
+    .shimmer-filter-bar {
+        width: 100%;
+        box-sizing: border-box;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+
+        .shimmer-pills-row {
+            display: flex;
+            gap: 0.45rem;
+            flex-wrap: wrap;
+
+            .shimmer-topic-pill {
+                height: 36px;
+                border-radius: 999px;
+
+                &.active {
+                    border: 1px solid var(--accent, rgba(239, 123, 93, 0.4));
+                }
+            }
+        }
+
+        .shimmer-search-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+
+            .shimmer-search-input {
+                width: 210px;
+                height: 38px;
+                border-radius: 0.5rem;
+            }
+
+            .shimmer-filter-btn {
+                width: 85px;
+                height: 38px;
+                border-radius: 0.5rem;
+            }
+        }
+    }
+
+    /* Questions List & Accordion Cards Skeleton */
+    .shimmer-questions-list {
+        width: 100%;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+
+        .shimmer-question-row-card {
+            width: 100%;
+            box-sizing: border-box;
+            background: var(--panel, var(--skel-bg-sheet));
+            border: 1px solid var(--border, var(--skel-border-sheet));
+            border-radius: 0.65rem;
+            padding: 1.15rem 1.4rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1.25rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+
+            .shimmer-row-left {
+                display: flex;
+                align-items: center;
+                gap: 0.9rem;
+                flex: 1;
+                min-width: 0;
+
+                .shimmer-index-badge {
+                    width: 1.9rem;
+                    height: 1.9rem;
+                    border-radius: 50%;
+                    border: 1px solid var(--border, var(--skel-border-sheet));
+                    background: var(--card-subtle, rgba(243, 240, 233, 0.05));
+                    color: var(--accent, #ef7b5d);
+                    font-family: monospace;
+                    font-size: 0.82rem;
+                    font-weight: 700;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    flex-shrink: 0;
+                    opacity: 0.8;
+                }
+
+                .shimmer-question-title {
+                    height: 16px;
+                    border-radius: 4px;
+                    min-width: 40px;
+                }
+            }
+
+            .shimmer-row-right {
+                flex-shrink: 0;
+
+                .shimmer-expand-plus {
+                    font-size: 1.2rem;
+                    color: var(--muted, rgba(243, 240, 233, 0.4));
+                    font-weight: 300;
+                    line-height: 1;
+                }
+            }
+        }
+    }
+}
+
 @keyframes shimmerFadeIn {
     from {
         opacity: 0;
@@ -370,3 +652,4 @@
         transform: translateY(0);
     }
 }
+

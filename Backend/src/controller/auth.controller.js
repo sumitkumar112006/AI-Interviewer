@@ -650,8 +650,8 @@ async function getUserUsageController(req, res) {
         const genBonus = user.customBonusCredits || 0;
         const aiBonus = user.customAiBonusCredits !== undefined ? user.customAiBonusCredits : (genBonus * 3);
 
-        const aiLimits = { free: 10, pro: 100, premium: 500 };
-        const aiLimit = Math.max(0, (aiLimits[userPlan] || 10) + aiBonus);
+        const aiLimits = { free: 500, pro: 500, premium: 500 };
+        const aiLimit = Math.max(0, (aiLimits[userPlan] || 500) + aiBonus);
 
         // AI assistant usage — still from Redis (daily limit, key matches rate limiter)
         let aiUsed = 0;

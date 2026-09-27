@@ -9,7 +9,7 @@ const interviewRouter = express.Router();
 const aiAssistantTieredLimiter = createTieredRateLimiter({
     prefix: 'ratelimit:ai-assistant',
     windowSeconds: 86400, // 24-hour daily limit
-    limits: { free: 10, pro: 100, premium: 500 },
+    limits: { free: 500, pro: 500, premium: 500 },
     bonusMultiplier: 3,
     message: 'AI Assistant daily limit reached for your plan.'
 });
