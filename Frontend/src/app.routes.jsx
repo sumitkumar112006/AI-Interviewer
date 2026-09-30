@@ -46,21 +46,17 @@ export const router = createBrowserRouter([
     {
         path: "/admin-portal-dashboard-root",
         element: (
-            <Protected>
-                <AdminProtected>
-                    <AdminDashboard />
-                </AdminProtected>
-            </Protected>
+            <AdminProtected>
+                <AdminDashboard />
+            </AdminProtected>
         )
     },
     {
         path: "/admin-portal-dashboard-root/user-evaluation/:userId",
         element: (
-            <Protected>
-                <AdminProtected>
-                    <UserEvaluationPage />
-                </AdminProtected>
-            </Protected>
+            <AdminProtected>
+                <UserEvaluationPage />
+            </AdminProtected>
         )
     },
 

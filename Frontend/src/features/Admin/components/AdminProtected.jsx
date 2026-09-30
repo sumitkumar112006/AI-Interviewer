@@ -13,9 +13,13 @@ export default function AdminProtected({ children }) {
         const checkRole = async () => {
             try {
                 const data = await getMe();
-                if (mounted && data?.user) {
-                    setUser(data.user);
-                    setFreshRole(data.user.role);
+                if (mounted) {
+                    if (data?.user) {
+                        setUser(data.user);
+                        setFreshRole(data.user.role);
+                    } else {
+                        setFreshRole(null);
+                    }
                 }
             } catch (err) {
                 console.error("Admin role check error:", err);
@@ -64,8 +68,11 @@ export default function AdminProtected({ children }) {
                 <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔒</div>
                 <h1 style={{ color: '#ffffff', fontSize: '1.8rem', margin: '0 0 0.5rem 0' }}>Admin Access Required</h1>
                 <p style={{ color: '#94a3b8', maxWidth: '480px', marginBottom: '1.5rem', lineHeight: '1.5' }}>
-                    Logged in as <strong style={{ color: '#ffffff' }}>{user?.email || 'Guest'}</strong> (Role: <span style={{ color: '#f87171' }}>{freshRole || user?.role || 'user'}</span>).
-                    This account does not have Admin privileges.
+                    {user ? (
+                        <>Logged in as <strong style={{ color: '#ffffff' }}>{user?.email}</strong> (Role: <span style={{ color: '#f87171' }}>{freshRole || user?.role || 'user'}</span>). This account is not authorized for the Administrator Portal.</>
+                    ) : (
+                        <>You need to authenticate with an Administrator account to access the Admin Portal.</>
+                    )}
                 </p>
                 <div style={{ display: 'flex', gap: '1rem' }}>
                     <Link to="/admin-login-secret" style={{

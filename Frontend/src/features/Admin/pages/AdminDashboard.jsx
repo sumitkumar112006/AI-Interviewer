@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../Auth/hooks/useAuth';
 import {
     getAdminStats,
     getAdminUsers,
@@ -16,10 +17,12 @@ import { AdminPaymentsTab } from '../components/AdminPaymentsTab';
 import { AdminSubscriptionsTab } from '../components/AdminSubscriptionsTab';
 import { AdminAuditLogsTab } from '../components/AdminAuditLogsTab';
 import ConfirmModal from '../../Shared/components/ConfirmModal';
-import { Trash2 } from 'lucide-react';
+import { Trash2, LogOut } from 'lucide-react';
 import '../styles/admin.scss';
 
 export default function AdminDashboard() {
+    const navigate = useNavigate();
+    const { handleLogout } = useAuth();
     const [stats, setStats] = useState(null);
     const [users, setUsers] = useState([]);
     const [pagination, setPagination] = useState({ total: 0, page: 1, pages: 1, limit: 20 });
@@ -401,6 +404,21 @@ export default function AdminDashboard() {
                     <Link to="/" className="exit-app-btn">
                         Exit to Main App ↗
                     </Link>
+                    <button
+                        className="exit-app-btn"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(239, 68, 68, 0.15)', borderColor: 'rgba(239, 68, 68, 0.4)', color: '#f87171', cursor: 'pointer' }}
+                        onClick={async () => {
+                            try {
+                                await handleLogout();
+                                navigate('/admin-login-secret');
+                            } catch (err) {
+                                console.error('Logout error:', err);
+                                navigate('/admin-login-secret');
+                            }
+                        }}
+                    >
+                        <LogOut size={14} /> Log Out
+                    </button>
                 </div>
             </div>
 

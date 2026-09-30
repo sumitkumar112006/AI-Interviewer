@@ -62,8 +62,12 @@ const Login = () => {
         }
 
         try {
-            await handleLogin({ email, password })
-            navigate('/')
+            const loginRes = await handleLogin({ email, password })
+            if (loginRes?.user?.isAdmin || ['admin', 'super_admin'].includes(loginRes?.user?.role)) {
+                navigate('/admin-portal-dashboard-root')
+            } else {
+                navigate('/')
+            }
         } catch (err) {
             console.error('Login error:', err)
             if (err?.response?.status === 403 && err?.response?.data?.requiresOtp) {
@@ -82,8 +86,12 @@ const Login = () => {
         e.preventDefault()
         setError('')
         try {
-            await handleVerifyOtp({ email, otp })
-            navigate('/')
+            const verifyRes = await handleVerifyOtp({ email, otp })
+            if (verifyRes?.user?.isAdmin || ['admin', 'super_admin'].includes(verifyRes?.user?.role)) {
+                navigate('/admin-portal-dashboard-root')
+            } else {
+                navigate('/')
+            }
         } catch (err) {
             setError(err?.response?.data?.message || err?.message || 'Invalid OTP code.')
         }
