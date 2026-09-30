@@ -259,6 +259,33 @@
 
 ---
 
+### 🔹 Session: 2026-09-30
+- **Topic**: Live ATS (Applicant Tracking System) Calculator Architecture & Implementation Design for Resume Builder
+- **Requirement & Goal**:
+  - Implement a real-time, live ATS scoring calculator in the Resume Studio (`Resume.jsx` & `ResumeEditor.jsx`) that delivers 0ms instant feedback as candidates type/edit their resume.
+  - Dynamically evaluate match quality against the candidate's target Job Description (`report.jobDescription`) and detected technical skills.
+- **Architectural Design & Core Pillars**:
+  1. **ATS Scoring Formula (Weighted 0-100 Score)**:
+     - **Keywords & Hard Skills (35%)**: Match rate against target JD skills, technical stacks, and role title alignment.
+     - **Impact & Action Verbs (25%)**: Ratio of bullet points starting with strong action verbs (`built`, `architected`, `engineered`, `scaled`, `optimized`) and quantifiable metrics (`%`, `$`, multiplier `2x`, volume `100k+`, latency numbers).
+     - **Section Completeness (20%)**: Standard ATS section detection (Contact Info with valid email/phone/links, Summary, Work Experience, Technical Skills, Education, Projects).
+     - **Formatting & Readability (20%)**: Word count density (optimal 400-800 words), bullet point length, valid contact syntax, absence of ATS parsing blockers.
+  2. **Client-Side Live Calculation Engine (`Frontend/src/features/Interview/utils/atsCalculator.js`)**:
+     - Fast zero-latency parsing on TipTap editor `onChange` with a 200-300ms debounce.
+     - Extracts sections, tokenizes JD keywords (filtering stop words), detects strong action verbs, and identifies quantifiable achievements via regex.
+     - Returns `{ overallScore, breakdown: { keywords, impact, sections, formatting } }`.
+  3. **Live ATS Score Panel UI (`Frontend/src/features/Interview/components/AtsScorePanel.jsx`)**:
+     - SVG Circular/Radial score gauge (color-coded: Green 80+, Amber 60-79, Red <60).
+     - Category breakdown progress bars (Keywords, Impact, Structure, Formatting).
+     - Interactive **Recommended Missing Keywords** chips (click-to-insert into active editor selection).
+     - Live **ATS Audit Checklist** with real-time pass/fail indicators (Email, Phone, Metrics count, Experience headers).
+  4. **Integration with TipTap Resume Studio (`Resume.jsx`)**:
+     - Embeds `AtsScorePanel` directly into the Resume Studio workspace layout.
+     - Feeds `report.jobDescription` and `report.detectedSkills` automatically into the evaluation pipeline.
+     - Connects with KIVI AI Copilot / `rewriteResumeSection` for 1-click ATS bullet point improvements.
+
+---
+
 ## 🚀 Proposed High-Impact Features & Platform Enhancements
 
 1. **⚡ 1-Click "Personalized 14-Day Skill Action Roadmap" (From Analytics)**:
@@ -268,9 +295,9 @@
 2. **🌊 Real-Time SSE Token Streaming for KIVI AI Assistant** *(COMPLETED)*:
    - Upgraded `/api/assistant/chat` to stream tokens via Server-Sent Events (SSE) for instant sub-200ms initial response times.
 
-3. **🔴 Live ATS Compatibility Meter & AI Diff Highlighter (In Resume Editor)**:
-   - Live ATS score gauge (0-100%) dynamically updating during edits in `ResumeEditor.jsx`.
-   - Before-vs-After green/red diff highlights when AI rewrites/enhances bullet points with action verbs and metrics.
+3. **🔴 Live ATS Compatibility Meter & AI Diff Highlighter (In Resume Editor)** *(IN PROGRESS)*:
+   - Live ATS score gauge (0-100%) dynamically updating during edits in `ResumeEditor.jsx` based on JD keywords, action verbs, metrics, and section structure.
+   - Interactive missing keyword chips and live ATS checklist.
 
 4. **🎙️ Interactive Mock Interview Practice Mode (STAR Method Grader)**:
    - Interactive answering box under generated behavioral & technical questions.
@@ -291,7 +318,8 @@
 - [x] Overhaul Intent Classifier into Tiered Semantic Context & Intent Router (Replacing Brittle Regex Rules).
 - [x] Implement 60 FPS Word-to-Word Smooth Streaming Buffer & Layout Auto-Closer.
 - [x] Fix AI Resume Structured HTML Generation, TipTap Sanitization, & Auto Report Worker Pipeline.
-- [ ] Add Live ATS Score Gauge & Diff Highlighter in Resume Editor.
+- [ ] Implement `atsCalculator.js` and `AtsScorePanel.jsx` in Resume Studio (`Resume.jsx`).
 - [ ] Test Google Supabase login & OTP flow end-to-end.
 - [ ] Finalize deployment pipelines (Vercel Frontend + Railway/Render Backend).
+
 

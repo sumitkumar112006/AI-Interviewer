@@ -412,12 +412,24 @@ function extractResumeHtmlContent(value) {
     return ""
 }
 
+function cleanHtmlLinks(html) {
+    if (!html || typeof html !== "string") return ""
+    return html
+        // Clean corrupted hrefs like href="\"https://...\"" or href='\"https://...\'
+        .replace(/href\s*=\s*(["'])[\\]*["']?([^"'>\\]+)[\\]*["']?\1/gi, 'href="$2"')
+        .replace(/href\s*=\s*"\\+"([^"]+)\\+""/gi, 'href="$1"')
+        .replace(/href\s*=\s*"\\+([^"]+)"/gi, 'href="$1"')
+        .replace(/href\s*=\s*"([^"]+)\\+"/gi, 'href="$1"')
+}
+
 function normalizeResumeHtmlDocument(htmlContent) {
-    const normalizedHtml = String(htmlContent ?? "").trim()
+    let normalizedHtml = String(htmlContent ?? "").trim()
 
     if (!normalizedHtml) {
         throw new Error("Resume PDF generation returned empty HTML content.")
     }
+
+    normalizedHtml = cleanHtmlLinks(normalizedHtml)
 
     if (/<html[\s>]/i.test(normalizedHtml)) {
         return normalizedHtml
@@ -442,38 +454,38 @@ function normalizeResumeHtmlDocument(htmlContent) {
             font-family: 'Calibri', 'Arial', sans-serif;
             color: #1a1a1a;
             background: #ffffff;
-            line-height: 1.35;
+            line-height: 1.05;
             -webkit-print-color-adjust: exact;
         }
         h1 {
-            font-size: 20pt;
+            font-size: 18pt;
             font-weight: 700;
-            line-height: 1.15;
-            margin: 0 0 0.15em;
+            line-height: 1.1;
+            margin: 0 0 0.1em;
             text-align: center;
             color: #0f172a;
         }
         h2 {
             font-size: 11pt;
             font-weight: 700;
-            line-height: 1.2;
-            margin: 0.85em 0 0.28em;
+            line-height: 1.15;
+            margin: 0.42em 0 0.14em;
             text-transform: uppercase;
             letter-spacing: 0.04em;
             color: #0f3d68;
             border-bottom: 2px solid #0f3d68;
-            padding-bottom: 0.12em;
+            padding-bottom: 0.08em;
         }
         h3 {
             font-size: 10pt;
             font-weight: 700;
-            line-height: 1.25;
-            margin: 0.55em 0 0.15em;
+            line-height: 1.15;
+            margin: 0.28em 0 0.05em;
             color: #1a1a1a;
         }
         p {
-            margin: 0 0 0.22em;
-            line-height: 1.35;
+            margin: 0 0 0.1em;
+            line-height: 1.05;
             color: #1a1a1a;
         }
         a {
@@ -490,12 +502,12 @@ function normalizeResumeHtmlDocument(htmlContent) {
         }
         ul, ol {
             padding-left: 1.25rem;
-            margin-top: 0.18rem;
-            margin-bottom: 0.35rem;
+            margin-top: 0.05rem;
+            margin-bottom: 0.15rem;
         }
         li {
-            margin-bottom: 0.12rem;
-            line-height: 1.35;
+            margin-bottom: 0.04rem;
+            line-height: 1.05;
             color: #1a1a1a;
         }
     </style>
@@ -1031,52 +1043,83 @@ async function generateResumeHtml({ resume, selfDescription, jobDescription, pla
     const systemPrompt = `You are an expert resume writer and ATS optimization specialist. You MUST respond ONLY with valid JSON — no markdown code fences, no commentary. The JSON must have exactly one top-level key: "html", whose value is a complete HTML string for a professional, single-column A4 resume.`
 
     const userPrompt = `
-Generate a professional, modern, ATS-optimized one-to-two page resume in valid JSON only.
+Generate a professional, modern, ATS-optimized  resume in valid JSON only.
 
 JSON STRUCTURE:
 {
   "html": "<!DOCTYPE html><html lang=\\"en\\"><head><meta charset=\\"utf-8\\"/><style>...</style></head><body>...</body></html>"
 }
 
-CRITICAL RULES & FORMATTING REQUIREMENTS:
-1. SEMANTIC HTML & TIPTAP COMPATIBILITY:
-   - Use clean, standard semantic HTML tags: <h1>, <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>, <a>, <hr>.
-   - Candidate Header (Centered):
+SEQUENCE & SECTION ARCHITECTURE:
+Follow this exact standard hierarchy for all sections present in the source data.
+If any optional section (e.g. Projects, Certifications, Achievements, Profile) is NOT present or cannot be legitimately derived from candidate input, COMPLETELY OMIT that section heading.
+
+1. HEADER (Centered):
+   - Candidate Full Name in <h1>
+   - Contact bar in <p> with phone, email, portfolio, github, linkedin links:
      <h1 style="text-align: center;">CANDIDATE FULL NAME</h1>
-     <p style="text-align: center;"><em>Software Engineer | Backend & Systems</em></p>
-     <p style="text-align: center;">City, State / Country | +1 (555) 000-0000 | <a href="mailto:email@example.com">email@example.com</a></p>
-     <p style="text-align: center;"><a href="https://github.com/...">GitHub</a> | <a href="https://linkedin.com/in/...">LinkedIn</a> | <a href="...">Portfolio</a></p>
-   - Section Headings: <h2>PROFESSIONAL SUMMARY</h2>, <h2>TECHNICAL SKILLS</h2>, <h2>SOFT SKILLS</h2>, <h2>EXPERIENCE</h2>, <h2>PROJECTS</h2>, <h2>EDUCATION</h2>.
-   - Technical Skills: MUST be formatted as a clean, compact bulleted list:
+     <p style="text-align: center;">+1 (555) 000-0000 | <a href="mailto:email@example.com">email@example.com</a> | <a href="...">portfolio</a> | <a href="...">github</a> | <a href="...">linkedin</a></p>
+
+2. <h2>PROFILE</h2> (Optional, Max 2 lines):
+   - Concise, high-impact summary tailored to target role. Omit if no profile or summary is inferrable.
+
+3. <h2>EDUCATION</h2>:
+   - University/Institution with location floated right:
+     <p><strong>University Name</strong> <span style="float: right;">City, Country</span></p>
+     <p><em>Bachelor of Technology / Degree in Major</em> <span style="float: right;">2020 – 2024</span></p>
+   - Optional <ul><li> relevant coursework / honors bullets if applicable.
+
+4. <h2>SKILLS</h2>:
+   - Categorized compact bullet points or lines:
      <ul>
-       <li><strong>Languages:</strong> Java, Python, JavaScript, TypeScript, SQL</li>
-       <li><strong>Frontend:</strong> React.js, Next.js, HTML5, CSS3, Tailwind CSS</li>
-       <li><strong>Backend & APIs:</strong> Node.js, Express, FastAPI, RESTful APIs, Microservices</li>
-       <li><strong>Databases:</strong> MongoDB, PostgreSQL, Redis</li>
-       <li><strong>Cloud & DevOps:</strong> AWS (S3, EC2), Docker, Git, CI/CD</li>
-       <li><strong>AI/ML Tools:</strong> OpenAI API, Gemini API, LangChain</li>
-       <li><strong>Testing:</strong> Jest, PyTest, JUnit</li>
+       <li><strong>Technical:</strong> SQL, Python, JavaScript, TypeScript, React, Node.js, REST APIs</li>
+       <li><strong>Tools & Platforms:</strong> AWS (S3, EC2), Docker, Git, CI/CD, MongoDB, PostgreSQL, Redis</li>
      </ul>
-   - Soft Skills: Use a concise comma-separated paragraph: "<p>Leadership, Communication, Problem-Solving, Time Management, Adaptability</p>".
-   - Experience / Projects Titles: Include right-aligned date/timeline:
-     <h3><strong>Software Engineering Intern</strong> — <em>Company Name</em> <span style="float: right;">2024 – Present</span></h3>
-   - Bullet Points: ALWAYS use <ul><li>...</li></ul> with strong action verbs (Architected, Engineered, Spearheaded, Optimized, Streamlined). NEVER type raw "•", "*", or "-" inside <p> tags!
+
+5. <h2>CERTIFICATIONS</h2> (Optional):
+   - Only include if present in candidate input (can also be merged into Skills). Omit if none provided.
+   - Format: <ul><li>Certification Name – Issuing Body (Date) (<a href="...">link</a>)</li></ul>
+
+6. <h2>EXPERIENCE</h2>:
+   - Company Name with location on right:
+     <p><strong>Company Name</strong> <span style="float: right;">City, Country</span></p>
+     <h3><strong>Job Title / Role</strong> <span style="float: right;">Start Date – Present / End Date</span></h3>
+   - 3 to 5 high-impact bullet points (<ul><li>...</li></ul>) starting with strong action verbs & quantifiable metrics (%, $, latency, scale, volume).
+
+7. <h2>PROJECTS</h2> (Optional & Prioritized):
+   - Format:
+     <h3><strong>Project Name</strong> <span style="float: right;">Date Range | <a href="...">Live Demo / GitHub</a></span></h3>
+     <ul>
+       <li>What and how solved: Core problem statement & architecture.</li>
+       <li>Tools & frameworks: Technical stack used in development.</li>
+       <li>Result & Impact: Measurable performance improvement, scale, or metrics.</li>
+     </ul>
+   - PROJECT SELECTION & PRIORITIZATION RULES:
+     * If candidate provided multiple projects, prioritize the 2 to 3 strongest projects.
+     * Prioritize based on: (a) relevance to target job description & skills, (b) presence of live links/GitHub repositories, (c) technical depth & measurable impact.
+     * DO NOT dump low-value or irrelevant projects.
+   - NEGATIVE CONSTRAINT: If given resume and self-description contain NO projects, DO NOT hallucinate or invent fake projects. Completely OMIT the <h2>PROJECTS</h2> section.
+
+8. <h2>ACHIEVEMENTS</h2> (Optional, Max 2-3 points):
+   - Competitions, hackathons, open source contributions, coding ranks. Omit if none provided.
+
+CRITICAL FORMATTING & ATS RULES:
+1. SEMANTIC HTML & TIPTAP COMPATIBILITY:
+   - Use clean semantic HTML tags: <h1>, <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>, <a>, <hr>.
+   - Bullet Points: ALWAYS use <ul><li>...</li></ul> with strong action verbs (Architected, Engineered, Spearheaded, Optimized, Streamlined). NEVER type raw bullet symbols like "•", "*", or "-" inside <p> tags.
+   - Line height: 1.05 with compact margins.
+   - Every <li>, <p>, <h2>, <h3> MUST have break-inside: avoid !important;.
 
 2. STRICT NEGATIVE CONSTRAINTS (MANDATORY):
    - NEVER output coaching notes, critique questions, or template placeholders (e.g. NEVER write "[Question: ...]", "[Insert metric]", "[Action Required]", "[Explain X]", "[How much did this...]", or any bracketed text like "[...]").
    - Every single bullet point must be a finalized, polished, quantifiable accomplishment ready for an executive recruiter.
-   - Do NOT fabricate fake degrees or unverified companies. If details in the source resume are brief, write high-impact, industry-standard bullet points based on the candidate's verified tech stack and the target job description.
-   - Do NOT invent fake URLs. If a valid URL is not provided in source data, use plain text or omit the link.
+   - Do NOT fabricate fake degrees or unverified companies.
+   - Do NOT invent fake URLs. If a valid link is not provided in source data, use plain text to say "Not Available".
+   - Never wrap URLs in escaped quotes like href="\"https://...\"" or backslashes. Output standard URLs: <a href="https://github.com/...">GitHub</a>.
 
 3. ATS KEYWORD & JOB ALIGNMENT:
    - Deeply analyze the provided Job Description for target skills, technologies, frameworks, and domain keywords.
    - Match and highlight transferable technical competencies and relevant project/experience evidence provided by the candidate.
-
-4. LAYOUT & PAGE BOUNDARIES:
-   - Full doc: <!DOCTYPE html> to </html> with one clean <style> block in <head>.
-   - Font: 'Calibri', 'Arial', sans-serif. Body #1a1a1a on white, 10pt to 11pt, line-height 1.35.
-   - Strict single column, no floats/multi-column/tables-for-layout, no fixed/absolute positioning.
-   - All <li>, <p>, <h2>, <h3> MUST have break-inside: avoid !important;.
 
 Candidate details:
 Resume: ${resume || 'None provided'}

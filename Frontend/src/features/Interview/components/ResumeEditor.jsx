@@ -605,20 +605,31 @@ const ResumeEditor = forwardRef(function ResumeEditor(
         if (!editor) return
         const { from, to } = editor.state.selection
         const selectedText = editor.state.doc.textBetween(from, to, ' ')
-        const existingHref = editor.getAttributes('link').href || ''
+        const rawHref = editor.getAttributes('link').href || ''
+        const cleanHref = rawHref
+            .replace(/^[\s\\"']+|[\s\\"']+$/g, '')
+            .replace(/\\"/g, '')
+            .replace(/\\'/g, '')
+            .replace(/\\\\/g, '')
+            .trim()
 
         setLinkPopover({
             isOpen: true,
             text: selectedText || '',
-            url: existingHref || '',
-            isExisting: Boolean(existingHref),
+            url: cleanHref || '',
+            isExisting: Boolean(rawHref),
         })
     }, [editor])
 
     const handleApplyLink = useCallback((e) => {
         e?.preventDefault()
         if (!editor) return
-        let targetUrl = linkPopover.url.trim()
+        let targetUrl = (linkPopover.url || '')
+            .replace(/^[\s\\"']+|[\s\\"']+$/g, '')
+            .replace(/\\"/g, '')
+            .replace(/\\'/g, '')
+            .replace(/\\\\/g, '')
+            .trim()
         
         if (!targetUrl) {
             editor.chain().focus().extendMarkRange('link').unsetLink().run()
@@ -1293,19 +1304,28 @@ const ResumeEditor = forwardRef(function ResumeEditor(
                                     </div>
                                 </div>
 
-                                {linkPopover.url && (
-                                    <div className="link-preview-row">
-                                        <a
-                                            href={/^https?:\/\//i.test(linkPopover.url) ? linkPopover.url : `https://${linkPopover.url}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="preview-anchor"
-                                        >
-                                            <ExternalLink size={12} />
-                                            <span>{linkPopover.url}</span>
-                                        </a>
-                                    </div>
-                                )}
+                                {linkPopover.url && (() => {
+                                    const cleanUrl = linkPopover.url
+                                        .replace(/^[\s\\"']+|[\s\\"']+$/g, '')
+                                        .replace(/\\"/g, '')
+                                        .replace(/\\'/g, '')
+                                        .replace(/\\\\/g, '')
+                                        .trim()
+                                    const hrefUrl = /^https?:\/\//i.test(cleanUrl) ? cleanUrl : `https://${cleanUrl}`
+                                    return (
+                                        <div className="link-preview-row">
+                                            <a
+                                                href={hrefUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="preview-anchor"
+                                            >
+                                                <ExternalLink size={12} />
+                                                <span>{cleanUrl}</span>
+                                            </a>
+                                        </div>
+                                    )
+                                })()}
 
                                 <div className="link-popover-actions">
                                     {linkPopover.isExisting && (

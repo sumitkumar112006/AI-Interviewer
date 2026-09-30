@@ -56,6 +56,23 @@ export function sanitizeResumeHtml(html) {
                 return
             }
 
+            // Sanitize and clean href attributes from escaped quotes or backslashes (e.g. \"https://...\" or "https://...\")
+            if (name === 'href') {
+                let cleanHref = attr.value
+                    .replace(/^[\s\\"']+|[\s\\"']+$/g, '')
+                    .replace(/\\"/g, '')
+                    .replace(/\\'/g, '')
+                    .replace(/\\\\/g, '')
+                    .trim()
+
+                if (cleanHref) {
+                    el.setAttribute('href', cleanHref)
+                } else {
+                    el.removeAttribute('href')
+                }
+                return
+            }
+
             // Clean style attribute: strip disruptive backgrounds, absolute positioning, and overflows
             if (name === 'style') {
                 let styleVal = attr.value

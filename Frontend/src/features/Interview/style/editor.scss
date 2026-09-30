@@ -884,7 +884,7 @@ $text-muted:     var(--text-secondary, #bac1b8);
 .tiptap-prose {
     font-family: 'Calibri', 'Arial', -apple-system, BlinkMacSystemFont, sans-serif;
     font-size: 10pt;
-    line-height: 1.35;
+    line-height: 1.05;
     color: #1a1a1a;
     background: #ffffff !important;
     outline: none;
@@ -925,10 +925,10 @@ $text-muted:     var(--text-secondary, #bac1b8);
     }
 
     h1 {
-        font-size: 20pt;
+        font-size: 18pt;
         font-weight: 700;
-        line-height: 1.15;
-        margin: 0 0 0.15em;
+        line-height: 1.1;
+        margin: 0 0 0.1em;
         letter-spacing: 0.02em;
         text-align: center;
         color: #0f172a;
@@ -937,27 +937,27 @@ $text-muted:     var(--text-secondary, #bac1b8);
     h2 {
         font-size: 11pt;
         font-weight: 700;
-        line-height: 1.2;
-        margin: 0.85em 0 0.28em;
+        line-height: 1.15;
+        margin: 0.42em 0 0.14em;
         text-transform: uppercase;
         letter-spacing: 0.04em;
         color: #0f3d68; /* Navy Blue Section Title */
         border-bottom: 2px solid #0f3d68; /* Section Divider Bar */
-        padding-bottom: 0.12em;
+        padding-bottom: 0.08em;
     }
 
     h3 {
         font-size: 10pt;
         font-weight: 700;
-        line-height: 1.25;
-        margin: 0.55em 0 0.15em;
+        line-height: 1.15;
+        margin: 0.28em 0 0.05em;
         color: #1a1a1a;
     }
 
     p {
         color: #1a1a1a;
-        margin: 0 0 0.22em;
-        line-height: 1.35;
+        margin: 0 0 0.1em;
+        line-height: 1.05;
 
         &:last-child { margin-bottom: 0; }
     }
@@ -983,14 +983,14 @@ $text-muted:     var(--text-secondary, #bac1b8);
 
     ul, ol {
         padding-left: 1.25em;
-        margin: 0.18em 0 0.35em;
+        margin: 0.05em 0 0.15em;
         page-break-inside: avoid;
         break-inside: avoid;
     }
 
     li {
-        margin: 0.12em 0;
-        line-height: 1.35;
+        margin: 0.04em 0;
+        line-height: 1.05;
         color: #1a1a1a;
         page-break-inside: avoid !important;
         break-inside: avoid !important;
@@ -1009,7 +1009,7 @@ $text-muted:     var(--text-secondary, #bac1b8);
     blockquote {
         border-left: 3px solid #0f3d68;
         padding-left: 0.85em;
-        margin: 0.5em 0;
+        margin: 0.35em 0;
         color: #475569;
         font-style: italic;
     }
@@ -1017,7 +1017,7 @@ $text-muted:     var(--text-secondary, #bac1b8);
     hr {
         border: none;
         border-top: 1px solid #cbd5e1;
-        margin: 0.5em 0;
+        margin: 0.35em 0;
     }
 }
 
