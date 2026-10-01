@@ -12,6 +12,7 @@ export const useAuth = () => {
         try {
             const data = await loginWithGoogleSupabase({ accessToken })
             setUser(data?.user || null)
+            sessionStorage.setItem('kivi_show_credits_popup', 'true')
             if (fetchUsage) await fetchUsage()
             return data
         } catch (error) {
@@ -27,6 +28,7 @@ export const useAuth = () => {
         try {
             const data = await login({ email, password })
             setUser(data?.user || null)
+            sessionStorage.setItem('kivi_show_credits_popup', 'true')
             if (fetchUsage) await fetchUsage()
             return data
         } catch (error) {
@@ -55,6 +57,7 @@ export const useAuth = () => {
         try {
             const data = await verifyOtp({ email, otp })
             setUser(data?.user || null)
+            sessionStorage.setItem('kivi_show_credits_popup', 'true')
             if (fetchUsage) await fetchUsage()
             return data
         } catch (error) {

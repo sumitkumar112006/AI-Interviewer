@@ -1,0 +1,443 @@
+/* ================================================================
+   KIVI-AI Editorial Dashboard Themed User Credits & Welcome Popup
+   Seamless Light & Dark Theme Support matching the core app theme
+   ================================================================ */
+
+.credits-popup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 14, 11, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  padding: 1.25rem;
+  animation: creditsPopupFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.credits-popup-card {
+  position: relative;
+  width: 100%;
+  max-width: 540px;
+  background: var(--panel, #1c221d);
+  border: 1px solid var(--border-color, rgba(243, 240, 233, 0.14));
+  border-radius: 1.25rem;
+  box-shadow: var(--card-shadow, 0 25px 60px -15px rgba(0, 0, 0, 0.6));
+  overflow: hidden;
+  animation: creditsPopupSlideUp 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  color: var(--text-primary, #f3f0e9);
+  font-family: var(--font-body, 'Inter', sans-serif);
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--accent-gradient, linear-gradient(135deg, #ef7b5d 0%, #df694d 100%));
+    z-index: 2;
+  }
+
+  &.welcome-mode {
+    border-color: rgba(110, 142, 104, 0.35);
+
+    &::before {
+      background: linear-gradient(90deg, #6e8e68 0%, #ef7b5d 50%, #e5a93c 100%);
+    }
+  }
+
+  /* Close Icon Button */
+  .popup-close-btn {
+    position: absolute;
+    top: 1.15rem;
+    right: 1.15rem;
+    background: var(--bg-card-subtle, #222922);
+    border: 1px solid var(--border-color, rgba(243, 240, 233, 0.14));
+    border-radius: 6px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted, #818a81);
+    cursor: pointer;
+    transition: all 0.18s ease;
+    z-index: 10;
+
+    &:hover {
+      background: var(--bg-main, #121513);
+      color: var(--text-primary, #f3f0e9);
+      border-color: var(--border-strong, rgba(243, 240, 233, 0.24));
+      transform: scale(1.05);
+    }
+  }
+
+  /* Header Section */
+  .popup-header-section {
+    padding: 2.25rem 2rem 1.25rem 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    background: linear-gradient(180deg, rgba(239, 123, 93, 0.06) 0%, transparent 100%);
+    position: relative;
+
+    &.welcome-header-bg {
+      background: linear-gradient(180deg, rgba(110, 142, 104, 0.1) 0%, transparent 100%);
+    }
+
+    .header-icon-glow {
+      position: relative;
+      width: 58px;
+      height: 58px;
+      border-radius: 12px;
+      background: rgba(239, 123, 93, 0.12);
+      border: 1px solid rgba(239, 123, 93, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-color, #ef7b5d);
+      margin-bottom: 1rem;
+      box-shadow: 0 6px 20px rgba(239, 123, 93, 0.2);
+
+      &.welcome-glow {
+        background: rgba(110, 142, 104, 0.14);
+        border-color: rgba(110, 142, 104, 0.35);
+        color: var(--success-color, #6e8e68);
+        box-shadow: 0 6px 20px rgba(110, 142, 104, 0.25);
+      }
+    }
+
+    .welcome-pill-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.2rem 0.65rem;
+      border-radius: 4px;
+      background: rgba(110, 142, 104, 0.12);
+      border: 1px solid var(--success-color, #6e8e68);
+      color: var(--success-color, #6e8e68);
+      font-family: var(--font-mono, 'JetBrains Mono', monospace);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 0.65rem;
+    }
+
+    .plan-pill-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.2rem 0.65rem;
+      border-radius: 4px;
+      background: rgba(239, 123, 93, 0.12);
+      border: 1px solid var(--accent-color, #ef7b5d);
+      color: var(--accent-color, #ef7b5d);
+      font-family: var(--font-mono, 'JetBrains Mono', monospace);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 0.65rem;
+    }
+
+    h2 {
+      font-family: var(--font-heading, 'Plus Jakarta Sans', sans-serif);
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: var(--text-primary, #f3f0e9);
+      margin: 0 0 0.35rem 0;
+      letter-spacing: -0.01em;
+    }
+
+    p {
+      font-size: 0.86rem;
+      color: var(--text-secondary, #bac1b8);
+      margin: 0;
+      max-width: 420px;
+      line-height: 1.45;
+    }
+  }
+
+  /* Body Content */
+  .popup-body-content {
+    padding: 0.5rem 1.75rem 1.75rem 1.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.15rem;
+
+    .credits-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+
+      @media (max-width: 500px) {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .credit-box-card {
+      background: var(--bg-card-subtle, #222922);
+      border: 1px solid var(--border-color, rgba(243, 240, 233, 0.14));
+      border-radius: 0.75rem;
+      padding: 1.15rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+      transition: all 0.2s ease;
+      position: relative;
+
+      &:hover {
+        border-color: var(--border-strong, rgba(243, 240, 233, 0.24));
+        transform: translateY(-2px);
+      }
+
+      .card-top-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+
+        .card-type-title {
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+          font-size: 0.8rem;
+          font-weight: 700;
+          color: var(--text-secondary, #bac1b8);
+
+          svg {
+            color: var(--accent-color, #ef7b5d);
+          }
+        }
+
+        .reset-badge {
+          font-family: var(--font-mono, 'JetBrains Mono', monospace);
+          font-size: 0.64rem;
+          font-weight: 700;
+          padding: 0.15rem 0.45rem;
+          border-radius: 3px;
+          background: var(--bg-main, #121513);
+          color: var(--text-muted, #818a81);
+          border: 1px solid var(--border-color, rgba(243, 240, 233, 0.14));
+          text-transform: uppercase;
+          letter-spacing: 0.02em;
+        }
+      }
+
+      .card-numbers {
+        display: flex;
+        align-items: baseline;
+        gap: 0.35rem;
+
+        .count-remaining {
+          font-family: var(--font-heading, 'Plus Jakarta Sans', sans-serif);
+          font-size: 1.85rem;
+          font-weight: 850;
+          color: var(--text-primary, #f3f0e9);
+          line-height: 1;
+
+          &.highlight-gens {
+            color: var(--accent-color, #ef7b5d);
+          }
+
+          &.highlight-ai {
+            color: var(--success-color, #6e8e68);
+          }
+        }
+
+        .count-total {
+          font-size: 0.8rem;
+          color: var(--text-muted, #818a81);
+          font-weight: 600;
+        }
+      }
+
+      .progress-bar-wrapper {
+        width: 100%;
+        height: 5px;
+        background: rgba(243, 240, 233, 0.08);
+        border-radius: 99px;
+        overflow: hidden;
+
+        .progress-bar-fill {
+          height: 100%;
+          border-radius: 99px;
+          transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+
+          &.gens-gradient {
+            background: var(--accent-gradient, linear-gradient(135deg, #ef7b5d 0%, #df694d 100%));
+          }
+
+          &.ai-gradient {
+            background: linear-gradient(90deg, #6e8e68, #88b082);
+          }
+        }
+      }
+
+      .card-status-note {
+        font-size: 0.72rem;
+        color: var(--text-muted, #818a81);
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+    }
+
+    /* First-Time Welcome Perks Box */
+    .welcome-perks-box {
+      background: rgba(110, 142, 104, 0.08);
+      border: 1px solid rgba(110, 142, 104, 0.25);
+      border-radius: 0.75rem;
+      padding: 0.85rem 1.1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+
+      .perks-header {
+        font-family: var(--font-mono, 'JetBrains Mono', monospace);
+        font-size: 0.74rem;
+        font-weight: 800;
+        color: var(--success-color, #6e8e68);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      .perks-list {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.4rem;
+
+        @media (max-width: 480px) {
+          grid-template-columns: 1fr;
+        }
+
+        .perk-item {
+          font-size: 0.76rem;
+          color: var(--text-secondary, #bac1b8);
+          display: flex;
+          align-items: center;
+          gap: 0.35rem;
+
+          .perk-check {
+            color: var(--success-color, #6e8e68);
+            font-weight: 800;
+            flex-shrink: 0;
+          }
+        }
+      }
+    }
+
+    /* Actions */
+    .popup-actions-row {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      margin-top: 0.25rem;
+
+      .btn-primary-action {
+        width: 100%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1.5rem;
+        background: var(--text-primary, #f3f0e9);
+        color: var(--panel, #1c221d) !important;
+        font-family: var(--font-mono, 'JetBrains Mono', monospace);
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        border: 1px solid var(--text-primary, #f3f0e9);
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+
+        &:hover {
+          background: var(--accent-color, #ef7b5d);
+          border-color: var(--accent-color, #ef7b5d);
+          color: #ffffff !important;
+          transform: translateY(-1px);
+        }
+
+        &:active {
+          transform: translateY(0);
+        }
+      }
+
+      .action-sub-links {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 1.5rem;
+
+        .text-link {
+          background: none;
+          border: none;
+          color: var(--text-muted, #818a81);
+          font-family: var(--font-mono, monospace);
+          font-size: 0.72rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: color 0.15s ease;
+          text-decoration: none;
+
+          &:hover {
+            color: var(--accent-color, #ef7b5d);
+          }
+        }
+      }
+    }
+  }
+
+  /* Loading State */
+  .popup-loading-shimmer {
+    padding: 2.5rem 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    text-align: center;
+
+    .loading-spinner-ring {
+      width: 36px;
+      height: 36px;
+      border: 3px solid rgba(239, 123, 93, 0.2);
+      border-top-color: var(--accent-color, #ef7b5d);
+      border-radius: 50%;
+      animation: creditsSpin 0.8s linear infinite;
+    }
+
+    p {
+      font-size: 0.84rem;
+      color: var(--text-secondary, #bac1b8);
+      margin: 0;
+    }
+  }
+}
+
+@keyframes creditsPopupFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes creditsPopupSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes creditsSpin {
+  to { transform: rotate(360deg); }
+}

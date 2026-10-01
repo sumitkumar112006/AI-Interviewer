@@ -5,7 +5,9 @@ import { getAiModelInfo } from "./Interview/services/interview.api";
 import { KiviAiAssistant } from "./Shared/components/KiviAiAssistant";
 import NotificationBell from "./Shared/components/NotificationBell";
 import { Outlet, useNavigate, Link, useLocation } from "react-router-dom";
+import { Zap, Bot } from "lucide-react";
 import Footer from "./Footer/components/Footer";
+import UserCreditsPopup from "../components/userCreditsPopup";
 import "./layout.scss";
 
 const Layout = ({ children }) => {
@@ -296,15 +298,19 @@ const Layout = ({ children }) => {
               {/* Remaining Attempts Pills */}
               <div
                 className="usage-attempts-pill"
-                title={`Plan: ${user?.plan?.toUpperCase() || 'FREE'} | Full Generations (Monthly): ${usage?.fullGenerations?.remaining ?? 100}/${usage?.fullGenerations?.limit ?? 100} left | AI Assistant (Daily): ${usage?.aiAssistant?.remaining ?? 500}/${usage?.aiAssistant?.limit ?? 500} left`}
+                onClick={() => window.dispatchEvent(new CustomEvent('kivi:open-credits-popup'))}
+                style={{ cursor: 'pointer' }}
+                title={`Plan: ${user?.plan?.toUpperCase() || 'FREE'} | Full Generations (Monthly): ${usage?.fullGenerations?.remaining ?? 100}/${usage?.fullGenerations?.limit ?? 100} left | AI Assistant (Daily): ${usage?.aiAssistant?.remaining ?? 500}/${usage?.aiAssistant?.limit ?? 500} left (Click to view credit balance)`}
               >
                 <span className="attempts-badge plan-badge">{user?.plan?.toUpperCase() || 'FREE'}</span>
                 <span className="attempts-item" title="Full Resume & Cover Letter Generations (Monthly Reset)">
-                  ⚡ {usage?.fullGenerations?.remaining ?? 100}/{usage?.fullGenerations?.limit ?? 100}<span className="attempts-unit"> Gens/mo</span>
+                  <Zap size={12} style={{ verticalAlign: '-1px', marginRight: '3px' }} />
+                  {usage?.fullGenerations?.remaining ?? 100}/{usage?.fullGenerations?.limit ?? 100}<span className="attempts-unit"> Gens/mo</span>
                 </span>
                 <span className="attempts-divider">|</span>
                 <span className="attempts-item" title="AI Assistant & Writer Rewrites (Daily 24h Reset)">
-                  🤖 {usage?.aiAssistant?.remaining ?? 500}/{usage?.aiAssistant?.limit ?? 500}<span className="attempts-unit"> AI/day</span>
+                  <Bot size={12} style={{ verticalAlign: '-1px', marginRight: '3px' }} />
+                  {usage?.aiAssistant?.remaining ?? 500}/{usage?.aiAssistant?.limit ?? 500}<span className="attempts-unit"> AI/day</span>
                 </span>
               </div>
 
@@ -402,6 +408,9 @@ const Layout = ({ children }) => {
         <main className="app-main-content">
           {children || <Outlet />}
         </main>
+
+        {/* User Credits & Welcome Popup */}
+        <UserCreditsPopup />
 
         {/* KIVI AI Assistant (Protected Route Only) */}
         <KiviAiAssistant />

@@ -24,15 +24,28 @@ function sanitizeUrl(rawUrl) {
         return null;
     }
     try {
-        const parsed = new URL(clean);
-        // Exclude internal redirects or placeholder domains
-        if (parsed.hostname.includes('vertexaisearch') || parsed.hostname.includes('google.com/grounding')) {
-            return null;
-        }
+        new URL(clean);
         return clean;
     } catch (e) {
         return null;
     }
+}
+
+/**
+ * Resolves Google Grounding redirect URLs to their final canonical URLs
+ */
+async function resolveFinalUrl(url, timeoutMs = 2500) {
+    if (!url || typeof url !== 'string') return url;
+    if (url.includes('vertexaisearch.cloud.google.com/grounding-api-redirect')) {
+        try {
+            const resp = await axios.get(url, { maxRedirects: 5, timeout: timeoutMs });
+            const finalUrl = resp.request?.res?.responseUrl || resp.config?.url;
+            if (finalUrl && finalUrl.startsWith('http') && !finalUrl.includes('vertexaisearch')) {
+                return finalUrl;
+            }
+        } catch (e) {}
+    }
+    return url;
 }
 
 /**
@@ -72,6 +85,11 @@ async function verifyYouTubeVideoUrl(url, timeoutMs = 2500) {
 async function isUrlAlive(url, timeoutMs = 2500) {
     const clean = sanitizeUrl(url);
     if (!clean) return false;
+
+    // Google Grounding redirect URLs are already verified by Google
+    if (clean.includes('vertexaisearch.cloud.google.com')) {
+        return true;
+    }
 
     // 1. Strict verification for YouTube video URLs (oEmbed checks existence and public availability)
     if (/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)/i.test(clean)) {
@@ -151,7 +169,7 @@ async function searchWebWithGeminiGrounding(query, maxResults = 3) {
     const keys = getManagedGeminiPool();
     if (keys.length === 0) return [];
 
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-3.5-flash'];
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-flash-latest'];
     const now = Date.now();
 
     for (const key of keys) {
@@ -181,10 +199,11 @@ Respond with JSON only.`,
                         if (chunk.web?.uri) {
                             const cleanUrl = sanitizeUrl(chunk.web.uri);
                             if (cleanUrl) {
+                                const resolvedUrl = await resolveFinalUrl(cleanUrl, 2000);
                                 results.push({
                                     type: 'web',
                                     title: chunk.web.title ? String(chunk.web.title).trim() : query,
-                                    url: cleanUrl,
+                                    url: resolvedUrl,
                                     snippet: chunk.web.title ? `${chunk.web.title}` : `Verified web resource for ${query}.`
                                 });
                             }
@@ -192,53 +211,53 @@ Respond with JSON only.`,
                     }
                 }
 
-        // 2. Try parsing JSON array from response text
-        if (results.length === 0) {
-            const jsonMatch = text.match(/\[[\s\S]*\]/);
-            if (jsonMatch) {
-                try {
-                    const parsed = JSON.parse(jsonMatch[0]);
-                    if (Array.isArray(parsed)) {
-                        for (const item of parsed) {
-                            const cleanUrl = sanitizeUrl(item.url);
-                            if (cleanUrl) {
-                                results.push({
-                                    type: 'web',
-                                    title: item.title ? String(item.title).trim() : query,
-                                    url: cleanUrl,
-                                    snippet: item.snippet ? String(item.snippet).trim() : ''
-                                });
+                // 2. Try parsing JSON array from response text if grounding chunks were empty
+                if (results.length === 0) {
+                    const jsonMatch = text.match(/\[[\s\S]*\]/);
+                    if (jsonMatch) {
+                        try {
+                            const parsed = JSON.parse(jsonMatch[0]);
+                            if (Array.isArray(parsed)) {
+                                for (const item of parsed) {
+                                    const cleanUrl = sanitizeUrl(item.url);
+                                    if (cleanUrl) {
+                                        results.push({
+                                            type: 'web',
+                                            title: item.title ? String(item.title).trim() : query,
+                                            url: cleanUrl,
+                                            snippet: item.snippet ? String(item.snippet).trim() : ''
+                                        });
+                                    }
+                                }
                             }
+                        } catch (e) {}
+                    }
+                }
+
+                // 3. Fallback: Parse markdown URLs if JSON was wrapped or formatted as list
+                if (results.length === 0) {
+                    const urlRegex = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)|(?:<)?(https?:\/\/[^\s\>]+)(?:>)?/gi;
+                    let m;
+                    while ((m = urlRegex.exec(text)) !== null && results.length < maxResults) {
+                        const title = m[1] || query;
+                        const rawUrl = m[2] || m[3];
+                        const cleanUrl = sanitizeUrl(rawUrl);
+                        if (cleanUrl) {
+                            results.push({
+                                type: 'web',
+                                title: title.replace(/^[\*\#\-\s]+|[\*\#\-\s]+$/g, '').trim(),
+                                url: cleanUrl,
+                                snippet: `Official web resource for ${query}.`
+                            });
                         }
                     }
-                } catch (e) {}
-            }
-        }
-
-        // 3. Fallback: Parse markdown URLs if JSON was wrapped or formatted as list
-        if (results.length === 0) {
-            const urlRegex = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)|(?:<)?(https?:\/\/[^\s\>]+)(?:>)?/gi;
-            let m;
-            while ((m = urlRegex.exec(text)) !== null && results.length < maxResults) {
-                const title = m[1] || query;
-                const rawUrl = m[2] || m[3];
-                const cleanUrl = sanitizeUrl(rawUrl);
-                if (cleanUrl) {
-                    results.push({
-                        type: 'web',
-                        title: title.replace(/^[\*\#\-\s]+|[\*\#\-\s]+$/g, '').trim(),
-                        url: cleanUrl,
-                        snippet: `Official web resource for ${query}.`
-                    });
                 }
-            }
-        }
 
-        if (results.length > 0) {
-            return results.slice(0, maxResults);
-        }
+                if (results.length > 0) {
+                    return results.slice(0, maxResults);
+                }
             } catch (err) {
-                console.warn(`[AI Assistant Search] Gemini Grounding warning on model ${modelName}:`, err?.message || err);
+                console.warn(`[AI Assistant Search] Gemini Grounding notice on ${modelName}:`, err?.message || err);
             }
         }
     }
@@ -406,6 +425,35 @@ const CURATED_GITHUB_PROJECTS = {
     'rag': [
         { title: '🐙 run-llama/llama_index (40k+ stars)', url: 'https://github.com/run-llama/llama_index', snippet: 'LlamaIndex is a data framework for LLM-based applications to ingest, structure, and access private data.' },
         { title: '🐙 langchain-ai/langchain (100k+ stars)', url: 'https://github.com/langchain-ai/langchain', snippet: 'Building applications with LLMs through composability and vector store retrieval.' }
+    ]
+};
+
+const CURATED_YOUTUBE_VIDEOS = {
+    'system design': [
+        { title: '▶️ System Design Fundamentals (ByteByteGo)', url: 'https://www.youtube.com/playlist?list=PLCRMIe5FDPsd0g694274BtTkJcxp05kkg', snippet: 'Step-by-step system design architectures, scaling, load balancing, caching.' },
+        { title: '▶️ System Design Interview Prep (Gaurav Sen)', url: 'https://www.youtube.com/playlist?list=PLMCXHnjXnTnvo6alSjVkgxV-VH6EPyvoX', snippet: 'Distributed systems, microservices, consistent hashing, and databases.' }
+    ],
+    'dsa': [
+        { title: '▶️ Blind 75 LeetCode Problem Solutions (NeetCode)', url: 'https://www.youtube.com/playlist?list=PLot-Xpze53ldVwtstag2TL4HQhAnC8ATf', snippet: 'Optimal solutions and walkthroughs for the top 75 coding interview questions.' },
+        { title: '▶️ Striver A2Z DSA Course (take U forward)', url: 'https://www.youtube.com/playlist?list=PLgUwDviBIf0oF6QL8m22w1hIDC1vJ_BHz', snippet: 'Complete step-by-step data structures and algorithms playlist from basic to advanced.' }
+    ],
+    'leetcode': [
+        { title: '▶️ NeetCode 150 Algorithms & Data Structures', url: 'https://www.youtube.com/playlist?list=PLot-Xpze53ldVwtstag2TL4HQhAnC8ATf', snippet: 'Structured DSA patterns with step-by-step code walkthroughs in Python/Java/C++.' }
+    ],
+    'react': [
+        { title: '▶️ React JS Full Course (freeCodeCamp)', url: 'https://www.youtube.com/watch?v=bMknfKXIFA8', snippet: 'Complete React crash course covering hooks, state management, components.' }
+    ],
+    'node': [
+        { title: '▶️ Node.js and Express.js Full Course (freeCodeCamp)', url: 'https://www.youtube.com/watch?v=Oe421EPjeBE', snippet: 'Backend development with Node, Express, REST APIs, and middleware.' }
+    ],
+    'docker': [
+        { title: '▶️ Docker Tutorial for Beginners (TechWorld with Nana)', url: 'https://www.youtube.com/watch?v=3c-iBn73dDE', snippet: 'Containerization, Dockerfile, Docker Compose, and image management.' }
+    ],
+    'product management': [
+        { title: '▶️ Product Management Interview Prep (Exponent)', url: 'https://www.youtube.com/playlist?list=PL_PkWl_Tz6uS_i6o8b_jL2t4sQ4b7s_pY', snippet: 'Mock PM interviews, product design questions, execution, and strategy.' }
+    ],
+    'ai': [
+        { title: '▶️ Large Language Models (LLMs) Intro (Andrej Karpathy)', url: 'https://www.youtube.com/watch?v=zjkBMFhNj_g', snippet: 'Deep-dive into how ChatGPT, LLMs, tokens, fine-tuning, and transformers work.' }
     ]
 };
 
@@ -711,8 +759,8 @@ async function searchYouTubeDirect(query, maxResults = 3) {
 async function searchLearningResources(skillOrTopic, maxResults = 3) {
     if (!skillOrTopic) return [];
 
-    const query = `${skillOrTopic} interview preparation tutorials and roadmap`;
-    const cacheKey = getSearchCacheKey('resources', query);
+    const cleanTopic = skillOrTopic.toLowerCase().trim();
+    const cacheKey = getSearchCacheKey('resources', cleanTopic);
 
     try {
         const cached = await getCache(cacheKey);
@@ -721,55 +769,35 @@ async function searchLearningResources(skillOrTopic, maxResults = 3) {
 
     const resources = [];
 
-    // 1. Official YouTube Data API (if key is configured)
-    const youtubeKey = process.env.YOUTUBE_API_KEY;
-    if (youtubeKey) {
-        try {
-            const ytResp = await axios.get('https://www.googleapis.com/youtube/v3/search', {
-                params: {
-                    part: 'snippet',
-                    q: `${skillOrTopic} tutorial full course`,
-                    type: 'video',
-                    maxResults: maxResults * 2,
-                    key: youtubeKey
-                },
-                timeout: 4000
-            });
-
-            if (ytResp.data?.items) {
-                ytResp.data.items.forEach(item => {
-                    if (item.id?.videoId) {
-                        resources.push({
-                            type: 'video',
-                            title: `▶️ ${item.snippet?.title || 'Tutorial Video'}`,
-                            url: `https://www.youtube.com/watch?v=${item.id?.videoId}`,
-                            snippet: item.snippet?.description || ''
-                        });
-                    }
-                });
-            }
-        } catch (err) {
-            console.warn('[AI Assistant Resources] YouTube search failed:', err.message);
+    // 1. Check curated YouTube video bank
+    for (const [key, vids] of Object.entries(CURATED_YOUTUBE_VIDEOS)) {
+        if (cleanTopic.includes(key) || key.includes(cleanTopic)) {
+            vids.slice(0, maxResults).forEach(v => resources.push({ type: 'video', ...v }));
+            break;
         }
     }
 
     // 2. Direct real-time YouTube Search Scraper (Fast, 0 API key required, 100% active results)
     if (resources.length < maxResults) {
-        const directResults = await searchYouTubeDirect(`${skillOrTopic} interview tutorial course`, maxResults * 2);
-        directResults.forEach(r => resources.push(r));
+        const directResults = await searchYouTubeDirect(`${cleanTopic} interview tutorial course`, maxResults * 2);
+        directResults.forEach(r => {
+            if (!resources.some(existing => existing.url === r.url)) {
+                resources.push(r);
+            }
+        });
     }
 
     // 3. Fallback search via Tavily/Gemini Grounding for real YouTube video links
     if (resources.length < maxResults) {
-        const ytWeb = await searchWeb(`site:youtube.com ${skillOrTopic} tutorial video course`, maxResults * 2);
+        const ytWeb = await searchWeb(`site:youtube.com ${cleanTopic} tutorial video course`, maxResults * 2);
         ytWeb.forEach(item => {
             const clean = sanitizeUrl(item.url);
-            if (clean && /youtube\.com|youtu\.be/i.test(clean)) {
+            if (clean && /youtube\.com|youtu\.be/i.test(clean) && !resources.some(existing => existing.url === clean)) {
                 resources.push({
                     type: 'video',
                     title: item.title.startsWith('▶️') ? item.title : `▶️ ${item.title}`,
                     url: clean,
-                    snippet: item.snippet || `YouTube tutorial for ${skillOrTopic}`
+                    snippet: item.snippet || `YouTube tutorial for ${cleanTopic}`
                 });
             }
         });
@@ -782,7 +810,7 @@ async function searchLearningResources(skillOrTopic, maxResults = 3) {
     if (validResources.length === 0) {
         validResources.push({
             type: 'video',
-            title: `▶️ Search YouTube: ${skillOrTopic} Tutorials`,
+            title: `▶️ Live YouTube Search: ${skillOrTopic} Tutorials`,
             url: `https://www.youtube.com/results?search_query=${encodeURIComponent(skillOrTopic + ' tutorial interview preparation')}`,
             snippet: `Live curated YouTube tutorial and preparation videos for ${skillOrTopic}.`
         });

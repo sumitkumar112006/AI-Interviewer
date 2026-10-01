@@ -895,6 +895,86 @@ async function updateCareerProfileController(req, res) {
     }
 }
 
+/**
+ * @name updateProfileController
+ * @description update user profile basic info (username)
+ * @access private (authUser)
+ */
+async function updateProfileController(req, res) {
+    try {
+        const userId = req.user.id;
+        const { username } = req.body;
+
+        if (!username || !username.trim()) {
+            return res.status(400).json({ message: "Username cannot be empty." });
+        }
+
+        const cleanUsername = username.trim();
+
+        if (cleanUsername.length < 2 || cleanUsername.length > 30) {
+            return res.status(400).json({ message: "Username must be between 2 and 30 characters." });
+        }
+
+        // Check if username is already taken by another user
+        const existingUser = await userModel.findOne({ 
+            username: cleanUsername, 
+            _id: { $ne: userId } 
+        });
+        if (existingUser) {
+            return res.status(400).json({ message: "Username is already taken by another account." });
+        }
+
+        let updatedUser = await userModel.findByIdAndUpdate(
+            userId,
+            { $set: { username: cleanUsername } },
+            { new: true, select: "-password" }
+        );
+
+        let isAdmin = false;
+        if (!updatedUser) {
+            updatedUser = await adminModel.findByIdAndUpdate(
+                userId,
+                { $set: { username: cleanUsername } },
+                { new: true, select: "-password" }
+            );
+            if (updatedUser) isAdmin = true;
+        }
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: "User not found." });
+        }
+
+        // Refresh JWT cookie with updated username
+        const token = JWT.sign(
+            {
+                id: updatedUser._id,
+                username: updatedUser.username,
+                plan: updatedUser.plan || 'free',
+                role: updatedUser.role || (isAdmin ? 'admin' : 'user'),
+                isAdmin: isAdmin || ['admin', 'super_admin'].includes(updatedUser.role)
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: "1d" }
+        );
+        res.cookie("token", token, cookieOptions);
+
+        return res.status(200).json({
+            message: "Profile updated successfully.",
+            user: {
+                id: updatedUser._id,
+                username: updatedUser.username,
+                email: updatedUser.email,
+                plan: updatedUser.plan || 'free',
+                role: updatedUser.role || (isAdmin ? 'admin' : 'user'),
+                isAdmin: isAdmin || ['admin', 'super_admin'].includes(updatedUser.role),
+                careerProfile: updatedUser.careerProfile
+            }
+        });
+    } catch (err) {
+        return handleAuthControllerError(res, err);
+    }
+}
+
 module.exports = {
     registerUserController,
     verifyOtpController,
@@ -906,5 +986,6 @@ module.exports = {
     resetPasswordController,
     getUserUsageController,
     googleSupabaseAuthController,
-    updateCareerProfileController
+    updateCareerProfileController,
+    updateProfileController
 };

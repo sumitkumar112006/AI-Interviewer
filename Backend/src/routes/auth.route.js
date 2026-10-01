@@ -10,7 +10,8 @@ const {
     resetPasswordController,
     getUserUsageController,
     googleSupabaseAuthController,
-    updateCareerProfileController
+    updateCareerProfileController,
+    updateProfileController
 } = require("../controller/auth.controller");
 
 const { authUser } = require("../middleware/auth.middleware");
@@ -122,6 +123,13 @@ authRouter.get("/logout", logoutController);
  * @access Private
  */
 authRouter.get("/get-me", getMeController);
+
+/**
+ * @route PUT /api/auth/profile
+ * @description update user basic profile details like username
+ * @access Private
+ */
+authRouter.put("/profile", authUser, updateProfileController);
 
 /**
  * @route PUT /api/auth/career-profile

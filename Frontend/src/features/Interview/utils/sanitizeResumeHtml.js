@@ -156,10 +156,11 @@ export function parseAndSanitizeSnippet(snippet) {
         .replace(/\[\s*(?:Question|Note|Tip|Critique|Action|Clarify|Metric|Insert|TODO)[^\]]*\]/gi, '')
         .trim()
 
-    // If it contains full HTML markup, sanitize through sanitizeResumeHtml
-    if (/<[a-z][\s\S]*>/i.test(text)) {
-        return sanitizeResumeHtml(text)
-    }
+    // Convert Markdown Headings: ### HEADING -> <h2>HEADING</h2> or <h3>
+    text = text
+        .replace(/^###\s+(.*?)$/gm, '<h3>$1</h3>')
+        .replace(/^##\s+(.*?)$/gm, '<h2>$1</h2>')
+        .replace(/^#\s+(.*?)$/gm, '<h1>$1</h1>')
 
     // Convert common inline Markdown to semantic HTML
     text = text
@@ -171,6 +172,40 @@ export function parseAndSanitizeSnippet(snippet) {
         .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
         .replace(/(?<!_)_([^_]+)_(?!_)/g, '<em>$1</em>')
 
-    return text.trim()
+    // Convert bullet lists: lines starting with • or - or * -> <li>...</li>
+    const lines = text.split(/\r?\n/)
+    let inList = false
+    const formattedLines = []
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim()
+        if (/^[•\-\*]\s+/.test(line)) {
+            if (!inList) {
+                formattedLines.push('<ul>')
+                inList = true
+            }
+            const cleanBullet = line.replace(/^[•\-\*]\s+/, '')
+            formattedLines.push(`<li>${cleanBullet}</li>`)
+        } else {
+            if (inList) {
+                formattedLines.push('</ul>')
+                inList = false
+            }
+            if (line) {
+                // If line isn't already a heading or paragraph tag, wrap in <p>
+                if (/^<h[1-6]>/i.test(line) || /^<p>/i.test(line) || /^<ul>/i.test(line)) {
+                    formattedLines.push(line)
+                } else {
+                    formattedLines.push(`<p>${line}</p>`)
+                }
+            }
+        }
+    }
+    if (inList) {
+        formattedLines.push('</ul>')
+    }
+
+    const processedHtml = formattedLines.join('\n')
+    return sanitizeResumeHtml(processedHtml)
 }
 

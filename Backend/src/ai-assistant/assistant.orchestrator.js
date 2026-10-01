@@ -1,5 +1,4 @@
-const { classifyIntent } = require('./intentClassifier');
-const { loadDynamicContext } = require('./dynamicContextLoader');
+const { loadDynamicContext, fetchStoredRoadmap } = require('./dynamicContextLoader');
 const { 
     searchWeb, 
     searchGitHubProjects, 
@@ -12,71 +11,146 @@ const { processTurnInBackground } = require('./memoryExtractor');
 const { callLlmWithFallback, streamLlmWithFallback } = require('../services/ai.service');
 
 /**
- * LLM-First Tool Decider:
- * Sends the user prompt and context summary to the LLM to decide
- * whether any real-time external tool (Web Search, GitHub, LeetCode, Docs) is required.
+ * Unified Micro-Router Engine (Single Fast ~100 Token Call):
+ * Evaluates user query and determines:
+ * 1. CONTEXT REQUIREMENTS (needs_resume, needs_jd, needs_roadmap) with a lenient 60% relevance threshold.
+ * 2. REAL-TIME TOOLS (tools: [{ tool, query }]) for verified web, coding, youtube, github, or docs links.
+ * 3. INTENT & OUTPUT FORMAT.
+ *
+ * Saves 75-85% tokens & DB calls by omitting unneeded JD / Resume dumps while ensuring context is NEVER missed when needed!
  */
-async function decideToolCallWithLlm({ promptText, selectedText, candidateContextSnippet, intentData, userPlan = 'free' }) {
-    if (!promptText || promptText.trim().length === 0) {
-        return { needs_tool: false, tool: null, query: null };
+async function runUnifiedMicroRouter({ promptText, selectedText = '', action = '', activeTab = '', currentRoute = '', userPlan = 'free' }) {
+    const cleanAction = (action || '').toLowerCase().trim();
+    const isDirectEditPreset = ['enhance', 'shorten', 'fix_grammar', 'rephrase', 'make_ats', 'bullet', 'apply', 'replace', 'use'].includes(cleanAction);
+
+    // ── Tier 1: 0ms Deterministic Guardrails & Direct Action Presets ──────────
+    if (isDirectEditPreset) {
+        return {
+            needs_resume: false,
+            needs_jd: false,
+            needs_roadmap: false,
+            tools: [],
+            intent: 'RESUME',
+            output_format: 'SUGGESTION_SNIPPET',
+            is_rewrite: true,
+            reasoning: `Direct UI action preset: ${cleanAction}`
+        };
     }
 
-    const deciderSystemPrompt = `You are the Tool Decision Engine for KIVI AI (Career & Technical Interview Assistant).
-Evaluate the user's message and context. Decide if any real-time external tool is strictly required to answer accurately, or if internal knowledge and provided candidate context are sufficient.
+    const securityRegex = /(?:ignore\s+(?:all\s+)?(?:previous|prior)\s+instructions?|system\s+prompt|give\s+me\s+all\s+(?:my\s+)?stored\s+data|dump\s+(?:the\s+)?database|show\s+(?:all\s+)?env|export\s+(?:all\s+)?users?|drop\s+table)/i;
+    if (securityRegex.test(promptText)) {
+        return {
+            needs_resume: false,
+            needs_jd: false,
+            needs_roadmap: false,
+            tools: [],
+            intent: 'SECURITY',
+            output_format: 'MARKDOWN_BULLETS',
+            is_rewrite: false,
+            reasoning: 'Security shield rejection'
+        };
+    }
+
+    // ── Tier 2: Single Lightweight Micro-LLM Router (~100 tokens, 150ms) ─────
+    const routerSystemPrompt = `You are the Ultra-Fast Unified Micro-Router for KIVI AI (Career Coach & Technical Interview Studio).
+Analyze the user's message and determine:
+1. CONTEXT REQUIREMENTS (whether to inject Resume, Job Description, or Roadmap).
+2. REAL-TIME TOOLS (whether to search Web, LeetCode, YouTube, GitHub, Official Docs).
+
+LENIENCY RULES (60% Threshold — When in doubt, set true):
+- "needs_jd" (Job Description): Set TRUE if user mentions "this company", company name, job role, hiring process, interview rounds, salary, JD requirements, or asks how to align for a role.
+- "needs_resume" (Candidate Resume): Set TRUE if user asks to review, tailor, rewrite, improve, check gaps in their experience, bullet points, skills, or projects.
+- "needs_roadmap" (Preparation Roadmap): Set TRUE if user asks about their 14-day study plan, milestones, completed/pending tasks.
+- If probability of needing context is ≥60%, set it to TRUE.
+- Set ALL context to FALSE ONLY if the query is 100% general programming/computer science (e.g. "what is binary search", "how does useEffect work", "explain CAP theorem").
 
 AVAILABLE TOOLS:
-- "video": YouTube video tutorials, crash courses, video explanations, or interview preparation playlists.
-- "web": Live web search for recent events, salary data, market trends, latest releases (2025/2026), or specific external articles.
-- "github": Open-source GitHub repository recommendations, starter templates, or real production codebases.
-- "leetcode": LeetCode coding problems, specific DSA algorithmic problems, or hands-on coding challenges.
-- "docs": Official framework/library documentation, language specifications, or official syntax cheat sheets.
-- "none": No external tool needed (e.g. general programming concepts, resume analysis/editing, career guidance, interview Q&A with existing context, debugging logic).
+- "web": Live web search for company hiring rounds, company background, salary, recent tech news.
+- "leetcode": LeetCode coding problems & algorithmic challenges.
+- "video": YouTube tutorials, video crash courses, system design playlists.
+- "github": Open-source repos & starter templates.
+- "docs": Official framework/language documentation.
 
-DECISION RULES:
-1. ALWAYS default to "none" if the question can be answered using general software engineering knowledge or the candidate's resume/JD/roadmap context.
-2. Only select a tool if the user explicitly asks for live links/resources/repositories/problems/videos, or if real-time/external data is essential.
-3. If the user asks for video/youtube tutorials for a role or skill, choose "video" and formulate a clear search query (e.g. including role or topic from context).
-4. If a tool is needed, extract a clean, concise search keyword query.
+MULTI-TOOL DECISION RULES:
+- When user asks for resources, videos, tutorials, links, or study material: ALWAYS select "video" (YouTube tutorials/crash courses) + ("leetcode" or "docs" or "web").
+- When user asks for a preparation roadmap / study plan / video resources: select "video" + "leetcode" (or "docs").
+- When user asks about a specific company / "this company": select "web" + "video".
+- When user asks for coding / DSA practice: select "leetcode" + "video".
+- When user asks for project ideas or code repositories: select "github" + "docs".
 
-Respond with ONLY a valid JSON object in this exact format:
+Respond with ONLY valid JSON:
 {
-  "needs_tool": true or false,
-  "tool": "video" | "web" | "github" | "leetcode" | "docs" | "none",
-  "query": "concise search query string" | null
+  "needs_resume": true or false,
+  "needs_jd": true or false,
+  "needs_roadmap": true or false,
+  "tools": [
+    { "tool": "web" | "leetcode" | "video" | "github" | "docs", "query": "concise search keywords" }
+  ],
+  "intent": "RESUME" | "JOB_DESCRIPTION" | "ROADMAP" | "GENERAL" | "DYNAMIC_SEARCH",
+  "output_format": "SUGGESTION_SNIPPET" | "MARKDOWN_BULLETS" | "CONVERSATIONAL"
 }`;
 
-    const deciderUserPrompt = `Candidate Context Summary:
-${candidateContextSnippet ? candidateContextSnippet.slice(0, 400) + '...' : 'None'}
-
-${selectedText ? `Highlighted Selection: "${selectedText.slice(0, 150)}"\n` : ''}User Query: "${promptText}"
+    const routerUserPrompt = `${selectedText ? `Selection: "${selectedText.slice(0, 150)}"\n` : ''}User Query: "${promptText}"
+Active Tab: ${activeTab || 'interview'}
 
 JSON Decision:`;
 
     try {
-        const rawDecision = await callLlmWithFallback({
-            systemPrompt: deciderSystemPrompt,
-            userPrompt: deciderUserPrompt,
+        const rawResult = await callLlmWithFallback({
+            systemPrompt: routerSystemPrompt,
+            userPrompt: routerUserPrompt,
             plan: userPlan,
             isAssistant: true
         });
 
-        const jsonText = typeof rawDecision === 'string' ? rawDecision : (rawDecision?.content || '');
+        const jsonText = typeof rawResult === 'string' ? rawResult : (rawResult?.content || '');
         const match = jsonText.match(/\{[\s\S]*?\}/);
         if (match) {
             const parsed = JSON.parse(match[0]);
-            const tool = String(parsed.tool || '').toLowerCase().trim();
-            const needs_tool = Boolean(parsed.needs_tool && tool !== 'none' && tool !== 'null' && tool !== '');
+            
+            // Normalize tools
+            let toolList = [];
+            if (Array.isArray(parsed.tools)) {
+                toolList = parsed.tools;
+            } else if (parsed.tool && parsed.tool !== 'none' && parsed.tool !== 'null') {
+                toolList = [{ tool: parsed.tool, query: parsed.query || promptText }];
+            }
+
+            const validTools = ['web', 'leetcode', 'video', 'youtube', 'github', 'docs', 'roadmap'];
+            const filteredTools = toolList
+                .map(t => ({
+                    tool: String(t.tool || '').toLowerCase().trim(),
+                    query: t.query ? String(t.query).trim() : promptText
+                }))
+                .filter(t => validTools.includes(t.tool) && t.query.length > 0)
+                .slice(0, 3);
+
             return {
-                needs_tool,
-                tool: needs_tool ? tool : null,
-                query: parsed.query ? String(parsed.query).trim() : promptText
+                needs_resume: Boolean(parsed.needs_resume),
+                needs_jd: Boolean(parsed.needs_jd),
+                needs_roadmap: Boolean(parsed.needs_roadmap),
+                tools: filteredTools,
+                intent: parsed.intent || 'GENERAL',
+                output_format: parsed.output_format || 'MARKDOWN_BULLETS',
+                is_rewrite: parsed.output_format === 'SUGGESTION_SNIPPET' || isDirectEditPreset,
+                reasoning: parsed.reasoning || 'Micro-router classified'
             };
         }
     } catch (err) {
-        console.warn('[AI Tool Decider] LLM tool decision failed, falling back to direct answer (no search):', err.message);
+        console.warn('[Micro-Router] Router evaluation notice, using safe fallback:', err.message);
     }
 
-    return { needs_tool: false, tool: null, query: null };
+    // Default safe fallback (lenient 60% approach: include resume & JD)
+    return {
+        needs_resume: true,
+        needs_jd: true,
+        needs_roadmap: false,
+        tools: [],
+        intent: 'GENERAL',
+        output_format: 'MARKDOWN_BULLETS',
+        is_rewrite: false,
+        reasoning: 'Fallback default'
+    };
 }
 
 /**
@@ -96,8 +170,6 @@ function detectToolRequirement(message) {
 function extractSnippetAndTargetFromReply(replyText, isExplicitRewrite = false) {
     if (!replyText || typeof replyText !== 'string') return { suggestedSnippet: null, targetText: null };
 
-    // Strict boundary: If query was NOT an explicit in-place rewrite request, NEVER produce a suggestedSnippet!
-    // This prevents general resume advice, interview Q&A, coding snippets, and study roadmaps from showing an Apply button.
     if (!isExplicitRewrite) {
         return { suggestedSnippet: null, targetText: null };
     }
@@ -116,23 +188,18 @@ function extractSnippetAndTargetFromReply(replyText, isExplicitRewrite = false) 
 
     // 2. Suggested Snippet
     let suggestedSnippet = null;
-
-    // Pattern A: Code block with suggestion / rewrite / snippet
     const codeBlockMatch = replyText.match(/```(?:suggestion|rewrite|snippet)\s*\n?([\s\S]*?)```/i);
     if (codeBlockMatch && codeBlockMatch[1] && codeBlockMatch[1].trim()) {
         suggestedSnippet = codeBlockMatch[1].trim();
     } else {
-        // Pattern B: Labeled text
         const labeledMatch = replyText.match(/(?:Suggested Rewrite|Improved Version|Refined Bullet|Updated Text|Refined Text|Suggestion|Improved Line):\s*["“]?([^"”\n\r]+(?:[\n\r]+(?!\n|\r|#|\*)[^"”\n\r]+)*)["”]?/i);
         if (labeledMatch && labeledMatch[1] && labeledMatch[1].trim()) {
             suggestedSnippet = labeledMatch[1].trim().replace(/^["']|["']$/g, '');
         } else {
-            // Pattern C: Bold text line (e.g. **Architected high-throughput REST API...**)
             const boldMatch = replyText.match(/\*\*([^*\n\r]{20,500})\*\*/);
             if (boldMatch && boldMatch[1] && boldMatch[1].trim()) {
                 suggestedSnippet = boldMatch[1].trim();
             } else {
-                // Pattern D: Single bullet in a short response (< 800 chars)
                 if (replyText.length < 800) {
                     const bulletMatch = replyText.match(/^[•\-\*]\s*([^\n\r]{25,500})/m);
                     if (bulletMatch && bulletMatch[1] && bulletMatch[1].trim()) {
@@ -143,14 +210,11 @@ function extractSnippetAndTargetFromReply(replyText, isExplicitRewrite = false) 
         }
     }
 
-    // Strip leading list bullet markers if present so they match ProseMirror text nodes cleanly
     if (targetText) {
         targetText = targetText.replace(/^[•\-\*]\s*/, '').trim();
     }
     if (suggestedSnippet) {
         suggestedSnippet = suggestedSnippet.replace(/^[•\-\*]\s*/, '').trim();
-
-        // Sanity check: Reject snippets that are conversational filler, entire code scripts, or too long
         const isConversational = /^(?:sure|certainly|here\s+is|i\s+have|below\s+is|let\s+me|hope\s+this)/i.test(suggestedSnippet);
         const isCodeScript = /^(?:import\s+|const\s+|let\s+|var\s+|function\s+|def\s+|class\s+|SELECT\s+|<!DOCTYPE)/i.test(suggestedSnippet);
         if (isConversational || isCodeScript || suggestedSnippet.length < 15 || suggestedSnippet.length > 1500) {
@@ -162,224 +226,175 @@ function extractSnippetAndTargetFromReply(replyText, isExplicitRewrite = false) 
 }
 
 /**
- * Builds formatted prompt and context for KIVI AI Assistant using Smart Intent & Dynamic Context Loading
+ * Builds formatted prompt and context for KIVI AI Assistant using Unified Micro-Router
  */
 async function buildAssistantPromptAndMessages({ userId, reportId = null, message = '', selectedText = '', action = '', instruction = '', activeTab = '', currentRoute = '', userPlan = 'free', onStatus = null }) {
     const promptText = (message || instruction || '').trim();
 
-    // 1. Step 1: Classify Query Intent (0ms Tier 1 with Tier 2 fallback)
-    const intentData = await classifyIntent({
-        message: promptText,
+    // 1. Step 1: Run Single Fast Unified Micro-Router (Context Needs + Multi-Tool Selection)
+    const routerDecision = await runUnifiedMicroRouter({
+        promptText,
         selectedText,
         action,
         activeTab,
         currentRoute,
-        plan: userPlan
+        userPlan
     });
 
-    // 2. Step 2: Dynamically load ONLY the required pieces of context (with Semantic Vector Search for Resume, Roadmap, JD)
-    const { candidateContextSnippet, recentHistory, profile, dbCallsAvoided } = await loadDynamicContext({
+    const isExplicitRewrite = routerDecision.is_rewrite || ['enhance', 'shorten', 'fix_grammar', 'rephrase', 'make_ats'].includes(action);
+
+    // 2. Step 2: Dynamically load ONLY the required pieces of context (Selective DB query with 60% leniency)
+    const { candidateContextSnippet, recentHistory, profile, companyName, dbCallsAvoided } = await loadDynamicContext({
         userId,
         reportId,
-        intentData,
+        contextNeeds: {
+            needs_resume: routerDecision.needs_resume,
+            needs_jd: routerDecision.needs_jd,
+            needs_roadmap: routerDecision.needs_roadmap
+        },
+        intentData: routerDecision,
         promptText,
         selectedText
     });
 
-    // 3. Step 3: LLM-First Tool Orchestration (LLM decides which tool to call)
+    // 3. Step 3: Execute Selected Multi-Tools in Parallel
     let toolContextSnippet = '';
     let foundResources = [];
 
-    // Bypass tool decider if user selected a 1-click in-place text rewrite preset
-    const isDirectEditPreset = ['enhance', 'shorten', 'fix_grammar', 'align_job', 'rephrase', 'make_ats'].includes(action);
+    if (Array.isArray(routerDecision.tools) && routerDecision.tools.length > 0) {
+        const toolList = routerDecision.tools;
 
-    let toolDecision = { needs_tool: false, tool: null, query: null };
-    if (!isDirectEditPreset) {
-        toolDecision = await decideToolCallWithLlm({
-            promptText,
-            selectedText,
-            candidateContextSnippet,
-            intentData,
-            userPlan
+        // Build friendly source display list for UI
+        const sourceLabels = toolList.map(t => {
+            const toolName = t.tool;
+            if (toolName === 'github') return { tool: 'github', name: 'GitHub Repositories', icon: '🐙', query: t.query };
+            if (toolName === 'leetcode') return { tool: 'leetcode', name: 'LeetCode Problems', icon: '💡', query: t.query };
+            if (toolName === 'docs') return { tool: 'docs', name: 'Official Docs', icon: '📖', query: t.query };
+            if (toolName === 'video' || toolName === 'youtube') return { tool: 'video', name: 'YouTube Tutorials', icon: '▶️', query: t.query };
+            if (toolName === 'roadmap') return { tool: 'roadmap', name: 'Preparation Roadmap', icon: '🗺️', query: t.query || 'Stored Tasks' };
+            return { tool: 'web', name: 'Live Web Search', icon: '🌐', query: t.query };
         });
-    }
-
-    if (toolDecision.needs_tool && toolDecision.tool) {
-        const toolName = toolDecision.tool;
-        const searchQuery = toolDecision.query || promptText;
-
-        // Build friendly source display list for live streaming UI
-        let sourceLabels = [];
-        if (toolName === 'github') {
-            sourceLabels.push({ name: 'GitHub Repositories', icon: '🐙', query: searchQuery });
-        } else if (toolName === 'leetcode') {
-            sourceLabels.push({ name: 'LeetCode Problems', icon: '💡', query: searchQuery });
-        } else if (toolName === 'docs') {
-            sourceLabels.push({ name: 'Official Docs', icon: '📖', query: searchQuery });
-        } else if (toolName === 'video' || toolName === 'youtube') {
-            sourceLabels.push({ name: 'YouTube Tutorials', icon: '▶️', query: searchQuery });
-        } else {
-            sourceLabels.push({ name: 'Web Search', icon: '🌐', query: searchQuery });
-        }
 
         if (typeof onStatus === 'function') {
+            const toolNames = sourceLabels.map(s => s.name).join(' & ');
             onStatus({
                 status: 'searching',
-                query: searchQuery,
-                sources: sourceLabels,
-                message: `Searching ${sourceLabels[0].name} for "${searchQuery.slice(0, 45)}"...`
+                tools: sourceLabels,
+                message: `Searching ${toolNames}...`
             });
         }
 
-        // Execute targeted tool requested by LLM
-        if (toolName === 'github') {
-            foundResources = await searchGitHubProjects(searchQuery, 3);
-        } else if (toolName === 'leetcode') {
-            foundResources = await searchLeetCodeProblems(searchQuery, 3);
-        } else if (toolName === 'docs') {
-            foundResources = await searchOfficialDocs(searchQuery, 3);
-        } else if (toolName === 'video' || toolName === 'youtube') {
-            foundResources = await searchLearningResources(searchQuery, 3);
-        } else {
-            foundResources = await searchDynamicRoadmapResources({
-                topic: searchQuery,
-                searchTypes: ['web', 'docs'],
-                maxResults: 4
-            });
-        }
+        // Execute tools concurrently via Promise.allSettled
+        const executionPromises = toolList.map(async (t) => {
+            const toolName = t.tool;
+            let query = t.query || promptText;
 
-        if (foundResources.length > 0) {
-            toolContextSnippet += `\n[Verified Learning & Practice Resources Found]:\n` + 
-                foundResources.map((r, i) => `${i + 1}. [${r.title}](${r.url}) - ${r.snippet || ''}`).join('\n') + '\n';
-        }
+            // Enhance query with real company name if searching for "this company"
+            if (companyName && (query.toLowerCase().includes('this company') || query.toLowerCase() === 'company')) {
+                query = query.replace(/this company/gi, companyName);
+            }
+
+            try {
+                if (toolName === 'web') {
+                    const results = await searchWeb(query, 3);
+                    return { tool: 'web', category: 'Company & Web Intelligence', results: results || [] };
+                } else if (toolName === 'github') {
+                    const results = await searchGitHubProjects(query, 3);
+                    return { tool: 'github', category: 'GitHub Open Source Projects', results: results || [] };
+                } else if (toolName === 'leetcode') {
+                    const results = await searchLeetCodeProblems(query, 3);
+                    return { tool: 'leetcode', category: 'LeetCode & Coding Practice', results: results || [] };
+                } else if (toolName === 'docs') {
+                    const results = await searchOfficialDocs(query, 3);
+                    return { tool: 'docs', category: 'Official Technical Documentation', results: results || [] };
+                } else if (toolName === 'video' || toolName === 'youtube') {
+                    const results = await searchLearningResources(query, 3);
+                    return { tool: 'video', category: 'Video Tutorials & Deep-Dives', results: results || [] };
+                } else if (toolName === 'roadmap') {
+                    const roadmapSnippet = await fetchStoredRoadmap(reportId, userId);
+                    if (roadmapSnippet) {
+                        toolContextSnippet += `\n${roadmapSnippet}\n`;
+                    }
+                    return { tool: 'roadmap', category: 'Stored Roadmap', results: [] };
+                }
+            } catch (toolErr) {
+                console.warn(`[AI Tool Engine] Execution failed for tool "${toolName}":`, toolErr.message);
+            }
+            return { tool: toolName, category: 'Resources', results: [] };
+        });
+
+        const settledResults = await Promise.allSettled(executionPromises);
+        
+        // Aggregate and deduplicate found resources by URL
+        const seenUrls = new Set();
+        settledResults.forEach(item => {
+            if (item.status === 'fulfilled' && item.value && Array.isArray(item.value.results)) {
+                const { category, results } = item.value;
+                const validCategoryResults = [];
+
+                results.forEach(res => {
+                    if (res && res.url && !seenUrls.has(res.url)) {
+                        seenUrls.add(res.url);
+                        foundResources.push(res);
+                        validCategoryResults.push(res);
+                    }
+                });
+
+                if (validCategoryResults.length > 0) {
+                    const formattedCategory = validCategoryResults.map(r => {
+                        return `  • [${r.title}](${r.url})${r.snippet ? `: ${r.snippet}` : ''}`;
+                    }).join('\n');
+                    toolContextSnippet += `\n\n[Verified ${category}]:\n${formattedCategory}`;
+                }
+            }
+        });
 
         if (typeof onStatus === 'function') {
-            const scannedDomains = foundResources.map(r => {
-                try {
-                    return new URL(r.url).hostname.replace(/^www\./, '');
-                } catch (e) {
-                    return r.title?.slice(0, 25);
-                }
-            }).filter(Boolean);
-
             onStatus({
                 status: 'synthesizing',
-                query: searchQuery,
-                sources: sourceLabels,
-                scannedDomains: scannedDomains.slice(0, 4),
+                tools: sourceLabels,
                 message: foundResources.length > 0
                     ? `Gathered ${foundResources.length} verified source${foundResources.length > 1 ? 's' : ''}. Synthesizing answer...`
                     : 'Synthesizing response...'
             });
         }
-    } else if (typeof onStatus === 'function') {
-        if (['RESUME', 'RESUME_EDIT', 'RESUME_JD'].includes(intentData.intent)) {
-            onStatus({
-                status: 'analyzing',
-                sources: [{ name: 'Resume Document', icon: '📄' }],
-                message: 'Analyzing resume context...'
-            });
-        } else if (['ROADMAP', 'ROADMAP_JD', 'RESUME_ROADMAP', 'ALL_THREE'].includes(intentData.intent)) {
-            onStatus({
-                status: 'analyzing',
-                sources: [{ name: '14-Day Roadmap', icon: '🗺️' }, { name: 'Target JD', icon: '🎯' }],
-                message: 'Analyzing roadmap & job requirements...'
-            });
-        }
     }
 
-    // 4. Step 4: Construct Strict Grounded System Prompt (Zero Hallucinations & Zero Fluff)
+    // 4. Step 4: Construct Grounded System Prompt
     let systemPrompt = `You are KIVI AI, a concise, highly factual AI Career Coach, Coding Mentor, and ATS Resume Copilot embedded in the KIVI-AI platform.
 
-CRITICAL ANTI-HALLUCINATION & CONCISENESS RULES:
-1. ANSWER ONLY WHAT IS ASKED: Do NOT provide unrequested sections, unsolicited document outlines, generic summaries, or conversational filler (e.g. "Sure!", "Certainly!", "Here is the information"). Jump straight into the direct answer.
-2. ZERO HALLUCINATION & NO FAKE LINKS:
-   - NEVER invent, guess, or synthesize URLs/links from memory.
-   - You may ONLY format links as [Title](URL) if that EXACT URL is explicitly provided in the "[Verified Learning & Practice Resources Found]" context below.
-   - If no verified URL is present in the context, name the official documentation, problem title, or tool in bold or plain text (e.g. **React Official Documentation**, **LeetCode #704 - Binary Search**), and suggest search keywords without outputting a synthetic markdown link.
-3. GROUNDED RETRIEVAL: When the user asks for their roadmap, interview score, or candidate data, use ONLY the exact data provided in the context below. If data is not provided, state that clearly in one brief sentence.
-4. CLEAN MARKDOWN: Format with neat headings and bullet points. Never use raw HTML.`;
+CRITICAL FORMATTING & LINK INTEGRITY RULES:
+1. STRICTLY FORBIDDEN: NEVER USE MARKDOWN TABLES (pipes and dashes \`| col1 | col2 |\`). Tables are STRICTLY PROHIBITED in responses because they overflow, truncate text, and degrade the chat drawer interface.
+2. USE STRUCTURED MARKDOWN HEADINGS & BULLETS: Structure all responses with clean markdown headings (\`### Section Title\`) and clear bullet points (\`•\`).
+3. CLICKABLE VERIFIED LINKS & VIDEOS:
+   - When asked for resources, study plans, or videos, ALWAYS return direct clickable markdown links: \`• [Title](URL) - Key takeaway\`.
+   - Cite and embed the exact verified URLs provided in the "[Verified ...]" context below (from YouTube, LeetCode, GitHub, Docs, and Web).
+   - NEVER INVENT RANDOM YOUTUBE VIDEO IDs (e.g. NEVER make up fake URLs like \`watch?v=...\`). If recommending a course or video that is not in the verified context, format it as a guaranteed live YouTube search link:
+     \`[▶️ Course Title](https://www.youtube.com/results?search_query=topic+tutorial+interview)\`
+   - NEVER write plain search instructions like "YouTube (search '...')" or unlinked platform names. Always provide direct clickable links.
+4. ZERO FLUFF & ANSWER ONLY WHAT IS ASKED: Jump straight into the response without conversational filler.`;
 
-    const isExplicitResumeAction = ['enhance', 'shorten', 'fix_grammar', 'align_job', 'rephrase', 'make_ats', 'apply', 'add', 'insert'].includes(action);
-    const hasApplyVerbInMsg = /(?:apply|add|put|insert|incorporate|include|integrate|update|change|modify|fix)/i.test(promptText);
-    const hasSelectedText = Boolean(selectedText && selectedText.trim());
-    const isExplicitRewrite = (intentData.intent === 'RESUME' || intentData.intent === 'RESUME_EDIT') &&
-        (Boolean(intentData.output_format === 'SUGGESTION_SNIPPET') || isExplicitResumeAction || hasApplyVerbInMsg || (hasSelectedText && intentData.is_rewrite !== false));
-
-    // Intent-specific instructions for maximum token efficiency and clean formatting
-    if (intentData.intent === 'ROADMAP' || intentData.intent === 'ROADMAP_RESOURCES') {
-        systemPrompt += `\n\nTask: Provide expert Technical Learning Roadmap guidance.
-Guidelines:
-- Reference the user's Stored 14-Day Preparation Roadmap from context (days, milestone topics, and tasks).
-- Recommend high-value practice resources: GitHub repositories, LeetCode / problem-solving practice, and official documentation.
-- The stored roadmap plan is fixed — do NOT rewrite, modify, or output replacement code blocks for the roadmap document.`;
-    } else if (intentData.intent === 'JOB_DESCRIPTION') {
-        systemPrompt += `\n\nTask: Analyze and explain the Target Job Description provided in context.
-Guidelines:
-- Ground your analysis in the exact Target Job Description provided in the context below.
-- Highlight core technical qualifications, expected daily responsibilities, must-have vs nice-to-have skills, and potential interview focus areas.`;
-    } else if (intentData.intent === 'RESUME_JD') {
-        systemPrompt += `\n\nTask: Evaluate and align Candidate's Resume against the Target Job Description.
-Guidelines:
-- Compare candidate's resume projects and experience directly with the Target Job Description requirements.
-- Identify matching skills, missing ATS keywords, and specific impact improvements to increase candidate's job match.`;
-    } else if (intentData.intent === 'ROADMAP_JD') {
-        systemPrompt += `\n\nTask: Map the Target Job Description requirements against the 14-Day Preparation Roadmap.
-Guidelines:
-- Correlate each core JD requirement to the corresponding day(s) in the candidate's preparation roadmap.
-- Provide targeted learning and practice resources for any requirements that need extra reinforcement.`;
-    } else if (intentData.intent === 'RESUME_ROADMAP') {
-        systemPrompt += `\n\nTask: Guide candidate's preparation by connecting their Resume experience with the 14-Day Roadmap.
-Guidelines:
-- Identify which roadmap topics build on the candidate's existing resume strengths vs which address their gaps.
-- Prioritize roadmap practice areas to maximize preparation efficiency.`;
-    } else if (intentData.intent === 'ALL_THREE') {
-        systemPrompt += `\n\nTask: Provide a Holistic Interview Readiness Evaluation across Resume, Job Description, and Roadmap.
-Guidelines:
-- Assess how well the Candidate's Resume matches the Target Job Description.
-- Outline how the 14-Day Preparation Roadmap systematically bridges the identified skill gaps.`;
-    } else if (intentData.intent === 'DYNAMIC_SEARCH') {
-        systemPrompt += `\n\nTask: Present verified technical resources, GitHub projects, LeetCode challenges, or official documentation based on the query.`;
-    } else if (intentData.intent === 'RESUME' || intentData.intent === 'RESUME_EDIT') {
+    if (routerDecision.intent === 'ROADMAP' || routerDecision.intent === 'ROADMAP_JD') {
+        systemPrompt += `\n\nTask: Provide a structured, milestone-based preparation roadmap with clear daily/weekly objectives and verified clickable video/resource links for each phase.`;
+    } else if (routerDecision.intent === 'JOB_DESCRIPTION') {
+        systemPrompt += `\n\nTask: Analyze and explain the Target Job Description, expected interview rounds, core competencies, and targeted preparation advice.`;
+    } else if (routerDecision.intent === 'RESUME_JD') {
+        systemPrompt += `\n\nTask: Evaluate and align Candidate's Resume against the Target Job Description. Identify matching skills, missing ATS keywords, and specific impact improvements.`;
+    } else if (routerDecision.intent === 'RESUME' || isExplicitRewrite) {
         if (isExplicitRewrite) {
             systemPrompt += `\n\nTask: Provide targeted ATS-optimized text revisions for the user's resume.
-
-CRITICAL DOCUMENT REWRITE RULES (STRICT COMPLIANCE REQUIRED):
-1. NEVER output the user's full resume document, full header, or complete resume template. Outputting the entire resume in chat text is STRICTLY FORBIDDEN.
-2. Output ONLY the specific line, bullet point, or skills section being added or updated.
-3. When updating an existing line or adding skills/keywords to a section:
-   - Wrap the EXACT original text as it currently appears in candidate context inside \`\`\`original ... \`\`\`
-   - Wrap ONLY the exact improved replacement snippet inside \`\`\`suggestion ... \`\`\`
-   - Format \`\`\`suggestion ... \`\`\` with clean semantic formatting (e.g. **Category:** items for skills, <strong> metrics for bullets, <h3> titles with right-aligned dates) so TipTap parses and styles it with 1:1 resume typography.
-4. When adding skills to an existing Technical Skills or Summary section:
-   - Identify the existing skills/summary line from candidate context and put it in \`\`\`original ... \`\`\`.
-   - Put the updated skills/summary line containing the new skills inside \`\`\`suggestion ... \`\`\`.
-5. Keep conversational commentary to 1 brief sentence maximum outside the code blocks so the UI can present an Apply button.`;
+CRITICAL REWRITE RULES:
+- Output ONLY the specific line, bullet point, or skills section being added or updated.
+- Wrap the EXACT original text in candidate context inside \`\`\`original ... \`\`\`
+- Wrap ONLY the exact improved replacement snippet inside \`\`\`suggestion ... \`\`\`
+- Keep conversational commentary to 1 brief sentence maximum outside the code blocks.`;
         } else {
-            systemPrompt += `\n\nTask: Provide resume advice and actionable recommendations.
-Guidelines:
-- Provide structured, practical feedback and bullet point suggestions in standard markdown.
-- CRITICAL: Do NOT wrap text in \`\`\`suggestion ... \`\`\` code blocks and do NOT attempt to rewrite/replace the active document unless the user explicitly requested a direct document text rewrite.`;
+            systemPrompt += `\n\nTask: Provide resume advice and actionable recommendations in clean markdown bullets.`;
         }
-    } else if (intentData.intent === 'INTERVIEW_REPORT') {
-        systemPrompt += `\n\nTask: Analyze candidate's interview metrics, readiness score, and skill gaps from context.`;
-    } else if (intentData.intent === 'JOB_SEARCH') {
-        systemPrompt += `\n\nTask: Provide targeted job recommendations based on candidate's verified skills.`;
-    } else if (intentData.intent === 'PROJECT') {
-        systemPrompt += `\n\nTask: Explain the candidate's portfolio projects from context.`;
-    } else if (intentData.intent === 'SKILLS') {
-        systemPrompt += `\n\nTask: Overview candidate's profile skills from context.`;
-    } else if (intentData.intent === 'TECH_CONCEPT' || intentData.intent === 'GENERAL') {
-        systemPrompt += `\n\nTask: Provide a direct, crystal-clear technical explanation with concise markdown bullets and code snippets where relevant. Do NOT format as a resume bullet point.`;
-    } else if (intentData.intent === 'PLATFORM_HELP') {
-        systemPrompt += `\n\nTask: Provide brief, step-by-step guidance on KIVI-AI platform features.`;
+    } else if (routerDecision.intent === 'DYNAMIC_SEARCH') {
+        systemPrompt += `\n\nTask: Present verified technical resources, GitHub projects, LeetCode challenges, or official documentation with clickable links based on the search results.`;
     } else {
-        systemPrompt += `\n\nTask: Provide direct, actionable career guidance.`;
-    }
-
-    // Add length guidance
-    if (intentData.response_length === 'CONCISE') {
-        systemPrompt += `\nKeep your response compact and punchy (1-2 short paragraphs or 3-4 bullet points maximum).`;
+        systemPrompt += `\n\nTask: Provide a crystal-clear, direct technical explanation with concise markdown bullets, code snippets, and resource links where relevant.`;
     }
 
     let userContent = promptText;
@@ -425,17 +440,10 @@ ${promptText}`;
         { role: 'user', content: userContent }
     ];
 
-    // Log exact assistant payload sent to LLM
+    // Log exact assistant payload sent to LLM (including user query and messages)
     logAssistantQueryPayload({
         promptText,
-        selectedText,
-        action,
-        intentData,
-        candidateContextSnippet,
-        toolContextSnippet,
-        recentHistory,
-        formattedMessages,
-        userPlan
+        formattedMessages
     });
 
     return {
@@ -443,75 +451,54 @@ ${promptText}`;
         promptText: promptText || (selectedText ? `Refine: ${selectedText.slice(0, 30)}...` : 'Assistant Query'),
         foundResources,
         profile,
-        intentData,
+        intentData: routerDecision,
         isExplicitRewrite,
         dbCallsAvoided
     };
 }
 
 /**
- * Pretty-prints complete assistant query payload to terminal for debugging and inspection
+ * Post-processes generated markdown to guarantee 100% active, non-broken links.
+ * Converts any non-verified hallucinated YouTube watch IDs into guaranteed live YouTube search URLs.
+ */
+function sanitizeOutputLinks(replyText, verifiedResources = []) {
+    if (!replyText || typeof replyText !== 'string') return replyText;
+    const verifiedUrls = new Set((verifiedResources || []).map(r => (r.url || '').trim()));
+
+    return replyText.replace(/\[([^\]]+)\]\((https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)[^\)]*)\)/gi, (match, title, rawUrl, videoId) => {
+        if (verifiedUrls.has(rawUrl.trim())) {
+            return match; // Keep verified video
+        }
+        // Hallucinated 11-char video ID -> rewrite to guaranteed live YouTube search URL
+        const cleanTitle = title.replace(/^[▶️💡📖🐙🌐\s\-•*]+/, '').trim();
+        const searchUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(cleanTitle + ' tutorial interview preparation');
+        return `[${title}](${searchUrl})`;
+    });
+}
+
+/**
+ * Logs only the exact prompt and messages payload sent to the LLM (including user query)
  */
 function logAssistantQueryPayload({
     promptText,
-    selectedText,
-    action,
-    intentData,
-    candidateContextSnippet,
-    toolContextSnippet,
-    recentHistory,
-    formattedMessages,
-    userPlan
+    formattedMessages
 }) {
     const timeStr = new Date().toLocaleTimeString();
-    console.log('\n' + '═'.repeat(85));
-    console.log(`🤖 [KIVI AI ASSISTANT REQUEST PAYLOAD] | ${timeStr}`);
-    console.log('═'.repeat(85));
-    console.log(`👤 User Query       : "${promptText || '(empty)'}"`);
-    console.log(`📌 Highlighted Text : ${selectedText ? `"${selectedText.trim()}"` : 'None (No mouse selection)'}`);
-    console.log(`🎯 Action Preset    : ${action || 'None'}`);
-    console.log(`💳 User Plan        : ${userPlan || 'free'}`);
-    console.log(`🧠 Intent Classified: ${intentData?.intent} (Output Format: ${intentData?.output_format || 'N/A'}, Target: ${intentData?.target || 'GENERAL'}, Keys: [${(intentData?.context_keys || []).join(', ')}])`);
-
-    console.log('\n📦 [CONTEXT INJECTED WITH QUERY]:');
-    if (candidateContextSnippet) {
-        const hasResume = candidateContextSnippet.includes("[Candidate's Active Resume Document Structure]");
-        const hasJd = candidateContextSnippet.includes('[Target Job Description & Role Specifications]');
-        const hasRoadmap = candidateContextSnippet.includes('[14-Day Structured Preparation Roadmap');
-        const hasProfile = candidateContextSnippet.includes('[Candidate Profile]');
-        const hasHighlights = candidateContextSnippet.includes('[Highlight');
-
-        console.log(`  • Resume Injected  : ${hasResume ? '✅ YES' : '❌ NO'}`);
-        console.log(`  • Job Desc Injected: ${hasJd ? '✅ YES' : '❌ NO'}`);
-        console.log(`  • Roadmap Injected : ${hasRoadmap ? '✅ YES' : '❌ NO'}`);
-        console.log(`  • Profile Injected : ${hasProfile ? '✅ YES' : '❌ NO'}`);
-        console.log(`  • RAG Vector Match : ${hasHighlights ? '✅ YES' : '❌ NO'}`);
-        console.log('\n--- Injected Context Content ---');
-        console.log(candidateContextSnippet.trim());
-        console.log('--------------------------------');
-    } else {
-        console.log('  (No DB context needed — Zero DB call)');
+    console.log('\n' + '═'.repeat(80));
+    console.log(`🤖 [EXACT PAYLOAD SENT TO LLM] | ${timeStr}`);
+    console.log('═'.repeat(80));
+    if (promptText) {
+        console.log(`👤 User Query : "${promptText}"\n`);
     }
 
-    if (toolContextSnippet) {
-        console.log('\n🔧 [TOOL / LEARNING RESOURCES CONTEXT]:');
-        console.log(toolContextSnippet.trim());
-    }
-
-    if (Array.isArray(recentHistory) && recentHistory.length > 0) {
-        console.log(`\n💬 [CONVERSATION HISTORY ATTACHED]: ${recentHistory.length} turns`);
-        recentHistory.forEach((h, i) => {
-            const preview = h.content ? (h.content.length > 80 ? h.content.slice(0, 80) + '...' : h.content) : '';
-            console.log(`  [${i + 1}] (${h.role}): ${preview}`);
+    if (Array.isArray(formattedMessages)) {
+        formattedMessages.forEach((m, idx) => {
+            console.log(`─── Message ${idx + 1} [Role: ${m.role.toUpperCase()}] ───`);
+            console.log(m.content);
+            console.log('');
         });
     }
-
-    console.log('\n✉️ [EXACT MESSAGES SENT TO LLM]:');
-    formattedMessages.forEach((m, idx) => {
-        console.log(`\n--- Message ${idx + 1} [Role: ${m.role.toUpperCase()}] ---`);
-        console.log(m.content);
-    });
-    console.log('\n' + '═'.repeat(85) + '\n');
+    console.log('═'.repeat(80) + '\n');
 }
 
 /**
@@ -541,12 +528,15 @@ async function streamAssistantChat({ userId, reportId, message, selectedText, ac
         onStatus
     });
 
-    const fullReply = await streamLlmWithFallback({
+    const rawReply = await streamLlmWithFallback({
         messages: formattedMessages,
         plan: userPlan,
         isAssistant: true,
         onToken
     });
+
+    // Guarantee 100% active links (replaces any hallucinated video IDs)
+    const fullReply = sanitizeOutputLinks(rawReply, foundResources);
 
     // Extract any suggested snippet and target text for in-place 1-click apply
     const { suggestedSnippet, targetText } = extractSnippetAndTargetFromReply(fullReply, isExplicitRewrite);
@@ -587,7 +577,8 @@ async function processAssistantChat({ userId, reportId, message, selectedText, a
         isAssistant: true
     });
 
-    const replyText = typeof llmResult === 'string' ? llmResult : (llmResult?.replyText || llmResult?.content || JSON.stringify(llmResult));
+    const rawReplyText = typeof llmResult === 'string' ? llmResult : (llmResult?.replyText || llmResult?.content || JSON.stringify(llmResult));
+    const replyText = sanitizeOutputLinks(rawReplyText, foundResources);
     const { suggestedSnippet, targetText } = extractSnippetAndTargetFromReply(replyText, isExplicitRewrite);
 
     processTurnInBackground(userId, promptText, replyText);

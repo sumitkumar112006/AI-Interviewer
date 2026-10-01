@@ -1,74 +1,49 @@
 const mongoose = require('mongoose');
-const { getRecentChatHistory, extractCompactJdSummary } = require('./contextAssembler');
-const { parseResumeHtml, parseRoadmap, parseJobDescription } = require('./Chunker');
-const { getOrEmbedChunks, getOrEmbedRoadmapChunks, getOrEmbedJdChunks, embedQuery } = require('./Embedder');
+const { getRecentChatHistory } = require('./contextAssembler');
 const interviewReportModel = require('../models/interviewReport.model');
 const userModel = require('../models/user.model');
 
 /**
- * Fast in-memory cosine similarity calculation between two float vectors.
- */
-function cosineSimilarity(vecA, vecB) {
-    if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
-    let dot = 0, normA = 0, normB = 0;
-    for (let i = 0; i < vecA.length; i++) {
-        dot   += vecA[i] * vecB[i];
-        normA += vecA[i] * vecA[i];
-        normB += vecB[i] * vecB[i];
-    }
-    if (normA === 0 || normB === 0) return 0;
-    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-/**
- * Selectively loads dynamic context from MongoDB and Redis based on the Classified Intent.
- * Features 3 targeted RAG pipelines:
- *   1. Resume RAG (full structure + semantic chunk highlights)
- *   2. Roadmap RAG (full 14-day milestones/tasks + semantic chunk highlights)
- *   3. Job Description RAG (full job specifications + semantic chunk highlights)
- * Bypasses MongoDB completely for General Tech & Platform queries (0 DB queries).
+ * Clean & Fast Dynamic Context Loader
+ * Loads Target Job Description and Candidate Resume directly from MongoDB into the LLM context.
+ * Bypasses heavy RAG vector embedding operations for instant sub-millisecond context delivery.
  * 
  * @param {Object} params
  * @param {string} params.userId
  * @param {string} [params.reportId]
  * @param {Object} params.intentData - Result from classifyIntent()
- * @param {string} [params.promptText] - User query string for embedding search
- * @param {string} [params.selectedText] - Selected editor text if any
- * @returns {Promise<Object>} { candidateContextSnippet, recentHistory, profile, dbCallsAvoided }
+/**
+ * Clean & Fast Dynamic Context Loader
+ * Loads Target Job Description and/or Candidate Resume directly from MongoDB into the LLM context
+ * ONLY when requested by the Unified Micro-Router.
+ * 
+ * @param {Object} params
+ * @param {string} params.userId
+ * @param {string} [params.reportId]
+ * @param {Object} [params.contextNeeds] - { needs_resume: boolean, needs_jd: boolean, needs_roadmap: boolean }
+ * @param {Object} [params.intentData]
+ * @param {string} [params.promptText]
+ * @param {string} [params.selectedText]
+ * @returns {Promise<Object>} { candidateContextSnippet, recentHistory, profile, dbCallsAvoided, targetRole, companyName }
  */
-async function loadDynamicContext({ userId, reportId = null, intentData, promptText = '', selectedText = '' }) {
+async function loadDynamicContext({ userId, reportId = null, contextNeeds = null, intentData = null, promptText = '', selectedText = '' }) {
     const historyLimit = typeof intentData?.history_turns_needed === 'number' 
         ? intentData.history_turns_needed 
         : 2;
 
-    const contextFlags = intentData?.context || {};
-    const contextKeys = intentData?.context_keys || [];
+    const needsResume = contextNeeds ? Boolean(contextNeeds.needs_resume) : true;
+    const needsJd = contextNeeds ? Boolean(contextNeeds.needs_jd) : true;
+    const needsRoadmap = contextNeeds ? Boolean(contextNeeds.needs_roadmap) : false;
 
-    const needsResume = contextFlags.resume ?? (
-        contextKeys.some(k => k.startsWith('resume.') || k === 'resume') ||
-        ['RESUME', 'RESUME_JD', 'RESUME_ROADMAP', 'ALL_THREE'].includes(intentData?.intent) ||
-        Boolean(selectedText && selectedText.trim())
-    );
-
-    const needsJob = contextFlags.jd ?? (
-        contextKeys.some(k => k.startsWith('job.') || k === 'job' || k === 'job_description') ||
-        ['JOB_DESCRIPTION', 'RESUME_JD', 'ROADMAP_JD', 'ALL_THREE'].includes(intentData?.intent)
-    );
-
-    const needsRoadmap = contextFlags.roadmap ?? (
-        contextKeys.some(k => k.startsWith('roadmap.') || k === 'roadmap') ||
-        ['ROADMAP', 'ROADMAP_JD', 'RESUME_ROADMAP', 'ALL_THREE'].includes(intentData?.intent)
-    );
-
-    const needsUser = contextKeys.some(k => k.startsWith('user.') || k === 'skills' || k === 'projects');
-
-    // 1. Zero DB Path (TECH_CONCEPT, PLATFORM_HELP, or any query where requires_context is false)
-    if (!needsResume && !needsJob && !needsRoadmap && !needsUser && !intentData?.requires_context) {
+    // Skip DB on security alerts or if no context is needed at all
+    if (intentData?.intent === 'SECURITY' || (!needsResume && !needsJd && !needsRoadmap && !selectedText)) {
         const recentHistory = historyLimit > 0 ? await getRecentChatHistory(userId, historyLimit) : [];
         return {
             candidateContextSnippet: '',
             recentHistory,
             profile: null,
+            targetRole: 'Software Developer',
+            companyName: '',
             dbCallsAvoided: true
         };
     }
@@ -77,13 +52,10 @@ async function loadDynamicContext({ userId, reportId = null, intentData, promptT
         const isDbConnected = mongoose.connection.readyState === 1;
         const userObjectId = (userId && mongoose.Types.ObjectId.isValid(userId)) ? new mongoose.Types.ObjectId(userId) : userId;
 
-        // Build report query with tailored lean projection
+        // Build report query with lean projection (Target JD + Resume Profile) ONLY if needsResume or needsJd or needsRoadmap
         let reportPromise = Promise.resolve(null);
-        if ((needsJob || needsRoadmap || needsResume) && userObjectId && isDbConnected) {
-            let selectFields = 'developerTitle';
-            if (needsJob) selectFields += ' jobDescription';
-            if (needsRoadmap) selectFields += ' matchScore skillGaps preparationPlan completedTasks';
-            if (needsResume) selectFields += ' generatedResumeHtml resume';
+        if (userObjectId && isDbConnected && (needsResume || needsJd || needsRoadmap)) {
+            const selectFields = 'developerTitle jobDescription generatedResumeHtml resume detectedSkills preparationPlan completedTasks';
 
             if (reportId && mongoose.Types.ObjectId.isValid(reportId)) {
                 reportPromise = interviewReportModel.findOne({
@@ -99,7 +71,7 @@ async function loadDynamicContext({ userId, reportId = null, intentData, promptT
 
         // Build user query with lean projection
         let userPromise = Promise.resolve(null);
-        if (needsUser && userObjectId && isDbConnected) {
+        if (userObjectId && isDbConnected) {
             userPromise = userModel.findById(userObjectId).select('name careerProfile skills projects').lean();
         }
 
@@ -112,19 +84,11 @@ async function loadDynamicContext({ userId, reportId = null, intentData, promptT
 
         const profile = {};
         const snippetParts = [];
-        const reportIdStr = (reportDoc?._id || reportId || '').toString();
-        const queryText = (promptText || selectedText || '').trim();
+        let targetRole = reportDoc?.developerTitle || 'Software Developer';
+        let companyName = '';
 
-        let cachedQueryVec = null;
-        const getSharedQueryVec = async () => {
-            if (!cachedQueryVec && queryText) {
-                cachedQueryVec = await embedQuery(queryText);
-            }
-            return cachedQueryVec;
-        };
-
-        // ── A. Job Description Context: Full Specification + Semantic Highlights ──
-        if (needsJob && reportDoc && reportDoc.jobDescription) {
+        // ── A. Target Job Description Context (Injected ONLY when needsJd is true) ──
+        if (needsJd && reportDoc && reportDoc.jobDescription && reportDoc.jobDescription.trim()) {
             const cleanJd = reportDoc.jobDescription
                 .replace(/<br\s*\/?>/gi, '\n')
                 .replace(/<\/?(p|div|li|h[1-6]|section|article)[^>]*>/gi, '\n')
@@ -136,43 +100,48 @@ async function loadDynamicContext({ userId, reportId = null, intentData, promptT
                 .replace(/\n{3,}/g, '\n\n')
                 .trim();
 
-            profile.targetRole = reportDoc.developerTitle || 'Software Developer';
+            profile.targetRole = targetRole;
             profile.currentJobDescription = cleanJd.slice(0, 300);
+
+            // Extract company name if detectable
+            const companyMatch = cleanJd.match(/(?:at|company|client|organization|team at)\s+([A-Z][A-Za-z0-9&.\s]{2,25})/i);
+            if (companyMatch) {
+                companyName = companyMatch[1].trim();
+            }
 
             if (cleanJd) {
                 snippetParts.push(`[Target Job Description & Role Specifications]:\n"""\nTarget Role: ${profile.targetRole}\n\n${cleanJd}\n"""`);
             }
+        }
 
-            // Vector Search Highlights for JD
-            try {
-                const rawJdChunks = parseJobDescription(cleanJd, profile.targetRole);
-                if (rawJdChunks.length > 0 && reportIdStr) {
-                    const enrichedJd = await getOrEmbedJdChunks(reportIdStr, rawJdChunks);
-                    const queryVec = await getSharedQueryVec();
-                    if (queryVec && Array.isArray(enrichedJd) && enrichedJd.length > 0) {
-                        const scoredJd = enrichedJd
-                            .filter(c => c && Array.isArray(c.embedding))
-                            .map(c => ({
-                                chunk: c,
-                                score: cosineSimilarity(queryVec, c.embedding)
-                            }))
-                            .sort((a, b) => b.score - a.score);
+        // ── B. Candidate Resume Context (Injected ONLY when needsResume is true) ──
+        if (needsResume && reportDoc) {
+            const resumeContent = reportDoc.generatedResumeHtml || reportDoc.resume;
+            if (resumeContent && typeof resumeContent === 'string' && resumeContent.trim()) {
+                const cleanFullResume = resumeContent
+                    .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '\n[Candidate Name]: $1\n')
+                    .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '\n[Resume Section: $1]\n')
+                    .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '\n  • Role/Entry: $1\n')
+                    .replace(/<li[^>]*>/gi, '\n    - ')
+                    .replace(/<\/li>/gi, '')
+                    .replace(/<p[^>]*>/gi, '\n')
+                    .replace(/<\/p>/gi, '\n')
+                    .replace(/<br\s*\/?>/gi, '\n')
+                    .replace(/<[^>]+>/g, '')
+                    .replace(/&amp;/g, '&')
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&nbsp;/g, ' ')
+                    .replace(/\n{3,}/g, '\n\n')
+                    .trim();
 
-                        const topJdMatches = scoredJd.slice(0, 3);
-                        if (topJdMatches.length > 0 && topJdMatches[0].score > 0.45) {
-                            const jdLines = topJdMatches.map((m, idx) =>
-                                `  [Highlight ${idx + 1} | ${m.chunk.type} (relevance: ${(m.score * 100).toFixed(1)}%)]:\n  "${m.chunk.text}"`
-                            ).join('\n\n');
-                            snippetParts.push(`[Relevant Job Description Semantic Highlights]:\n${jdLines}`);
-                        }
-                    }
+                if (cleanFullResume) {
+                    snippetParts.push(`[Candidate's Active Resume & Technical Profile]:\n"""\n${cleanFullResume}\n"""`);
                 }
-            } catch (err) {
-                console.warn('[DynamicContextLoader] JD RAG vector retrieval fallback:', err.message);
             }
         }
 
-        // ── B. Roadmap Context: Complete 14-Day Structure + Semantic Highlights ────
+        // ── C. Stored Roadmap (Injected ONLY when needsRoadmap is true) ────────
         if (needsRoadmap && reportDoc && Array.isArray(reportDoc.preparationPlan) && reportDoc.preparationPlan.length > 0) {
             const completedSet = new Set((reportDoc.completedTasks || []).map(t => typeof t === 'string' ? t.trim().toLowerCase() : ''));
             const totalTasks = reportDoc.preparationPlan.reduce((acc, d) => acc + (Array.isArray(d?.tasks) ? d.tasks.length : 0), 0);
@@ -190,93 +159,11 @@ async function loadDynamicContext({ userId, reportId = null, intentData, promptT
                 return `  • **${dayLabel}**: ${focus}\n${taskBullets}`;
             }).join('\n\n');
 
-            snippetParts.push(`[14-Day Structured Preparation Roadmap (${completedCount}/${totalTasks} Tasks Completed — ${progressPercent}%)]:\n${roadmapLines}`);
-
-            // Vector Search Highlights for Roadmap
-            try {
-                const rawRoadmapChunks = parseRoadmap(reportDoc.preparationPlan, reportDoc.completedTasks || []);
-                if (rawRoadmapChunks.length > 0 && reportIdStr) {
-                    const enrichedRoadmap = await getOrEmbedRoadmapChunks(reportIdStr, rawRoadmapChunks);
-                    const queryVec = await getSharedQueryVec();
-                    if (queryVec && Array.isArray(enrichedRoadmap) && enrichedRoadmap.length > 0) {
-                        const scoredRoadmap = enrichedRoadmap
-                            .filter(c => c && Array.isArray(c.embedding))
-                            .map(c => ({
-                                chunk: c,
-                                score: cosineSimilarity(queryVec, c.embedding)
-                            }))
-                            .sort((a, b) => b.score - a.score);
-
-                        const topRoadmapMatches = scoredRoadmap.slice(0, 3);
-                        if (topRoadmapMatches.length > 0 && topRoadmapMatches[0].score > 0.45) {
-                            const matchLines = topRoadmapMatches.map((m, idx) =>
-                                `  [Highlight ${idx + 1} | ${m.chunk.type} (relevance: ${(m.score * 100).toFixed(1)}%)]:\n  "${m.chunk.text}"`
-                            ).join('\n\n');
-                            snippetParts.push(`[Relevant Roadmap Semantic Highlights]:\n${matchLines}`);
-                        }
-                    }
-                }
-            } catch (err) {
-                console.warn('[DynamicContextLoader] Roadmap RAG vector retrieval fallback:', err.message);
-            }
+            snippetParts.push(`[Stored 14-Day Preparation Roadmap (${completedCount}/${totalTasks} Tasks Completed — ${progressPercent}%)]:\n${roadmapLines}`);
         }
 
-        // ── C. Resume Context: Full Clean Document + Semantic Highlights ──────────
-        if (needsResume && reportDoc) {
-            const resumeContent = reportDoc.generatedResumeHtml || reportDoc.resume;
-            if (resumeContent && typeof resumeContent === 'string' && resumeContent.trim()) {
-                const cleanFullResume = resumeContent
-                    .replace(/<h[1-6][^>]*>/gi, '\n### ')
-                    .replace(/<\/h[1-6]>/gi, '\n')
-                    .replace(/<li[^>]*>/gi, '\n• ')
-                    .replace(/<\/li>/gi, '')
-                    .replace(/<p[^>]*>/gi, '\n')
-                    .replace(/<\/p>/gi, '\n')
-                    .replace(/<br\s*\/?>/gi, '\n')
-                    .replace(/<[^>]+>/g, '')
-                    .replace(/&amp;/g, '&')
-                    .replace(/&lt;/g, '<')
-                    .replace(/&gt;/g, '>')
-                    .replace(/&nbsp;/g, ' ')
-                    .replace(/\n{3,}/g, '\n\n')
-                    .trim();
-
-                if (cleanFullResume) {
-                    snippetParts.push(`[Candidate's Active Resume Document Structure]:\n"""\n${cleanFullResume}\n"""`);
-                }
-
-                // Vector Search Highlights for Resume
-                try {
-                    const rawChunks = parseResumeHtml(resumeContent);
-                    if (rawChunks.length > 0 && reportIdStr) {
-                        const enrichedChunks = await getOrEmbedChunks(reportIdStr, rawChunks);
-                        const queryVec = await getSharedQueryVec();
-                        if (queryVec && Array.isArray(enrichedChunks) && enrichedChunks.length > 0) {
-                            const scoredChunks = enrichedChunks
-                                .filter(c => c && Array.isArray(c.embedding))
-                                .map(c => ({
-                                    chunk: c,
-                                    score: cosineSimilarity(queryVec, c.embedding)
-                                }))
-                                .sort((a, b) => b.score - a.score);
-
-                            const topMatches = scoredChunks.slice(0, 3);
-                            if (topMatches.length > 0) {
-                                const chunkLines = topMatches.map((m, idx) =>
-                                    `  [Highlight ${idx + 1} | ${m.chunk.type} / ${m.chunk.section} (relevance: ${(m.score * 100).toFixed(1)}%)]:\n  "${m.chunk.text}"`
-                                ).join('\n\n');
-                                snippetParts.push(`[Relevant Resume Semantic Highlights]:\n${chunkLines}`);
-                            }
-                        }
-                    }
-                } catch (ragErr) {
-                    console.warn('[DynamicContextLoader] Resume RAG vector retrieval fallback:', ragErr.message);
-                }
-            }
-        }
-
-        // ── D. User Profile Context ───────────────────────────────────────────────
-        if (needsUser && userDoc) {
+        // ── D. Candidate User Profile Context ──────────────────────────────────
+        if (userDoc && (needsResume || needsJd)) {
             const cp = userDoc.careerProfile || {};
             profile.candidateName = userDoc.name || 'Candidate';
             profile.experienceLevel = cp.experienceLevel || 'Mid-Level';
@@ -295,20 +182,74 @@ async function loadDynamicContext({ userId, reportId = null, intentData, promptT
             candidateContextSnippet,
             recentHistory,
             profile: Object.keys(profile).length > 0 ? profile : null,
-            dbCallsAvoided: false
+            targetRole,
+            companyName,
+            dbCallsAvoided: !needsResume && !needsJd && !needsRoadmap
         };
     } catch (err) {
-        console.error('[DynamicContextLoader] Selective load failed:', err.message);
+        console.error('[DynamicContextLoader] Context load failed:', err.message);
         const recentHistory = historyLimit > 0 ? await getRecentChatHistory(userId, historyLimit) : [];
         return {
             candidateContextSnippet: '',
             recentHistory,
             profile: null,
+            targetRole: 'Software Developer',
+            companyName: '',
             dbCallsAvoided: false
         };
     }
 }
 
+/**
+ * On-Demand Stored Preparation Roadmap Fetcher (Used when LLM calls "roadmap" tool)
+ */
+async function fetchStoredRoadmap(reportId, userId) {
+    try {
+        if (!mongoose.connection.readyState) return null;
+        const userObjectId = (userId && mongoose.Types.ObjectId.isValid(userId)) ? new mongoose.Types.ObjectId(userId) : userId;
+
+        let query = {};
+        if (reportId && mongoose.Types.ObjectId.isValid(reportId)) {
+            query._id = new mongoose.Types.ObjectId(reportId);
+        } else if (userObjectId) {
+            query.$or = [{ user: userObjectId }, { user: userId.toString() }];
+        } else {
+            return null;
+        }
+
+        const report = await interviewReportModel.findOne(query)
+            .select('preparationPlan completedTasks developerTitle matchScore skillGaps')
+            .sort({ createdAt: -1 })
+            .lean();
+
+        if (!report || !Array.isArray(report.preparationPlan) || report.preparationPlan.length === 0) {
+            return null;
+        }
+
+        const completedSet = new Set((report.completedTasks || []).map(t => typeof t === 'string' ? t.trim().toLowerCase() : ''));
+        const totalTasks = report.preparationPlan.reduce((acc, d) => acc + (Array.isArray(d?.tasks) ? d.tasks.length : 0), 0);
+        const completedCount = completedSet.size;
+        const progressPercent = totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0;
+
+        const roadmapLines = report.preparationPlan.map((d, idx) => {
+            const dayLabel = d.day || `Day ${idx + 1}`;
+            const focus = d.focus || 'Technical Milestone';
+            const tasks = Array.isArray(d.tasks) ? d.tasks : [];
+            const taskBullets = tasks.map(t => {
+                const isDone = completedSet.has(t.trim().toLowerCase());
+                return `    ${isDone ? '[✓ Done]' : '[○ Pending]'} ${t}`;
+            }).join('\n');
+            return `  • **${dayLabel}**: ${focus}\n${taskBullets}`;
+        }).join('\n\n');
+
+        return `[Stored 14-Day Preparation Roadmap (${completedCount}/${totalTasks} Tasks Completed — ${progressPercent}%)]:\n${roadmapLines}`;
+    } catch (e) {
+        console.warn('[DynamicContextLoader] fetchStoredRoadmap notice:', e.message);
+        return null;
+    }
+}
+
 module.exports = {
-    loadDynamicContext
+    loadDynamicContext,
+    fetchStoredRoadmap
 };

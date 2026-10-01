@@ -83,6 +83,7 @@ const Register = () => {
         setError('')
         try {
             await handleVerifyOtp({ email, otp })
+            sessionStorage.setItem('kivi_just_registered', 'true')
             navigate('/')
         } catch (err) {
             setError(err?.response?.data?.message || err?.message || 'Invalid OTP code.')

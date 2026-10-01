@@ -10,6 +10,7 @@ import {
     clearAssistantHistoryApi 
 } from '../../Interview/services/interview.api';
 import { parseAndSanitizeSnippet } from '../../Interview/utils/sanitizeResumeHtml';
+import { MultiToolStatusStrip, ToolResourceCard } from '../../../UI';
 import './KiviAiAssistant.scss';
 
 // Configure marked options with custom link renderer for safe external links
@@ -158,15 +159,10 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                     ) : (
                         <div className="msg-content-wrapper">
                             {msg.isStreaming && msg.searchStatus && (
-                                <div className="kivi-searching-card mini">
-                                    <div className="searching-header">
-                                        <span className="searching-radar-icon mini">
-                                            <span className="radar-ping"></span>
-                                            <span className="radar-core">🔍</span>
-                                        </span>
-                                        <span className="searching-title">{msg.searchStatus.message || 'Grounded in verified search resources'}</span>
-                                    </div>
-                                </div>
+                                <MultiToolStatusStrip
+                                    activeTools={msg.searchStatus.tools || []}
+                                    statusMessage={msg.searchStatus.message}
+                                />
                             )}
                             <div
                                 className="msg-markdown-content"
@@ -179,31 +175,18 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                                 <div className="verified-resources-panel">
                                     <div className="resources-title">
                                         <span>🔗</span>
-                                        <span>Verified Resources & Links</span>
+                                        <span>Verified Resources & Learning Links</span>
                                     </div>
                                     <div className="resources-list-container">
-                                        {msg.resources.map((res, rIdx) => {
-                                            const icon = res.type === 'github' ? '🐙' : res.type === 'leetcode' ? '💡' : res.type === 'video' ? '▶️' : res.type === 'doc' ? '📖' : '🌐';
-                                            const typeLabel = res.type === 'github' ? 'GitHub' : res.type === 'leetcode' ? 'LeetCode' : res.type === 'video' ? 'Video' : res.type === 'doc' ? 'Docs' : 'Web';
-                                            return (
-                                                <a
-                                                    key={rIdx}
-                                                    href={res.url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="resource-link-item"
-                                                >
-                                                    <div className="resource-item-header">
-                                                        <span className="resource-icon">{icon}</span>
-                                                        <span className="resource-item-title">{res.title}</span>
-                                                        <span className="resource-type-badge">{typeLabel}</span>
-                                                    </div>
-                                                    {res.snippet && (
-                                                        <p className="resource-snippet-preview">{res.snippet}</p>
-                                                    )}
-                                                </a>
-                                            );
-                                        })}
+                                        {msg.resources.map((res, rIdx) => (
+                                            <ToolResourceCard
+                                                key={`${res.url}-${rIdx}`}
+                                                title={res.title}
+                                                url={res.url}
+                                                snippet={res.snippet}
+                                                type={res.type}
+                                            />
+                                        ))}
                                     </div>
                                 </div>
                             )}
