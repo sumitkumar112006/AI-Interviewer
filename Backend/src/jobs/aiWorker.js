@@ -287,7 +287,7 @@ function initAiWorker() {
 
                 // 5. REWRITE RESUME SECTION
                 case 'rewrite_section': {
-                    const { selectedText, instruction, action, message, plan, currentResumeHtml } = jobDoc.input;
+                    const { selectedText, instruction, action, message, plan, currentResumeHtml, jobDescription, jobRole } = jobDoc.input;
 
                     const aiResponse = await rewriteResumeSection({
                         selectedText,
@@ -295,7 +295,9 @@ function initAiWorker() {
                         action,
                         message,
                         plan: plan || 'free',
-                        currentResumeHtml: currentResumeHtml || ''
+                        currentResumeHtml: currentResumeHtml || '',
+                        jobDescription: jobDescription || '',
+                        jobRole: jobRole || ''
                     });
 
                     jobDoc.result = {

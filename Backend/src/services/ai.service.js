@@ -928,7 +928,7 @@ async function generateInterviewReport({
     const candidateSummary = selfDescription ?? selfDescribe
     const roleDescription = jobDescription ?? jobDescribe
 
-    const systemPrompt = `You are an expert AI interview coach, You have 10+ years of experience as HR Manager in IT industry.You MUST respond ONLY with valid JSON — no markdown, no explanation, no commentary. Never wrap the JSON in code fences.`
+    const systemPrompt = `You are an expert AI interview coach, You have 10+ years of experience as HR Manager in IT/Management/Medical industry.You MUST respond ONLY with valid JSON — no markdown, no explanation, no commentary. Never wrap the JSON in code fences.`
 
     const userPrompt = `
 Generate an interview report in valid JSON only.
@@ -1040,7 +1040,7 @@ Job Description: ${roleDescription}
 
 
 async function generateResumeHtml({ resume, selfDescription, jobDescription, plan = "free" }) {
-    const systemPrompt = `You are an expert resume writer and ATS optimization specialist. You MUST respond ONLY with valid JSON — no markdown code fences, no commentary. The JSON must have exactly one top-level key: "html", whose value is a complete HTML string for a professional, single-column A4 resume.`
+    const systemPrompt = `You are an expert resume writer and ATS optimization specialist. You MUST respond ONLY with valid JSON — no markdown code fences, no commentary. The JSON must have exactly one top-level key: "html", whose value is a complete HTML string for a professional, single-column A4 resume, Always User you strong reasoning and capabilities to generate  the Resume content Your generated Resume content must be  optimized for  ATS(Applicant Tracking Systems) and do not look like AI generated always track all ke points from Job description and try to add them in resume with proof of work with projects bullet points and in experience sections`
 
     const userPrompt = `
 Generate a professional, modern, ATS-optimized  resume in valid JSON only.
@@ -1118,7 +1118,7 @@ CRITICAL FORMATTING & ATS RULES:
    - Never wrap URLs in escaped quotes like href="\"https://...\"" or backslashes. Output standard URLs: <a href="https://github.com/...">GitHub</a>.
 
 3. ATS KEYWORD & JOB ALIGNMENT:
-   - Deeply analyze the provided Job Description for target skills, technologies, frameworks, and domain keywords.
+   - Deeply analyze the provided Job Description for target skills, technologies, frameworks, and domain keywords, Role based keywords skills and try to add them with proper proof you can show them in their projects if possible.
    - Match and highlight transferable technical competencies and relevant project/experience evidence provided by the candidate.
 
 Candidate details:
@@ -1263,58 +1263,29 @@ function stripHtmlToCleanText(html = '') {
 /**
  * AI Resume Chat Copilot & Section Rewriter
  */
-async function rewriteResumeSection({ selectedText = "", instruction = "", action = "enhance", message = "", plan = "free", currentResumeHtml = "" }) {
+async function rewriteResumeSection({ selectedText = "", instruction = "", action = "enhance", message = "", plan = "free", currentResumeHtml = "", jobDescription = "", jobRole = "" }) {
     const promptText = message.trim() || instruction.trim();
-    const lowerPrompt = promptText.toLowerCase();
 
-    // Detect if user is asking about the project, platform, jobs, or general info
-    const isAskingAboutProject = (
-        lowerPrompt.includes("about project") ||
-        lowerPrompt.includes("about app") ||
-        lowerPrompt.includes("about application") ||
-        lowerPrompt.includes("what is this") ||
-        lowerPrompt.includes("how this project works") ||
-        lowerPrompt.includes("how to use") ||
-        lowerPrompt.includes("what can you do") ||
-        lowerPrompt.includes("features of this app") ||
-        lowerPrompt.includes("kivi-ai") ||
-        lowerPrompt.includes("who created") ||
-        lowerPrompt.includes("what is kivi") ||
-        lowerPrompt.includes("tell me about") ||
-        lowerPrompt.includes("how does this work")
-    );
+    const systemPrompt = `You are an expert AI Resume Copilot & Career Coach (KIVI AI). You help candidates refine their resume content, align with Job Descriptions (JD), and answer career questions with high precision.
 
-    const isGeneralInfoOrJobQuery = isAskingAboutProject || (
-        !selectedText.trim() && (
-            lowerPrompt.includes("job") ||
-            lowerPrompt.includes("career") ||
-            lowerPrompt.includes("hiring") ||
-            lowerPrompt.includes("interview") ||
-            lowerPrompt.includes("salary") ||
-            lowerPrompt.includes("recommend") ||
-            lowerPrompt.includes("help") ||
-            lowerPrompt.includes("hi") ||
-            lowerPrompt.includes("hello") ||
-            lowerPrompt.includes("hey") ||
-            lowerPrompt.includes("who are you") ||
-            lowerPrompt.includes("what is") ||
-            lowerPrompt.includes("how to")
-        ) && !lowerPrompt.includes("rewrite") && !lowerPrompt.includes("enhance") && !lowerPrompt.includes("shorten") && !lowerPrompt.includes("summary") && !lowerPrompt.includes("update") && !lowerPrompt.includes("bullet") && !lowerPrompt.includes("line")
-    );
+You have access to the candidate's FULL RESUME and TARGET JOB DESCRIPTION (JD) provided in the prompt.
 
-    let systemPrompt = `You are an expert AI Resume Copilot & Career Coach (KIVI AI). You help candidates refine their resume content and answer resume/career questions with high precision.
-
-You have access to the candidate's FULL RESUME content provided in the prompt.
-When the user asks to rewrite, enhance, shorten, update, or replace any line, bullet point, or section (e.g. "update second line of devchat", "make my summary more impactful", "enhance bullet 1 of my current job"):
-1. Locate the EXACT original text in the candidate's resume that the user is referring to. Set this in "targetText".
-2. Generate the improved, high-impact replacement HTML in "suggestedSnippet".
-   - FORMATTING REQUIREMENT: "suggestedSnippet" MUST be formatted in valid, clean, semantic HTML matching TipTap editor typography:
-     - For Skills: "<p><strong>Category:</strong> Item 1, Item 2, Item 3</p>" or "<li><strong>Category:</strong> Item 1, Item 2</li>"
-     - For Role/Experience Titles: "<h3><strong>Job Title</strong> — <em>Company Name</em> <span style=\"float: right;\">2024 – Present</span></h3>"
-     - For Bullet Points: "<li>Engineered high-performance microservices reducing latency by 45%...</li>" or high-impact text with <strong> metrics.
-     - For Summary: "<p>Results-oriented Software Engineer with 4+ years experience...</p>"
-     - For Hyperlinks: "<a href=\"https://...\">Link Name</a>"
-3. Provide a friendly, concise explanation of your improvement in "replyText" (1-2 sentences) in clean markdown.
+### Rewriting & Optimization Rules:
+When the user asks to rewrite, enhance, shorten, update, or replace any line, bullet point, or section (e.g. "update second line of my project", "make my summary more impactful", "enhance bullet 1 of my current job"):
+1. **Analyze Specific Target & JD Alignment:**
+   - Map skills and gaps between the candidate's resume and the Job Description.
+   - Integrate relevant keywords, role-specific technologies, and industry-standard terminology.
+   - Use the Google X-Y-Z formula: "Accomplished [X], as measured by [Y], by doing [Z]".
+2. **Locate Target:** Set the EXACT original text in the candidate's resume in "targetText".
+3. **Generate "suggestedSnippet" (Valid Semantic HTML for TipTap):**
+   - **Summary:** "<p>Results-oriented Software Engineer with 2+ years experience building scalable full-stack applications...</p>"
+   - **Bullet Points:** "<li>Engineered high-performance REST APIs with Node.js and Redis, reducing p99 latency by 35%...</li>"
+   - **Experience / Role Titles:** "<h3><strong>Job Title</strong> — <em>Company Name</em> <span style=\"float: right;\">2024 – Present</span></h3>"
+   - **Skills:** "<p><strong>Languages:</strong> JavaScript, TypeScript, Python, <strong>Go (NEW)</strong></p>"
+   - **Links:** "<a href=\"https://github.com/...\">GitHub</a>"
+   - **A4 Constraint:** Keep bullets concise (1–2 lines) and preserve clean A4 layout.
+4. **New Skills Handling:** When introducing missing skills required by the JD that the candidate may need to learn, append "(NEW)" (e.g. "<strong>Docker (NEW)</strong>").
+5. **Concise User Explanation:** Provide a 1–2 sentence friendly explanation in "replyText" in clean markdown highlighting why the change strengthens their application.
 
 If the user highlighted text manually, "targetText" should be that highlighted text.
 If the user didn't highlight text, identify the exact corresponding line or sentence from the provided resume as "targetText".
@@ -1329,31 +1300,6 @@ Rules:
 - Return ONLY valid JSON with keys "replyText", "targetText", and "suggestedSnippet".
 - Never wrap JSON in code fences.`;
 
-    if (isAskingAboutProject) {
-        systemPrompt = `You are KIVI AI, the intelligent assistant embedded inside KIVI-AI Platform (AI Technical Interviewer & ATS Resume Studio).
-
-About KIVI-AI Platform:
-- Purpose: KIVI-AI is an end-to-end AI-powered career platform designed to help software engineers prepare for technical interviews and generate ATS-friendly resumes and also provide detailed reports on their performance, And Based in thier resume provide them real Jobs and Applications.
-- Key Features:
-  1. AI Technical Mock Interviews: Conducts real-time, interactive technical interview assessments covering frontend, backend, system design, and coding.
-  2. Detailed Interview Reports: Provides granular performance analytics, technical scoring, strengths, and targeted improvement plans.
-  3. AI ATS Resume Studio: Automatically transforms candidate interview performance and self-descriptions into professional, ATS-optimized A4 resumes matching job requirements.
-  4. Live Sheet Editor & PDF Export: Allows candidates to edit resume content directly on the simulated A4 page in the browser and export clean 1:1 PDFs.
-  5. KIVI AI Assistant: Floating AI copilot (you!) that assists with live text selection re-writing, bullet point enhancement, grammar fixes, and platform support.
-
-Your Task:
-When the user asks about the project, jobs, or application, provide a friendly, helpful, and concise overview explaining what the application does and how its features help candidates succeed.
-
-Respond in valid JSON only with keys:
-1. "replyText": Clear, enthusiastic, and informative answer about KIVI-AI Platform and career tools (2-4 sentences max).
-2. "targetText": null
-3. "suggestedSnippet": null
-
-Rules:
-- Return ONLY valid JSON with keys "replyText", "targetText", and "suggestedSnippet".
-- Never wrap JSON in code fences.`;
-    }
-
     let actionGuide = "Make the text snippet more impactful, professional, and results-oriented with strong action verbs.";
     if (action === "shorten") {
         actionGuide = "Shorten the text snippet to be concise and punchy while keeping key achievements intact.";
@@ -1366,6 +1312,8 @@ Rules:
     const cleanResume = stripHtmlToCleanText(currentResumeHtml);
 
     const userPrompt = `
+${jobRole ? `TARGET ROLE: ${jobRole}\n` : ''}
+${jobDescription ? `TARGET JOB DESCRIPTION:\n"""\n${jobDescription.trim()}\n"""\n` : ''}
 ${cleanResume ? `CURRENT RESUME CONTENT:\n"""\n${cleanResume}\n"""\n` : ''}
 ${selectedText ? `HIGHLIGHTED TEXT:\n"${selectedText.trim()}"\n` : ''}
 USER QUERY / INSTRUCTION:
@@ -1395,7 +1343,7 @@ Generate response JSON with "replyText", "targetText", and "suggestedSnippet":
             ? parsed.targetText.trim()
             : (selectedText ? selectedText.trim() : null);
 
-        const snippetResult = (isGeneralInfoOrJobQuery || !parsed.suggestedSnippet || parsed.suggestedSnippet === "null")
+        const snippetResult = (!parsed.suggestedSnippet || parsed.suggestedSnippet === "null")
             ? null
             : parsed.suggestedSnippet.trim();
 
@@ -1406,11 +1354,9 @@ Generate response JSON with "replyText", "targetText", and "suggestedSnippet":
         };
     } catch (err) {
         return {
-            replyText: isAskingAboutProject
-                ? "KIVI-AI is an end-to-end AI platform featuring AI Mock Interviews, detailed technical reports, and an automated ATS Resume Studio with live 1:1 A4 PDF export!"
-                : "Here is information to assist you.",
+            replyText: "Here is information to assist you.",
             targetText: selectedText ? selectedText.trim() : null,
-            suggestedSnippet: (isGeneralInfoOrJobQuery || !selectedText) ? null : selectedText.trim()
+            suggestedSnippet: selectedText ? selectedText.trim() : null
         };
     }
 }

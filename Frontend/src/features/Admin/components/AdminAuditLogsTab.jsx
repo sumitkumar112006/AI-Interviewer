@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { getAdminAuditLogs } from '../services/admin.api';
+import { FileClock, ArrowRight } from 'lucide-react';
+import AdminPagination from './AdminPagination';
 
 export const AdminAuditLogsTab = () => {
   const [events, setEvents] = useState([]);
@@ -52,8 +54,8 @@ export const AdminAuditLogsTab = () => {
             <option value="CANCELLED">CANCELLED</option>
           </select>
         </div>
-        <div style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: '13px' }}>
-          Showing {events.length} of {pagination.total} audit records
+        <div className="toolbar-counter">
+          Showing <strong>{events.length}</strong> of <strong>{pagination.total}</strong> audit records
         </div>
       </div>
 
@@ -63,29 +65,29 @@ export const AdminAuditLogsTab = () => {
           <thead>
             <tr>
               <th>Timestamp</th>
-              <th>User</th>
-              <th>Event Type</th>
-              <th>Transition</th>
-              <th>Payment Reference</th>
-              <th>Actor</th>
+              <th>User Account</th>
+              <th>State Transition Event</th>
+              <th>Tier Transition</th>
+              <th>Settled Reference</th>
+              <th>Actor Scope</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="6" style={{ textAlign: 'center', padding: '30px' }}>Loading audit logs...</td>
+                <td colSpan="6" className="empty-table-cell">Loading system audit trail...</td>
               </tr>
             ) : events.length > 0 ? (
               events.map((e) => (
                 <tr key={e._id}>
-                  <td style={{ fontSize: '12px', color: '#cbd5e1' }}>
+                  <td className="timestamp-cell">
                     {new Date(e.createdAt).toLocaleString('en-IN', {
                       day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
                     })}
                   </td>
                   <td>
-                    <div><strong>{e.userId?.username || 'Unknown'}</strong></div>
-                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>{e.userId?.email || '—'}</div>
+                    <div className="user-name">{e.userId?.username || 'Unknown User'}</div>
+                    <div className="user-email">{e.userId?.email || '—'}</div>
                   </td>
                   <td>
                     <span className={`badge-pill ${getEventBadgeClass(e.eventType)}`}>
@@ -93,24 +95,24 @@ export const AdminAuditLogsTab = () => {
                     </span>
                   </td>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                    <div className="transition-flow">
                       <span className={`badge-pill ${e.fromPlan || 'free'}`}>{(e.fromPlan || 'FREE').toUpperCase()}</span>
-                      <span style={{ color: '#94a3b8' }}>→</span>
+                      <ArrowRight size={12} className="flow-arrow" />
                       <span className={`badge-pill ${e.toPlan || 'pro'}`}>{(e.toPlan || 'PRO').toUpperCase()}</span>
                     </div>
                   </td>
                   <td>
                     {e.paymentOrderId ? (
-                      <div style={{ fontSize: '12px' }}>
-                        <strong>₹{((e.paymentOrderId.amount || 0) / 100).toFixed(2)}</strong>
-                        <div style={{ fontSize: '11px', color: '#64748b' }}>{e.paymentOrderId.gatewayOrderId || 'Gateway Order'}</div>
+                      <div>
+                        <strong className="mono-code">₹{((e.paymentOrderId.amount || 0) / 100).toFixed(2)}</strong>
+                        <div className="cell-sub">{e.paymentOrderId.gatewayOrderId || 'Gateway Settlement'}</div>
                       </div>
                     ) : (
-                      <span style={{ color: '#64748b', fontSize: '12px' }}>N/A (System / Admin)</span>
+                      <span className="cell-sub">Direct Admin Action</span>
                     )}
                   </td>
                   <td>
-                    <span style={{ fontSize: '12px', color: '#818cf8', fontWeight: 600 }}>
+                    <span className="mono-badge">
                       {e.actorType || 'USER'}
                     </span>
                   </td>
@@ -118,8 +120,8 @@ export const AdminAuditLogsTab = () => {
               ))
             ) : (
               <tr>
-                <td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
-                  No audit logs found.
+                <td colSpan="6" className="empty-table-cell">
+                  No audit logs recorded for this filter.
                 </td>
               </tr>
             )}
@@ -128,31 +130,14 @@ export const AdminAuditLogsTab = () => {
       </div>
 
       {/* Pagination Controls */}
-      {pagination.pages > 1 && (
-        <div className="pagination-wrapper" style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '20px' }}>
-          <button
-            type="button"
-            disabled={page <= 1}
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            className="tab-btn"
-            style={{ padding: '6px 14px' }}
-          >
-            ← Previous
-          </button>
-          <span style={{ display: 'flex', alignItems: 'center', color: '#94a3b8', fontSize: '14px' }}>
-            Page {page} of {pagination.pages}
-          </span>
-          <button
-            type="button"
-            disabled={page >= pagination.pages}
-            onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
-            className="tab-btn"
-            style={{ padding: '6px 14px' }}
-          >
-            Next →
-          </button>
-        </div>
-      )}
+      <AdminPagination
+        page={page}
+        pages={pagination.pages}
+        total={pagination.total}
+        limit={pagination.limit || 25}
+        loading={loading}
+        onPageChange={(newPage) => setPage(newPage)}
+      />
     </div>
   );
 };

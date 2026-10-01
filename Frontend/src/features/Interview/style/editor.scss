@@ -1463,3 +1463,159 @@ $text-muted:     var(--text-secondary, #bac1b8);
     }
 }
 
+// ── Floating AI Diff Banner & In-Place Highlight ──────────────────────────────
+.kivi-floating-diff-banner {
+    position: sticky;
+    top: 52px;
+    z-index: 45;
+    margin: 0.75rem auto;
+    width: fit-content;
+    max-width: 90%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    padding: 0.55rem 1rem;
+    background: rgba(18, 21, 19, 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    border-radius: 9999px;
+    box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4), 0 0 16px rgba(59, 130, 246, 0.2);
+    animation: slideDownPlayer 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+    .light-theme &,
+    [data-theme="light"] & {
+        background: rgba(255, 255, 255, 0.95);
+        border-color: rgba(37, 99, 235, 0.35);
+        box-shadow: 0 8px 24px -4px rgba(37, 99, 235, 0.15), 0 0 12px rgba(37, 99, 235, 0.1);
+    }
+
+    .diff-banner-left {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+
+        .diff-sparkle-icon {
+            color: #3b82f6;
+            animation: audioPulse 2s infinite ease-in-out;
+        }
+
+        .diff-banner-title {
+            font-size: 0.825rem;
+            font-weight: 600;
+            color: #f3f0e9;
+            letter-spacing: -0.01em;
+
+            .light-theme &,
+            [data-theme="light"] & {
+                color: #1e293b;
+            }
+        }
+    }
+
+    .diff-banner-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+
+        button {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.32rem 0.75rem;
+            font-size: 0.775rem;
+            font-weight: 600;
+            border-radius: 9999px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border: none;
+        }
+
+        .diff-reject-btn {
+            background: rgba(239, 68, 68, 0.12);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.25);
+
+            &:hover {
+                background: rgba(239, 68, 68, 0.25);
+                color: #ef4444;
+            }
+        }
+
+        .diff-accept-btn {
+            background: #2563eb;
+            color: #ffffff;
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+
+            &:hover {
+                background: #1d4ed8;
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(37, 99, 235, 0.5);
+            }
+        }
+    }
+}
+
+/* ── TipTap In-Canvas Inline Diff Nodes (Google Docs / Gemini Suggestion Mode) ── */
+.tiptap-prose,
+.ProseMirror,
+.tiptap-a4-page {
+    del.kivi-diff-del,
+    s.kivi-diff-del,
+    strike.kivi-diff-del,
+    span.kivi-diff-del,
+    .kivi-diff-del {
+        text-decoration: line-through !important;
+        text-decoration-color: #ef4444 !important;
+        text-decoration-thickness: 1.5px !important;
+        opacity: 0.45 !important;
+        color: #dc2626 !important;
+        background: rgba(239, 68, 68, 0.08) !important;
+        padding: 1px 4px !important;
+        border-radius: 3px !important;
+        margin-right: 4px !important;
+        display: inline !important;
+        cursor: default !important;
+        user-select: text !important;
+        transition: opacity 0.2s ease;
+
+        &:hover {
+            opacity: 0.75 !important;
+        }
+    }
+
+    ins.kivi-diff-ins,
+    span.kivi-diff-ins,
+    .kivi-diff-ins {
+        text-decoration: none !important;
+        color: #047857 !important;
+        background: rgba(16, 185, 129, 0.12) !important;
+        border-bottom: 2px solid #10b981 !important;
+        padding: 1px 4px !important;
+        border-radius: 3px !important;
+        font-weight: 500 !important;
+        opacity: 1 !important;
+        user-select: text !important;
+        animation: diffGlowPulse 2.5s infinite alternate ease-in-out;
+    }
+
+    .kivi-diff-ins-block {
+        background: rgba(16, 185, 129, 0.08) !important;
+        border-left: 3px solid #10b981 !important;
+        padding: 4px 8px !important;
+        border-radius: 0 4px 4px 0 !important;
+        margin: 4px 0 !important;
+    }
+}
+
+@keyframes diffGlowPulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.2);
+    }
+    100% {
+        box-shadow: 0 0 6px 2px rgba(16, 185, 129, 0.35);
+    }
+}
+
+

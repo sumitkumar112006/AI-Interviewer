@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { getAdminPayments } from '../services/admin.api';
-import { TrendingUp, CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react';
+import { CreditCard, CheckCircle2, AlertCircle, RotateCcw, Filter, Search } from 'lucide-react';
+import AdminPagination from './AdminPagination';
 
 export const AdminPaymentsTab = () => {
   const [payments, setPayments] = useState([]);
@@ -33,39 +34,51 @@ export const AdminPaymentsTab = () => {
   return (
     <div className="admin-payments-section">
       {/* Revenue Summary Cards */}
-      <div className="stats-cards-grid" style={{ marginBottom: '24px' }}>
+      <div className="stats-cards-grid">
         <div className="stat-card">
           <div className="stat-header">
-            <span className="stat-title">Total Revenue</span>
+            <span className="stat-title">Settled Revenue</span>
+            <div className="stat-icon-wrapper" style={{ background: 'rgba(52, 211, 153, 0.12)', color: '#34d399' }}>
+              <CreditCard size={17} />
+            </div>
           </div>
           <div className="stat-value" style={{ color: '#34d399' }}>
             ₹{summary ? summary.totalRevenueRupees : '0.00'}
           </div>
-          <div className="stat-sub">From Settled Transactions</div>
+          <div className="stat-sub">INR Gross Collected</div>
         </div>
 
         <div className="stat-card">
           <div className="stat-header">
-            <span className="stat-title">Successful Payments</span>
+            <span className="stat-title">Completed Orders</span>
+            <div className="stat-icon-wrapper" style={{ background: 'rgba(99, 102, 241, 0.12)', color: '#818cf8' }}>
+              <CheckCircle2 size={17} />
+            </div>
           </div>
           <div className="stat-value">{summary?.successCount || 0}</div>
-          <div className="stat-sub">Captured & Verified</div>
+          <div className="stat-sub">Verified Transactions</div>
         </div>
 
         <div className="stat-card">
           <div className="stat-header">
-            <span className="stat-title">Failed Payments</span>
+            <span className="stat-title">Failed / Abandoned</span>
+            <div className="stat-icon-wrapper" style={{ background: 'rgba(239, 68, 68, 0.12)', color: '#f87171' }}>
+              <AlertCircle size={17} />
+            </div>
           </div>
           <div className="stat-value" style={{ color: '#f87171' }}>{summary?.failedCount || 0}</div>
-          <div className="stat-sub">Gateway Abandoned/Declined</div>
+          <div className="stat-sub">Gateway Drops</div>
         </div>
 
         <div className="stat-card">
           <div className="stat-header">
             <span className="stat-title">Refunds</span>
+            <div className="stat-icon-wrapper" style={{ background: 'rgba(251, 191, 36, 0.12)', color: '#fbbf24' }}>
+              <RotateCcw size={17} />
+            </div>
           </div>
           <div className="stat-value">{summary?.refundedCount || 0}</div>
-          <div className="stat-sub">Processed Refunds</div>
+          <div className="stat-sub">Reversals</div>
         </div>
       </div>
 
@@ -80,8 +93,8 @@ export const AdminPaymentsTab = () => {
             <option value="PARTIALLY_REFUNDED">Partially Refunded</option>
           </select>
         </div>
-        <div style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: '13px' }}>
-          Showing {payments.length} of {pagination.total} transactions
+        <div className="toolbar-counter">
+          Showing <strong>{payments.length}</strong> of <strong>{pagination.total}</strong> records
         </div>
       </div>
 
@@ -90,44 +103,44 @@ export const AdminPaymentsTab = () => {
         <table>
           <thead>
             <tr>
-              <th>Payment ID / Gateway</th>
+              <th>Transaction Reference</th>
               <th>Customer</th>
-              <th>Plan & Cycle</th>
-              <th>Amount</th>
-              <th>Method</th>
+              <th>Tier & Cycle</th>
+              <th>Settled Amount</th>
+              <th>Payment Rail</th>
               <th>Status</th>
-              <th>Date</th>
+              <th>Timestamp</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="7" style={{ textAlign: 'center', padding: '30px' }}>Loading payments...</td>
+                <td colSpan="7" className="empty-table-cell">Loading payments ledger...</td>
               </tr>
             ) : payments.length > 0 ? (
               payments.map((p) => (
                 <tr key={p._id}>
                   <td>
-                    <strong>{p.gatewayPaymentId || p._id}</strong>
-                    <div style={{ fontSize: '11px', color: '#64748b' }}>{p.gateway} • {p.gatewayOrderId || 'N/A'}</div>
+                    <strong className="mono-code">{p.gatewayPaymentId || p._id}</strong>
+                    <div className="cell-sub">{p.gateway || 'Razorpay'} {p.gatewayOrderId ? `• ${p.gatewayOrderId}` : ''}</div>
                   </td>
                   <td>
-                    <div><strong>{p.userId?.username || 'Unknown'}</strong></div>
-                    <div style={{ fontSize: '12px', color: '#94a3b8' }}>{p.userId?.email || '—'}</div>
+                    <div className="user-name">{p.userId?.username || 'Customer'}</div>
+                    <div className="user-email">{p.userId?.email || '—'}</div>
                   </td>
                   <td>
                     <span className={`badge-pill ${p.orderId?.planKey || 'pro'}`}>
                       {(p.orderId?.planKey || 'PRO').toUpperCase()}
                     </span>
-                    <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px' }}>
+                    <span className="cycle-sub">
                       {p.orderId?.billingCycle || 'MONTHLY'}
                     </span>
                   </td>
                   <td>
-                    <strong>₹{(p.amount / 100).toFixed(2)}</strong>
+                    <strong style={{ color: '#ffffff', fontSize: '0.92rem' }}>₹{(p.amount / 100).toFixed(2)}</strong>
                   </td>
                   <td>
-                    <span style={{ textTransform: 'uppercase', fontSize: '12px', color: '#cbd5e1' }}>
+                    <span className="mono-badge">
                       {p.paymentMethod || 'UPI/CARD'}
                     </span>
                   </td>
@@ -136,7 +149,7 @@ export const AdminPaymentsTab = () => {
                       {p.status}
                     </span>
                   </td>
-                  <td style={{ fontSize: '13px', color: '#94a3b8' }}>
+                  <td className="timestamp-cell">
                     {new Date(p.createdAt).toLocaleString('en-IN', {
                       day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
                     })}
@@ -145,7 +158,7 @@ export const AdminPaymentsTab = () => {
               ))
             ) : (
               <tr>
-                <td colSpan="7" style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
+                <td colSpan="7" className="empty-table-cell">
                   No payment records found matching the selected filter.
                 </td>
               </tr>
@@ -155,31 +168,14 @@ export const AdminPaymentsTab = () => {
       </div>
 
       {/* Pagination Controls */}
-      {pagination.pages > 1 && (
-        <div className="pagination-wrapper" style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '20px' }}>
-          <button
-            type="button"
-            disabled={page <= 1}
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            className="tab-btn"
-            style={{ padding: '6px 14px' }}
-          >
-            ← Previous
-          </button>
-          <span style={{ display: 'flex', alignItems: 'center', color: '#94a3b8', fontSize: '14px' }}>
-            Page {page} of {pagination.pages}
-          </span>
-          <button
-            type="button"
-            disabled={page >= pagination.pages}
-            onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
-            className="tab-btn"
-            style={{ padding: '6px 14px' }}
-          >
-            Next →
-          </button>
-        </div>
-      )}
+      <AdminPagination
+        page={page}
+        pages={pagination.pages}
+        total={pagination.total}
+        limit={pagination.limit || 20}
+        loading={loading}
+        onPageChange={(newPage) => setPage(newPage)}
+      />
     </div>
   );
 };

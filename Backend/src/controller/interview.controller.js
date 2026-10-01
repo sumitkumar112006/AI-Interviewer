@@ -503,10 +503,17 @@ async function rewriteResumeSectionController(req, res, next) {
 
         // If currentResumeHtml wasn't passed directly from client, load from MongoDB
         let effectiveResumeHtml = typeof currentResumeHtml === 'string' ? currentResumeHtml : '';
-        if (!effectiveResumeHtml && resourceId && mongoose.isValidObjectId(resourceId)) {
-            const report = await interviewReportModel.findById(resourceId).select('generatedResumeHtml resume').lean();
+        let targetJobDescription = '';
+        let targetJobRole = '';
+
+        if (resourceId && mongoose.isValidObjectId(resourceId)) {
+            const report = await interviewReportModel.findById(resourceId).select('generatedResumeHtml resume jobDescription developerTitle').lean();
             if (report) {
-                effectiveResumeHtml = report.generatedResumeHtml || report.resume || '';
+                if (!effectiveResumeHtml) {
+                    effectiveResumeHtml = report.generatedResumeHtml || report.resume || '';
+                }
+                targetJobDescription = report.jobDescription || '';
+                targetJobRole = report.developerTitle || '';
             }
         }
 
@@ -540,6 +547,8 @@ async function rewriteResumeSectionController(req, res, next) {
                 message,
                 plan,
                 currentResumeHtml: effectiveResumeHtml,
+                jobDescription: targetJobDescription,
+                jobRole: targetJobRole,
                 interviewReportId: resourceId
             }
         });

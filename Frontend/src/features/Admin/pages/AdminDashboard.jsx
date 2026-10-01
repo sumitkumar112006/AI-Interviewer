@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useTransition } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../Auth/hooks/useAuth';
 import {
@@ -13,20 +13,73 @@ import {
     updateUserFeatureAccess,
     sendAdminMessage
 } from '../services/admin.api';
+
+import AdminSidebar from '../components/AdminSidebar';
+import AdminTopNav from '../components/AdminTopNav';
 import { AdminPaymentsTab } from '../components/AdminPaymentsTab';
 import { AdminSubscriptionsTab } from '../components/AdminSubscriptionsTab';
 import { AdminAuditLogsTab } from '../components/AdminAuditLogsTab';
+import { AdminFeatureMatrixTab } from '../components/AdminFeatureMatrixTab';
+import { AdminBroadcastTab } from '../components/AdminBroadcastTab';
+import { AdminManagementTab } from '../components/AdminManagementTab';
+import { AdminCreditsTab } from '../components/AdminCreditsTab';
+import AdminPagination from '../components/AdminPagination';
 import ConfirmModal from '../../Shared/components/ConfirmModal';
-import { Trash2, LogOut } from 'lucide-react';
+
+import {
+    Activity,
+    Users,
+    SlidersHorizontal,
+    CreditCard,
+    Layers,
+    FileClock,
+    Megaphone,
+    UserPlus,
+    Sparkles,
+    Shield,
+    Trash2,
+    Lock,
+    Unlock,
+    Sliders,
+    ArrowUpRight,
+    Search,
+    RotateCcw,
+    Check,
+    X,
+    ExternalLink,
+    ChevronRight,
+    TrendingUp
+} from 'lucide-react';
+
 import '../styles/admin.scss';
 
 export default function AdminDashboard() {
     const navigate = useNavigate();
-    const { handleLogout } = useAuth();
+    const { user: authUser, handleLogout } = useAuth();
+    const [isPending, startTransition] = useTransition();
+
+    // Console Layout State (Minimizable & Adjustable width)
+    const [isCollapsed, setIsCollapsed] = useState(() => {
+        return localStorage.getItem('kivi_admin_sidebar_collapsed') === 'true';
+    });
+    const [sidebarWidth, setSidebarWidth] = useState(() => {
+        const saved = localStorage.getItem('kivi_admin_sidebar_width');
+        return saved ? Number(saved) : 240;
+    });
+
+    useEffect(() => {
+        localStorage.setItem('kivi_admin_sidebar_collapsed', isCollapsed.toString());
+    }, [isCollapsed]);
+
+    // Active console view: 'overview' | 'table' | 'feature-matrix' | 'payments' | 'subscriptions' | 'audit-logs' | 'broadcast' | 'admins' | 'credits'
+    const [activeTab, setActiveTab] = useState('overview');
+
+    // Data States
     const [stats, setStats] = useState(null);
     const [users, setUsers] = useState([]);
     const [pagination, setPagination] = useState({ total: 0, page: 1, pages: 1, limit: 20 });
     const [loading, setLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     // Filters
     const [search, setSearch] = useState('');
@@ -34,26 +87,24 @@ export default function AdminDashboard() {
     const [roleFilter, setRoleFilter] = useState('');
     const [blockedFilter, setBlockedFilter] = useState('');
 
-    // Modal state for granting custom credits
+    // Modal state for quick action from TopNav
     const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
     const [creditIdentifier, setCreditIdentifier] = useState('');
     const [creditAmount, setCreditAmount] = useState(10);
     const [creditMsg, setCreditMsg] = useState({ type: '', text: '' });
     const [creditSubmitting, setCreditSubmitting] = useState(false);
 
-    // Modal state for creating new admin
     const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
     const [newAdminForm, setNewAdminForm] = useState({ username: '', email: '', password: '', role: 'admin' });
     const [adminMsg, setAdminMsg] = useState({ type: '', text: '' });
     const [adminSubmitting, setAdminSubmitting] = useState(false);
 
-    // Modal state for Admin Broadcast & Direct Messaging
     const [isMsgModalOpen, setIsMsgModalOpen] = useState(false);
     const [msgForm, setMsgForm] = useState({ targetType: 'all', targetValue: '', title: '', message: '' });
     const [msgResult, setMsgResult] = useState({ type: '', text: '' });
     const [msgSubmitting, setMsgSubmitting] = useState(false);
 
-    // Modal state for User Evaluation & Feature Control
+    // Modal state for User Evaluation & Granular Feature Control
     const [evalUser, setEvalUser] = useState(null);
     const [evalFeatures, setEvalFeatures] = useState({
         aiAssistant: false,
@@ -63,6 +114,22 @@ export default function AdminDashboard() {
     });
     const [evalMsg, setEvalMsg] = useState({ type: '', text: '' });
     const [evalSubmitting, setEvalSubmitting] = useState(false);
+
+    // Donut hover highlight
+    const [hoveredSegment, setHoveredSegment] = useState(null);
+
+    // Confirmation Action Modal State
+    const [confirmModal, setConfirmModal] = useState({
+        isOpen: false,
+        title: '',
+        message: '',
+        details: null,
+        confirmText: 'Confirm',
+        cancelText: 'Cancel',
+        type: 'warning',
+        loading: false,
+        onConfirm: null
+    });
 
     const fetchStats = async () => {
         try {
@@ -108,25 +175,32 @@ export default function AdminDashboard() {
         return () => clearTimeout(timer);
     }, [fetchUsersList]);
 
-    // Confirmation Action Modal State
-    const [confirmModal, setConfirmModal] = useState({
-        isOpen: false,
-        title: '',
-        message: '',
-        details: null,
-        confirmText: 'Confirm',
-        cancelText: 'Cancel',
-        type: 'warning',
-        loading: false,
-        onConfirm: null
-    });
+    const handleRefreshAll = async () => {
+        setIsRefreshing(true);
+        try {
+            await Promise.all([fetchStats(), fetchUsersList(pagination.page)]);
+        } finally {
+            setIsRefreshing(false);
+        }
+    };
 
+    const handleSignOut = async () => {
+        try {
+            await handleLogout();
+            navigate('/admin-login-secret');
+        } catch (err) {
+            console.error('Logout error:', err);
+            navigate('/admin-login-secret');
+        }
+    };
+
+    // User Role Change
     const requestRoleChange = (userObj, newRole) => {
         if (userObj.role === newRole) return;
         setConfirmModal({
             isOpen: true,
             title: 'Confirm Security Role Change',
-            message: `Are you sure you want to change the role for "${userObj.username}"?`,
+            message: `Update security access role for "${userObj.username}"?`,
             details: (
                 <div className="change-preview-row">
                     <span className="change-label">Role Update:</span>
@@ -159,12 +233,13 @@ export default function AdminDashboard() {
         });
     };
 
+    // User Plan Change
     const requestPlanChange = (userObj, newPlan) => {
         if (userObj.plan === newPlan) return;
         setConfirmModal({
             isOpen: true,
             title: 'Confirm Subscription Plan Change',
-            message: `Are you sure you want to change the subscription plan for "${userObj.username}"?`,
+            message: `Update subscription plan tier for "${userObj.username}"?`,
             details: (
                 <div className="change-preview-row">
                     <span className="change-label">Plan Update:</span>
@@ -194,27 +269,28 @@ export default function AdminDashboard() {
         });
     };
 
+    // User Block/Unblock
     const requestToggleBlock = (userObj) => {
         const nextState = !userObj.isBlocked;
         setConfirmModal({
             isOpen: true,
-            title: nextState ? 'Confirm Account Block' : 'Confirm Account Unblock',
+            title: nextState ? 'Confirm Account Suspension' : 'Confirm Account Re-Activation',
             message: nextState
-                ? `Are you sure you want to BLOCK "${userObj.username}"? They will lose access to interview practice and generations.`
-                : `Are you sure you want to UNBLOCK "${userObj.username}"? Their full platform access will be restored.`,
+                ? `Suspend platform generation and practice access for "${userObj.username}"?`
+                : `Restore full platform generation and practice access for "${userObj.username}"?`,
             details: (
                 <div className="change-preview-row">
                     <span className="change-label">Account Status:</span>
                     <span className="change-value">
-                        <span className="old-val">{userObj.isBlocked ? 'BLOCKED' : 'ACTIVE'}</span>
+                        <span className="old-val">{userObj.isBlocked ? 'SUSPENDED' : 'ACTIVE'}</span>
                         <span className="arrow">→</span>
                         <span className="new-val" style={{ color: nextState ? '#ef4444' : '#22c55e' }}>
-                            {nextState ? 'BLOCKED' : 'ACTIVE'}
+                            {nextState ? 'SUSPENDED' : 'ACTIVE'}
                         </span>
                     </span>
                 </div>
             ),
-            confirmText: nextState ? 'Yes, Block Account' : 'Yes, Unblock Account',
+            confirmText: nextState ? 'Suspend Account' : 'Reactivate Account',
             cancelText: 'Cancel',
             type: nextState ? 'danger' : 'success',
             loading: false,
@@ -226,18 +302,19 @@ export default function AdminDashboard() {
                     fetchStats();
                     setConfirmModal(prev => ({ ...prev, isOpen: false, loading: false }));
                 } catch (err) {
-                    alert(err?.response?.data?.message || "Failed to toggle block status");
+                    alert(err?.response?.data?.message || "Failed to toggle account status");
                     setConfirmModal(prev => ({ ...prev, loading: false }));
                 }
             }
         });
     };
 
+    // User Delete
     const requestDeleteUser = (userObj) => {
         setConfirmModal({
             isOpen: true,
             title: 'Delete User Account Permanently',
-            message: `Are you sure you want to permanently delete user "${userObj.username}" (${userObj.email})? This action CANNOT be undone and will permanently purge all their interview reports, resumes, cover letters, and subscriptions.`,
+            message: `Permanently delete account "${userObj.username}" (${userObj.email}) and purge associated mock interviews, resumes, and logs?`,
             details: (
                 <div className="change-preview-row">
                     <span className="change-label">Purge Target:</span>
@@ -247,7 +324,7 @@ export default function AdminDashboard() {
                     </span>
                 </div>
             ),
-            confirmText: 'Yes, Delete Permanently',
+            confirmText: 'Delete Permanently',
             cancelText: 'Cancel',
             type: 'danger',
             loading: false,
@@ -267,6 +344,7 @@ export default function AdminDashboard() {
         });
     };
 
+    // Modal Credits Submit
     const handleGrantCreditsSubmit = async (e) => {
         e.preventDefault();
         if (!creditIdentifier.trim()) return;
@@ -285,6 +363,51 @@ export default function AdminDashboard() {
         }
     };
 
+    // Modal Admin Submit
+    const handleCreateAdminSubmit = async (e) => {
+        e.preventDefault();
+        setAdminSubmitting(true);
+        setAdminMsg({ type: '', text: '' });
+
+        try {
+            const res = await createAdminAccount(newAdminForm);
+            setAdminMsg({ type: 'success', text: res.message });
+            setNewAdminForm({ username: '', email: '', password: '', role: 'admin' });
+            fetchStats();
+            fetchUsersList(1);
+        } catch (err) {
+            setAdminMsg({ type: 'error', text: err?.response?.data?.message || "Failed to create admin account" });
+        } finally {
+            setAdminSubmitting(false);
+        }
+    };
+
+    // Modal Broadcast Submit
+    const handleSendAdminMessageSubmit = async (e) => {
+        e.preventDefault();
+        if (!msgForm.title.trim() || !msgForm.message.trim()) {
+            setMsgResult({ type: 'error', text: 'Notification title and message text are required.' });
+            return;
+        }
+        if (msgForm.targetType === 'user' && !msgForm.targetValue.trim()) {
+            setMsgResult({ type: 'error', text: 'User email or ID is required for target type Single User.' });
+            return;
+        }
+
+        setMsgSubmitting(true);
+        setMsgResult({ type: '', text: '' });
+        try {
+            const res = await sendAdminMessage(msgForm);
+            setMsgResult({ type: 'success', text: res.message });
+            setMsgForm({ targetType: 'all', targetValue: '', title: '', message: '' });
+        } catch (err) {
+            setMsgResult({ type: 'error', text: err?.response?.data?.message || 'Failed to send admin message.' });
+        } finally {
+            setMsgSubmitting(false);
+        }
+    };
+
+    // Feature Access Modal
     const openEvaluationModal = (userObj) => {
         setEvalUser(userObj);
         setEvalFeatures(userObj.blockedFeatures || {
@@ -313,53 +436,7 @@ export default function AdminDashboard() {
         }
     };
 
-    const handleCreateAdminSubmit = async (e) => {
-        e.preventDefault();
-        setAdminSubmitting(true);
-        setAdminMsg({ type: '', text: '' });
-
-        try {
-            const res = await createAdminAccount(newAdminForm);
-            setAdminMsg({ type: 'success', text: res.message });
-            setNewAdminForm({ username: '', email: '', password: '', role: 'admin' });
-            fetchStats();
-            fetchUsersList(1);
-        } catch (err) {
-            setAdminMsg({ type: 'error', text: err?.response?.data?.message || "Failed to create admin account" });
-        } finally {
-            setAdminSubmitting(false);
-        }
-    };
-
-    const handleSendAdminMessageSubmit = async (e) => {
-        e.preventDefault();
-        if (!msgForm.title.trim() || !msgForm.message.trim()) {
-            setMsgResult({ type: 'error', text: 'Notification title and message text are required.' });
-            return;
-        }
-        if (msgForm.targetType === 'user' && !msgForm.targetValue.trim()) {
-            setMsgResult({ type: 'error', text: 'User email or ID is required for target type Single User.' });
-            return;
-        }
-
-        setMsgSubmitting(true);
-        setMsgResult({ type: '', text: '' });
-        try {
-            const res = await sendAdminMessage(msgForm);
-            setMsgResult({ type: 'success', text: res.message });
-            setMsgForm({ targetType: 'all', targetValue: '', title: '', message: '' });
-        } catch (err) {
-            setMsgResult({ type: 'error', text: err?.response?.data?.message || 'Failed to send admin message.' });
-        } finally {
-            setMsgSubmitting(false);
-        }
-    };
-
-    // View mode state ('overview', 'table', 'summary')
-    const [activeTab, setActiveTab] = useState('overview');
-    const [hoveredSegment, setHoveredSegment] = useState(null);
-
-    // Calculate chart proportions
+    // Visual Charts Proportions
     const freeCount = stats?.plans?.free || 0;
     const proCount = stats?.plans?.pro || 0;
     const premCount = stats?.plans?.premium || 0;
@@ -380,729 +457,604 @@ export default function AdminDashboard() {
     const blockedPct = Math.round((blockedCount / totalUserAccounts) * 100);
 
     return (
-        <div className="admin-dashboard-page">
-            {/* Header Navigation */}
-            <div className="admin-header-nav">
-                <div className="admin-brand">
-                    <img src="/Logo.png" alt="Logo" className="admin-logo" />
-                    <div>
-                        <h1>KIVI Admin Portal</h1>
-                    </div>
-                    <span className="admin-badge">SUPER ADMIN ACCESS</span>
-                </div>
+        <div className="kivi-admin-shell">
+            {/* Minimizable & Adjustable Google Vertex AI Style Sidebar */}
+            <AdminSidebar
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                isCollapsed={isCollapsed}
+                setIsCollapsed={setIsCollapsed}
+                sidebarWidth={sidebarWidth}
+                setSidebarWidth={setSidebarWidth}
+                userCount={stats?.totalUsers || 0}
+                adminCount={stats?.totalAdmins || 0}
+                onLogout={handleSignOut}
+            />
 
-                <div className="admin-top-actions">
-                    <button className="credit-btn" style={{ background: 'linear-gradient(135deg, #0284c7, #2563eb)' }} onClick={() => { setIsMsgModalOpen(true); setMsgResult({ type: '', text: '' }); }}>
-                        Send Broadcast / Message
-                    </button>
-                    <button className="credit-btn" style={{ background: 'linear-gradient(135deg, #ec4899, #8b5cf6)' }} onClick={() => { setIsAdminModalOpen(true); setAdminMsg({ type: '', text: '' }); }}>
-                        Create New Admin
-                    </button>
-                    <button className="credit-btn" onClick={() => { setIsCreditModalOpen(true); setCreditMsg({ type: '', text: '' }); }}>
-                        Grant Bonus Credits
-                    </button>
-                    <Link to="/" className="exit-app-btn">
-                        Exit to Main App ↗
-                    </Link>
-                    <button
-                        className="exit-app-btn"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(239, 68, 68, 0.15)', borderColor: 'rgba(239, 68, 68, 0.4)', color: '#f87171', cursor: 'pointer' }}
-                        onClick={async () => {
-                            try {
-                                await handleLogout();
-                                navigate('/admin-login-secret');
-                            } catch (err) {
-                                console.error('Logout error:', err);
-                                navigate('/admin-login-secret');
-                            }
-                        }}
-                    >
-                        <LogOut size={14} /> Log Out
-                    </button>
-                </div>
-            </div>
+            {/* Main Console Area */}
+            <div className="admin-main-container">
+                {/* Vertex AI Header Navigation Bar */}
+                <AdminTopNav
+                    activeTab={activeTab}
+                    searchTerm={search}
+                    setSearchTerm={setSearch}
+                    onRefresh={handleRefreshAll}
+                    isRefreshing={isRefreshing}
+                    onOpenBroadcastModal={() => { setIsMsgModalOpen(true); setMsgResult({ type: '', text: '' }); }}
+                    onOpenCreditsModal={() => { setIsCreditModalOpen(true); setCreditMsg({ type: '', text: '' }); }}
+                    onOpenAdminModal={() => { setIsAdminModalOpen(true); setAdminMsg({ type: '', text: '' }); }}
+                    isSidebarCollapsed={isCollapsed}
+                    setIsSidebarCollapsed={setIsCollapsed}
+                    adminUser={authUser}
+                    onLogout={handleSignOut}
+                />
 
-            {/* KPI Stat Cards */}
-            <div className="stats-cards-grid">
-                <div className="stat-card">
-                    <div className="stat-header">
-                        <span className="stat-title">Total Users</span>
-                    </div>
-                    <div className="stat-value">{stats?.totalUsers ?? '...'}</div>
-                    <div className="stat-sub">Authenticated Accounts</div>
-                </div>
-
-                <div className="stat-card">
-                    <div className="stat-header">
-                        <span className="stat-title">Total Admins</span>
-                    </div>
-                    <div className="stat-value">{stats?.totalAdmins ?? '...'}</div>
-                    <div className="stat-sub">Platform Administrators</div>
-                </div>
-
-                <div className="stat-card">
-                    <div className="stat-header">
-                        <span className="stat-title">Interview Reports</span>
-                    </div>
-                    <div className="stat-value">{stats?.totalReports ?? '...'}</div>
-                    <div className="stat-sub">AI Interview Analyses</div>
-                </div>
-
-                <div className="stat-card">
-                    <div className="stat-header">
-                        <span className="stat-title">Plan Tiers</span>
-                    </div>
-                    <div className="stat-value-pills">
-                        <span className="tier-pill pro-pill">{stats?.plans?.pro || 0} Pro</span>
-                        <span className="tier-pill prem-pill">{stats?.plans?.premium || 0} Prem</span>
-                    </div>
-                    <div className="stat-sub">{stats?.plans?.free || 0} Free Tier Users</div>
-                </div>
-            </div>
-
-            {/* View Mode Tabs */}
-            <div className="admin-tab-nav">
-                <button
-                    className={`tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('overview')}
-                >
-                    Analytics
-                </button>
-                <button
-                    className={`tab-btn ${activeTab === 'table' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('table')}
-                >
-                    Users
-                </button>
-                <button
-                    className={`tab-btn ${activeTab === 'payments' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('payments')}
-                >
-                    Payments & Revenue
-                </button>
-                <button
-                    className={`tab-btn ${activeTab === 'subscriptions' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('subscriptions')}
-                >
-                    Subscriptions
-                </button>
-                <button
-                    className={`tab-btn ${activeTab === 'audit-logs' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('audit-logs')}
-                >
-                    Audit Logs
-                </button>
-                <button
-                    className={`tab-btn ${activeTab === 'summary' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('summary')}
-                >
-                    Metrics Summary
-                </button>
-            </div>
-
-            {/* Tab 1: Graphical Analytics Overview */}
-            {activeTab === 'overview' && (
-                <div className="charts-grid-container">
-                    {/* Donut Chart: Subscription Distribution */}
-                    <div className="chart-card">
-                        <div className="chart-header">
-                            <h3>Subscription Distribution</h3>
-                            <span className="chart-badge">HOVER TO EXPLORE TIER</span>
-                        </div>
-                        <div className="donut-chart-wrapper">
-                            <div className="donut-svg-container">
-                                <svg className="svg-donut" viewBox="0 0 42 42">
-                                    <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="4.2" />
-                                    
-                                    {/* Free segment */}
-                                    <circle
-                                        className={`donut-segment ${hoveredSegment === 'free' ? 'active' : ''}`}
-                                        cx="21" cy="21" r="15.915" fill="transparent" stroke="#38bdf8"
-                                        strokeWidth={hoveredSegment === 'free' ? '5.6' : '4.2'}
-                                        strokeDasharray={`${freePct} ${100 - freePct}`} strokeDashoffset="0"
-                                        onMouseEnter={() => setHoveredSegment('free')}
-                                        onMouseLeave={() => setHoveredSegment(null)}
-                                        style={{ cursor: 'pointer', transition: 'all 0.25s ease' }}
-                                    />
-                                    {/* Pro segment */}
-                                    <circle
-                                        className={`donut-segment ${hoveredSegment === 'pro' ? 'active' : ''}`}
-                                        cx="21" cy="21" r="15.915" fill="transparent" stroke="#818cf8"
-                                        strokeWidth={hoveredSegment === 'pro' ? '5.6' : '4.2'}
-                                        strokeDasharray={`${proPct} ${100 - proPct}`} strokeDashoffset={`-${freePct}`}
-                                        onMouseEnter={() => setHoveredSegment('pro')}
-                                        onMouseLeave={() => setHoveredSegment(null)}
-                                        style={{ cursor: 'pointer', transition: 'all 0.25s ease' }}
-                                    />
-                                    {/* Premium segment */}
-                                    <circle
-                                        className={`donut-segment ${hoveredSegment === 'premium' ? 'active' : ''}`}
-                                        cx="21" cy="21" r="15.915" fill="transparent" stroke="#c084fc"
-                                        strokeWidth={hoveredSegment === 'premium' ? '5.6' : '4.2'}
-                                        strokeDasharray={`${premPct} ${100 - premPct}`} strokeDashoffset={`-${freePct + proPct}`}
-                                        onMouseEnter={() => setHoveredSegment('premium')}
-                                        onMouseLeave={() => setHoveredSegment(null)}
-                                        style={{ cursor: 'pointer', transition: 'all 0.25s ease' }}
-                                    />
-                                </svg>
-                                
-                                {/* Center Info Badge */}
-                                <div className="donut-center-info">
-                                    {hoveredSegment === 'free' && (
-                                        <>
-                                            <span className="donut-center-label" style={{ color: '#38bdf8' }}>Free Plan</span>
-                                            <span className="donut-center-val">{freeCount} ({freePct}%)</span>
-                                        </>
-                                    )}
-                                    {hoveredSegment === 'pro' && (
-                                        <>
-                                            <span className="donut-center-label" style={{ color: '#818cf8' }}>Pro Plan</span>
-                                            <span className="donut-center-val">{proCount} ({proPct}%)</span>
-                                        </>
-                                    )}
-                                    {hoveredSegment === 'premium' && (
-                                        <>
-                                            <span className="donut-center-label" style={{ color: '#c084fc' }}>Premium Plan</span>
-                                            <span className="donut-center-val">{premCount} ({premPct}%)</span>
-                                        </>
-                                    )}
-                                    {!hoveredSegment && (
-                                        <>
-                                            <span className="donut-center-label">Total Users</span>
-                                            <span className="donut-center-val">{stats?.totalUsers || 0}</span>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="chart-legend">
-                                <div
-                                    className={`legend-item ${hoveredSegment === 'free' ? 'highlighted' : ''}`}
-                                    onMouseEnter={() => setHoveredSegment('free')}
-                                    onMouseLeave={() => setHoveredSegment(null)}
-                                >
-                                    <span className="legend-label">
-                                        <span className="dot" style={{ background: '#38bdf8' }}></span> Free Plan
-                                    </span>
-                                    <span className="legend-value">{freeCount} ({freePct}%)</span>
-                                </div>
-                                <div
-                                    className={`legend-item ${hoveredSegment === 'pro' ? 'highlighted' : ''}`}
-                                    onMouseEnter={() => setHoveredSegment('pro')}
-                                    onMouseLeave={() => setHoveredSegment(null)}
-                                >
-                                    <span className="legend-label">
-                                        <span className="dot" style={{ background: '#818cf8' }}></span> Pro Plan
-                                    </span>
-                                    <span className="legend-value">{proCount} ({proPct}%)</span>
-                                </div>
-                                <div
-                                    className={`legend-item ${hoveredSegment === 'premium' ? 'highlighted' : ''}`}
-                                    onMouseEnter={() => setHoveredSegment('premium')}
-                                    onMouseLeave={() => setHoveredSegment(null)}
-                                >
-                                    <span className="legend-label">
-                                        <span className="dot" style={{ background: '#c084fc' }}></span> Premium Plan
-                                    </span>
-                                    <span className="legend-value">{premCount} ({premPct}%)</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Bar Chart: Platform Activity */}
-                    <div className="chart-card">
-                        <div className="chart-header">
-                            <h3>Generations & Output Activity</h3>
-                            <span className="chart-badge">TOTAL ASSETS</span>
-                        </div>
-                        <div className="bar-chart-wrapper">
-                            <div className="bar-group">
-                                <div className="bar-label-row">
-                                    <span>Interview Reports Generated</span>
-                                    <span>{reportsCount}</span>
-                                </div>
-                                <div className="bar-track">
-                                    <div className="bar-fill" style={{ width: `${(reportsCount / maxGenVal) * 100}%`, background: 'linear-gradient(90deg, #6366f1, #818cf8)' }}></div>
-                                </div>
-                            </div>
-
-                            <div className="bar-group">
-                                <div className="bar-label-row">
-                                    <span>Cover Letters Generated</span>
-                                    <span>{coverLettersCount}</span>
-                                </div>
-                                <div className="bar-track">
-                                    <div className="bar-fill" style={{ width: `${(coverLettersCount / maxGenVal) * 100}%`, background: 'linear-gradient(90deg, #a855f7, #c084fc)' }}></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Health Gauges: Active vs Blocked & Admin Ratio */}
-                    <div className="chart-card">
-                        <div className="chart-header">
-                            <h3>Account Security & Status Ratios</h3>
-                            <span className="chart-badge">SYSTEM HEALTH</span>
-                        </div>
-                        <div className="bar-chart-wrapper">
-                            <div className="bar-group">
-                                <div className="bar-label-row">
-                                    <span>Active Accounts Ratio</span>
-                                    <span>{activeCount} ({activePct}%)</span>
-                                </div>
-                                <div className="bar-track">
-                                    <div className="bar-fill" style={{ width: `${activePct}%`, background: '#22c55e' }}></div>
-                                </div>
-                            </div>
-
-                            <div className="bar-group">
-                                <div className="bar-label-row">
-                                    <span>Blocked Accounts Ratio</span>
-                                    <span>{blockedCount} ({blockedPct}%)</span>
-                                </div>
-                                <div className="bar-track">
-                                    <div className="bar-fill" style={{ width: `${blockedPct}%`, background: '#ef4444' }}></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* 7-Day Timeline Trend Chart */}
-                    <div className="chart-card">
-                        <div className="chart-header">
-                            <h3>7-Day Registration Activity</h3>
-                            <span className="chart-badge">RECENT GROWTH</span>
-                        </div>
-                        <div className="trend-timeline-wrapper">
-                            {stats?.dailyRegistrations?.length > 0 ? (
-                                stats.dailyRegistrations.map(item => (
-                                    <div key={item._id} className="timeline-col">
-                                        <div className="col-val">{item.count}</div>
-                                        <div className="col-bar-container">
-                                            <div className="col-bar" style={{ height: `${Math.min(100, (item.count / Math.max(...stats.dailyRegistrations.map(d => d.count), 1)) * 100)}%` }}></div>
+                {/* Main Content Workspace */}
+                <main className="admin-workspace">
+                    {/* View 1: Overview & Analytics */}
+                    {activeTab === 'overview' && (
+                        <div className="overview-view-container">
+                            {/* Primary Metric KPI Cards */}
+                            <div className="stats-cards-grid">
+                                <div className="stat-card">
+                                    <div className="stat-header">
+                                        <span className="stat-title">Authenticated Users</span>
+                                        <div className="stat-icon-wrapper" style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8' }}>
+                                            <Users size={17} />
                                         </div>
-                                        <div className="col-date">{item._id.slice(5)}</div>
                                     </div>
-                                ))
-                            ) : (
-                                <div style={{ color: '#94a3b8', fontSize: '0.85rem', textAlign: 'center', width: '100%', padding: '2rem' }}>
-                                    No registrations recorded in last 7 days.
+                                    <div className="stat-value">{stats?.totalUsers ?? '...'}</div>
+                                    <div className="stat-sub">
+                                        <span style={{ color: '#22c55e', fontWeight: 700 }}>{activeCount} Active</span> • {blockedCount} Restricted
+                                    </div>
                                 </div>
-                            )}
+
+                                <div className="stat-card">
+                                    <div className="stat-header">
+                                        <span className="stat-title">Platform Admins</span>
+                                        <div className="stat-icon-wrapper" style={{ background: 'rgba(239, 68, 68, 0.12)', color: '#f87171' }}>
+                                            <Shield size={17} />
+                                        </div>
+                                    </div>
+                                    <div className="stat-value">{stats?.totalAdmins ?? '...'}</div>
+                                    <div className="stat-sub">Elevated Security Roles</div>
+                                </div>
+
+                                <div className="stat-card">
+                                    <div className="stat-header">
+                                        <span className="stat-title">Mock Interview Reports</span>
+                                        <div className="stat-icon-wrapper" style={{ background: 'rgba(99, 102, 241, 0.12)', color: '#818cf8' }}>
+                                            <Activity size={17} />
+                                        </div>
+                                    </div>
+                                    <div className="stat-value">{stats?.totalReports ?? '...'}</div>
+                                    <div className="stat-sub">Score Analyses Completed</div>
+                                </div>
+
+                                <div className="stat-card">
+                                    <div className="stat-header">
+                                        <span className="stat-title">Paid Plan Subscriptions</span>
+                                        <div className="stat-icon-wrapper" style={{ background: 'rgba(192, 132, 252, 0.12)', color: '#c084fc' }}>
+                                            <Layers size={17} />
+                                        </div>
+                                    </div>
+                                    <div className="stat-value-pills">
+                                        <span className="tier-pill pro-pill">{stats?.plans?.pro || 0} Pro</span>
+                                        <span className="tier-pill prem-pill">{stats?.plans?.premium || 0} Premium</span>
+                                    </div>
+                                    <div className="stat-sub">{stats?.plans?.free || 0} Free Tier Accounts</div>
+                                </div>
+                            </div>
+
+                            {/* Telemetry Visual Grid */}
+                            <div className="charts-grid-container">
+                                {/* SVG Donut: Tier Distribution */}
+                                <div className="chart-card">
+                                    <div className="chart-header">
+                                        <h3>Subscription Distribution</h3>
+                                        <span className="chart-badge">LIVE TIERS</span>
+                                    </div>
+                                    <div className="donut-chart-wrapper">
+                                        <div className="donut-svg-container">
+                                            <svg className="svg-donut" viewBox="0 0 42 42">
+                                                <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="4.2" />
+                                                
+                                                <circle
+                                                    className={`donut-segment ${hoveredSegment === 'free' ? 'active' : ''}`}
+                                                    cx="21" cy="21" r="15.915" fill="transparent" stroke="#38bdf8"
+                                                    strokeWidth={hoveredSegment === 'free' ? '5.6' : '4.2'}
+                                                    strokeDasharray={`${freePct} ${100 - freePct}`} strokeDashoffset="0"
+                                                    onMouseEnter={() => setHoveredSegment('free')}
+                                                    onMouseLeave={() => setHoveredSegment(null)}
+                                                />
+                                                <circle
+                                                    className={`donut-segment ${hoveredSegment === 'pro' ? 'active' : ''}`}
+                                                    cx="21" cy="21" r="15.915" fill="transparent" stroke="#818cf8"
+                                                    strokeWidth={hoveredSegment === 'pro' ? '5.6' : '4.2'}
+                                                    strokeDasharray={`${proPct} ${100 - proPct}`} strokeDashoffset={`-${freePct}`}
+                                                    onMouseEnter={() => setHoveredSegment('pro')}
+                                                    onMouseLeave={() => setHoveredSegment(null)}
+                                                />
+                                                <circle
+                                                    className={`donut-segment ${hoveredSegment === 'premium' ? 'active' : ''}`}
+                                                    cx="21" cy="21" r="15.915" fill="transparent" stroke="#c084fc"
+                                                    strokeWidth={hoveredSegment === 'premium' ? '5.6' : '4.2'}
+                                                    strokeDasharray={`${premPct} ${100 - premPct}`} strokeDashoffset={`-${freePct + proPct}`}
+                                                    onMouseEnter={() => setHoveredSegment('premium')}
+                                                    onMouseLeave={() => setHoveredSegment(null)}
+                                                />
+                                            </svg>
+                                            
+                                            <div className="donut-center-info">
+                                                {hoveredSegment === 'free' && (
+                                                    <>
+                                                        <span className="donut-center-label" style={{ color: '#38bdf8' }}>Free Tier</span>
+                                                        <span className="donut-center-val">{freeCount} ({freePct}%)</span>
+                                                    </>
+                                                )}
+                                                {hoveredSegment === 'pro' && (
+                                                    <>
+                                                        <span className="donut-center-label" style={{ color: '#818cf8' }}>Pro Tier</span>
+                                                        <span className="donut-center-val">{proCount} ({proPct}%)</span>
+                                                    </>
+                                                )}
+                                                {hoveredSegment === 'premium' && (
+                                                    <>
+                                                        <span className="donut-center-label" style={{ color: '#c084fc' }}>Premium</span>
+                                                        <span className="donut-center-val">{premCount} ({premPct}%)</span>
+                                                    </>
+                                                )}
+                                                {!hoveredSegment && (
+                                                    <>
+                                                        <span className="donut-center-label">Total Users</span>
+                                                        <span className="donut-center-val">{stats?.totalUsers || 0}</span>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="chart-legend">
+                                            <div
+                                                className={`legend-item ${hoveredSegment === 'free' ? 'highlighted' : ''}`}
+                                                onMouseEnter={() => setHoveredSegment('free')}
+                                                onMouseLeave={() => setHoveredSegment(null)}
+                                            >
+                                                <span className="legend-label">
+                                                    <span className="dot" style={{ background: '#38bdf8' }}></span> Free Tier
+                                                </span>
+                                                <span className="legend-value">{freeCount} ({freePct}%)</span>
+                                            </div>
+                                            <div
+                                                className={`legend-item ${hoveredSegment === 'pro' ? 'highlighted' : ''}`}
+                                                onMouseEnter={() => setHoveredSegment('pro')}
+                                                onMouseLeave={() => setHoveredSegment(null)}
+                                            >
+                                                <span className="legend-label">
+                                                    <span className="dot" style={{ background: '#818cf8' }}></span> Pro Tier
+                                                </span>
+                                                <span className="legend-value">{proCount} ({proPct}%)</span>
+                                            </div>
+                                            <div
+                                                className={`legend-item ${hoveredSegment === 'premium' ? 'highlighted' : ''}`}
+                                                onMouseEnter={() => setHoveredSegment('premium')}
+                                                onMouseLeave={() => setHoveredSegment(null)}
+                                            >
+                                                <span className="legend-label">
+                                                    <span className="dot" style={{ background: '#c084fc' }}></span> Premium Tier
+                                                </span>
+                                                <span className="legend-value">{premCount} ({premPct}%)</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Platform Output Volume */}
+                                <div className="chart-card">
+                                    <div className="chart-header">
+                                        <h3>Pipeline Output Activity</h3>
+                                        <span className="chart-badge">GENERATIONS</span>
+                                    </div>
+                                    <div className="bar-chart-wrapper">
+                                        <div className="bar-group">
+                                            <div className="bar-label-row">
+                                                <span>Mock Interview Reports</span>
+                                                <span>{reportsCount}</span>
+                                            </div>
+                                            <div className="bar-track">
+                                                <div className="bar-fill" style={{ width: `${(reportsCount / maxGenVal) * 100}%`, background: 'linear-gradient(90deg, #6366f1, #818cf8)' }}></div>
+                                            </div>
+                                        </div>
+
+                                        <div className="bar-group">
+                                            <div className="bar-label-row">
+                                                <span>Cover Letters Generated</span>
+                                                <span>{coverLettersCount}</span>
+                                            </div>
+                                            <div className="bar-track">
+                                                <div className="bar-fill" style={{ width: `${(coverLettersCount / maxGenVal) * 100}%`, background: 'linear-gradient(90deg, #a855f7, #c084fc)' }}></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Account Security Health */}
+                                <div className="chart-card">
+                                    <div className="chart-header">
+                                        <h3>Account Access Health</h3>
+                                        <span className="chart-badge">SECURITY RATIOS</span>
+                                    </div>
+                                    <div className="bar-chart-wrapper">
+                                        <div className="bar-group">
+                                            <div className="bar-label-row">
+                                                <span>Active Accounts</span>
+                                                <span>{activeCount} ({activePct}%)</span>
+                                            </div>
+                                            <div className="bar-track">
+                                                <div className="bar-fill" style={{ width: `${activePct}%`, background: '#22c55e' }}></div>
+                                            </div>
+                                        </div>
+
+                                        <div className="bar-group">
+                                            <div className="bar-label-row">
+                                                <span>Suspended Accounts</span>
+                                                <span>{blockedCount} ({blockedPct}%)</span>
+                                            </div>
+                                            <div className="bar-track">
+                                                <div className="bar-fill" style={{ width: `${blockedPct}%`, background: '#ef4444' }}></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* 7-Day Growth Timeline */}
+                                <div className="chart-card">
+                                    <div className="chart-header">
+                                        <h3>7-Day Registration Growth</h3>
+                                        <span className="chart-badge">RECENT ACTIVITY</span>
+                                    </div>
+                                    <div className="trend-timeline-wrapper">
+                                        {stats?.dailyRegistrations?.length > 0 ? (
+                                            stats.dailyRegistrations.map(item => (
+                                                <div key={item._id} className="timeline-col">
+                                                    <div className="col-val">{item.count}</div>
+                                                    <div className="col-bar-container">
+                                                        <div className="col-bar" style={{ height: `${Math.min(100, (item.count / Math.max(...stats.dailyRegistrations.map(d => d.count), 1)) * 100)}%` }}></div>
+                                                    </div>
+                                                    <div className="col-date">{item._id.slice(5)}</div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="empty-chart-notice">
+                                                No registrations recorded in last 7 days.
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                </div>
-            )}
+                    )}
 
-            {/* Tab 3: Tabular System Metrics Summary */}
-            {activeTab === 'summary' && (
-                <div className="users-table-container" style={{ marginBottom: '2rem' }}>
-                    <table style={{ minWidth: '100%' }}>
-                        <thead>
-                            <tr>
-                                <th>Metric Category</th>
-                                <th>Count / Value</th>
-                                <th>Percentage / Share</th>
-                                <th>Status / Notes</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td><strong>Total Registered Users</strong></td>
-                                <td>{stats?.totalUsers || 0}</td>
-                                <td>100%</td>
-                                <td><span className="badge-pill active">ACTIVE DATABASE</span></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Free Plan Users</strong></td>
-                                <td>{freeCount}</td>
-                                <td>{freePct}%</td>
-                                <td><span className="badge-pill free">FREE TIER</span></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Pro Plan Subscribers</strong></td>
-                                <td>{proCount}</td>
-                                <td>{proPct}%</td>
-                                <td><span className="badge-pill pro">PRO TIER</span></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Premium Plan Subscribers</strong></td>
-                                <td>{premCount}</td>
-                                <td>{premPct}%</td>
-                                <td><span className="badge-pill premium">PREMIUM TIER</span></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Administrators (admins table)</strong></td>
-                                <td>{stats?.totalAdmins || 0}</td>
-                                <td>-</td>
-                                <td><span className="badge-pill role-admin">SUPER ADMIN ACCESS</span></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Blocked Accounts</strong></td>
-                                <td>{blockedCount}</td>
-                                <td>{blockedPct}%</td>
-                                <td><span className="badge-pill blocked">{blockedCount > 0 ? 'RESTRICTED' : 'CLEAN'}</span></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Total Interview Analyses Generated</strong></td>
-                                <td>{reportsCount}</td>
-                                <td>-</td>
-                                <td><span className="badge-pill active">COMPLETED</span></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Total Cover Letters Generated</strong></td>
-                                <td>{coverLettersCount}</td>
-                                <td>-</td>
-                                <td><span className="badge-pill active">COMPLETED</span></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            )}
+                    {/* View 2: User Directory */}
+                    {activeTab === 'table' && (
+                        <div className="users-directory-section">
+                            {/* Toolbar Filters */}
+                            <div className="users-toolbar">
+                                <div className="search-box">
+                                    <input
+                                        type="text"
+                                        placeholder="Filter by Username or Email..."
+                                        value={search}
+                                        onChange={(e) => setSearch(e.target.value)}
+                                    />
+                                </div>
 
-            {/* Tab: Payments & Revenue */}
-            {activeTab === 'payments' && <AdminPaymentsTab />}
+                                <div className="filter-group">
+                                    <select value={planFilter} onChange={(e) => setPlanFilter(e.target.value)}>
+                                        <option value="">All Plans</option>
+                                        <option value="free">Free</option>
+                                        <option value="pro">Pro</option>
+                                        <option value="premium">Premium</option>
+                                    </select>
 
-            {/* Tab: Subscriptions & Subscribers */}
-            {activeTab === 'subscriptions' && <AdminSubscriptionsTab />}
+                                    <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+                                        <option value="">All Roles</option>
+                                        <option value="user">User</option>
+                                        <option value="admin">Admin</option>
+                                        <option value="super_admin">Super Admin</option>
+                                    </select>
 
-            {/* Tab: State Transition Audit Logs */}
-            {activeTab === 'audit-logs' && <AdminAuditLogsTab />}
+                                    <select value={blockedFilter} onChange={(e) => setBlockedFilter(e.target.value)}>
+                                        <option value="">All Statuses</option>
+                                        <option value="false">Active Only</option>
+                                        <option value="true">Suspended Only</option>
+                                    </select>
 
-            {/* Tab: User Accounts Table with Pagination */}
-            {(activeTab === 'table' || activeTab === 'overview') && (
-                <>
-                    {/* Toolbar Filters */}
-                    <div className="users-toolbar">
-                        <div className="search-box">
-                            <input
-                                type="text"
-                                placeholder="Search by Username or Email..."
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
+                                    {(search || planFilter || roleFilter || blockedFilter) && (
+                                        <button
+                                            type="button"
+                                            className="reset-filters-btn"
+                                            onClick={() => {
+                                                setSearch('');
+                                                setPlanFilter('');
+                                                setRoleFilter('');
+                                                setBlockedFilter('');
+                                            }}
+                                            title="Clear all active filters"
+                                        >
+                                            <RotateCcw size={13} /> Clear
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="toolbar-counter">
+                                    Total <strong>{pagination.total}</strong> accounts
+                                </div>
+                            </div>
+
+                            {/* Users High-Density Data Table */}
+                            <div className="users-table-container">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Account Profile</th>
+                                            <th>Security Role</th>
+                                            <th>Subscription Tier</th>
+                                            <th>Reports</th>
+                                            <th>Resumes</th>
+                                            <th>Cover Letters</th>
+                                            <th>Bonus Credits</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {loading ? (
+                                            <tr>
+                                                <td colSpan="9" className="empty-table-cell">
+                                                    Loading accounts directory...
+                                                </td>
+                                            </tr>
+                                        ) : users.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="9" className="empty-table-cell">
+                                                    No user accounts matching the specified filters.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            users.map((u) => (
+                                                <tr key={u._id}>
+                                                    <td>
+                                                        <Link
+                                                            to={`/admin-portal-dashboard-root/user-evaluation/${u._id}`}
+                                                            className="user-cell"
+                                                            title="Deep inspect user activity"
+                                                        >
+                                                            <div className="avatar-circle" style={['admin', 'super_admin'].includes(u.role) ? { background: 'linear-gradient(135deg, #ef4444, #f97316)' } : {}}>
+                                                                {(u.username || "U")[0].toUpperCase()}
+                                                            </div>
+                                                            <div className="user-details">
+                                                                <div className="user-name">{u.username}</div>
+                                                                <div className="user-email">{u.email}</div>
+                                                            </div>
+                                                        </Link>
+                                                    </td>
+                                                    <td>
+                                                        <select
+                                                            className="action-select"
+                                                            value={u.role || 'user'}
+                                                            onChange={(e) => requestRoleChange(u, e.target.value)}
+                                                        >
+                                                            <option value="user">User</option>
+                                                            <option value="admin">Admin</option>
+                                                            <option value="super_admin">Super Admin</option>
+                                                        </select>
+                                                    </td>
+                                                    <td>
+                                                        <select
+                                                            className="action-select"
+                                                            value={(u.plan || 'free').toLowerCase()}
+                                                            onChange={(e) => requestPlanChange(u, e.target.value)}
+                                                        >
+                                                            <option value="free">Free</option>
+                                                            <option value="pro">Pro</option>
+                                                            <option value="premium">Premium</option>
+                                                        </select>
+                                                    </td>
+                                                    <td>
+                                                        <strong>{u.totalReports || 0}</strong>
+                                                    </td>
+                                                    <td>
+                                                        <strong style={{ color: '#34d399' }}>{u.totalResumes || 0}</strong>
+                                                    </td>
+                                                    <td>
+                                                        <strong style={{ color: '#c084fc' }}>{u.totalCoverLetters || 0}</strong>
+                                                    </td>
+                                                    <td>
+                                                        <span style={{ color: u.customBonusCredits ? '#818cf8' : '#94a3b8', fontWeight: u.customBonusCredits ? 700 : 400 }}>
+                                                            +{u.customBonusCredits || 0}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <span className={`badge-pill ${u.isBlocked ? 'blocked' : 'active'}`}>
+                                                            {u.isBlocked ? 'SUSPENDED' : 'ACTIVE'}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <div className="table-row-actions">
+                                                            <button
+                                                                type="button"
+                                                                className="row-action-btn evaluate-btn"
+                                                                onClick={() => openEvaluationModal(u)}
+                                                                title="Quick Feature Permissions Modal"
+                                                            >
+                                                                <Sliders size={13} />
+                                                                <span>Features</span>
+                                                            </button>
+
+                                                            <Link
+                                                                to={`/admin-portal-dashboard-root/user-evaluation/${u._id}`}
+                                                                className="row-action-btn link-eval-btn"
+                                                                title="Open Detailed Evaluation Page"
+                                                            >
+                                                                <ExternalLink size={13} />
+                                                            </Link>
+
+                                                            <button
+                                                                type="button"
+                                                                className={`row-action-btn ${u.isBlocked ? 'unblock-btn' : 'block-btn'}`}
+                                                                onClick={() => requestToggleBlock(u)}
+                                                                title={u.isBlocked ? "Restore user access" : "Suspend user access"}
+                                                            >
+                                                                {u.isBlocked ? <Unlock size={13} /> : <Lock size={13} />}
+                                                            </button>
+
+                                                            <button
+                                                                type="button"
+                                                                className="row-action-btn delete-btn"
+                                                                onClick={() => requestDeleteUser(u)}
+                                                                title="Purge user account"
+                                                            >
+                                                                <Trash2 size={13} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Pagination Controls */}
+                            <AdminPagination
+                                page={pagination.page}
+                                pages={pagination.pages}
+                                total={pagination.total}
+                                limit={pagination.limit || 20}
+                                loading={loading}
+                                onPageChange={fetchUsersList}
                             />
                         </div>
+                    )}
 
-                        <div className="filter-group">
-                            <select value={planFilter} onChange={(e) => setPlanFilter(e.target.value)}>
-                                <option value="">All Plans</option>
-                                <option value="free">Free</option>
-                                <option value="pro">Pro</option>
-                                <option value="premium">Premium</option>
-                            </select>
+                    {/* View 3: Feature Matrix */}
+                    {activeTab === 'feature-matrix' && (
+                        <AdminFeatureMatrixTab
+                            users={users}
+                            setUsers={setUsers}
+                            pagination={pagination}
+                            onPageChange={fetchUsersList}
+                            loading={loading}
+                            onRefresh={fetchUsersList}
+                        />
+                    )}
 
-                            <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
-                                <option value="">All Roles</option>
-                                <option value="user">Users Collection</option>
-                                <option value="admin">Admins Collection (Admin)</option>
-                                <option value="super_admin">Admins Collection (Super Admin)</option>
-                            </select>
+                    {/* View 4: Payments Ledger */}
+                    {activeTab === 'payments' && <AdminPaymentsTab />}
 
-                            <select value={blockedFilter} onChange={(e) => setBlockedFilter(e.target.value)}>
-                                <option value="">All Statuses</option>
-                                <option value="false">Active Only</option>
-                                <option value="true">Blocked Only</option>
-                            </select>
-                        </div>
-                    </div>
+                    {/* View 5: Subscriptions */}
+                    {activeTab === 'subscriptions' && <AdminSubscriptionsTab />}
 
-                    {/* Users Data Table */}
-                    <div className="users-table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>User Account</th>
-                                    <th>Role & Table</th>
-                                    <th>Current Plan</th>
-                                    <th>Reports</th>
-                                    <th>Resumes</th>
-                                    <th>Cover Letters / CV</th>
-                                    <th>Bonus Credits</th>
-                                    <th>Status</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {loading ? (
-                                    <tr>
-                                        <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                                            Loading accounts...
-                                        </td>
-                                    </tr>
-                                ) : users.length === 0 ? (
-                                    <tr>
-                                        <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                                            No accounts matching the filters.
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    users.map((u) => (
-                                        <tr key={u._id}>
-                                            <td>
-                                                <Link to={`/admin-portal-dashboard-root/user-evaluation/${u._id}`} className="user-cell" style={{ cursor: 'pointer', textDecoration: 'none' }} title="Click to Evaluate & Control Feature Access">
-                                                    <div className="avatar-circle" style={['admin', 'super_admin'].includes(u.role) ? { background: 'linear-gradient(135deg, #ef4444, #f97316)' } : {}}>
-                                                        {(u.username || "U")[0].toUpperCase()}
-                                                    </div>
-                                                    <div className="user-details">
-                                                        <div className="user-name" style={{ color: '#818cf8', textDecoration: 'underline' }}>{u.username}</div>
-                                                        <div className="user-email">{u.email}</div>
-                                                    </div>
-                                                </Link>
-                                            </td>
-                                            <td>
-                                                <select
-                                                    className="action-select"
-                                                    value={u.role || 'user'}
-                                                    onChange={(e) => requestRoleChange(u, e.target.value)}
-                                                >
-                                                    <option value="user">User (users table)</option>
-                                                    <option value="admin">Admin (admins table)</option>
-                                                    <option value="super_admin">Super Admin (admins table)</option>
-                                                </select>
-                                            </td>
-                                            <td>
-                                                <select
-                                                    className="action-select"
-                                                    value={(u.plan || 'free').toLowerCase()}
-                                                    onChange={(e) => requestPlanChange(u, e.target.value)}
-                                                >
-                                                    <option value="free">Free</option>
-                                                    <option value="pro">Pro</option>
-                                                    <option value="premium">Premium</option>
-                                                </select>
-                                            </td>
-                                            <td>
-                                                <strong>{u.totalReports || 0}</strong>
-                                            </td>
-                                            <td>
-                                                <strong style={{ color: '#34d399' }}>{u.totalResumes || 0}</strong>
-                                            </td>
-                                            <td>
-                                                <strong style={{ color: '#c084fc' }}>{u.totalCoverLetters || 0}</strong>
-                                            </td>
-                                            <td>
-                                                <span style={{ color: u.customBonusCredits ? '#818cf8' : '#94a3b8', fontWeight: u.customBonusCredits ? 700 : 400 }}>
-                                                    +{u.customBonusCredits || 0}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <span className={`badge-pill ${u.isBlocked ? 'blocked' : 'active'}`}>
-                                                    {u.isBlocked ? 'BLOCKED' : 'ACTIVE'}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                                                    <Link
-                                                        to={`/admin-portal-dashboard-root/user-evaluation/${u._id}`}
-                                                        className="credit-btn"
-                                                        style={{ padding: '0.35rem 0.65rem', fontSize: '0.78rem', background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(99, 102, 241, 0.4)', color: '#818cf8', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
-                                                    >
-                                                        Evaluate Account
-                                                    </Link>
-                                                    <button
-                                                        type="button"
-                                                        className={`block-btn ${u.isBlocked ? 'unblock' : 'block'}`}
-                                                        onClick={() => requestToggleBlock(u)}
-                                                    >
-                                                        {u.isBlocked ? 'Unblock' : 'Block'}
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="delete-btn"
-                                                        onClick={() => requestDeleteUser(u)}
-                                                        title="Permanently Delete User Account"
-                                                    >
-                                                        Delete
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                    {/* View 6: Audit Trail */}
+                    {activeTab === 'audit-logs' && <AdminAuditLogsTab />}
 
-                    {/* Pagination Controls */}
-                    <div className="pagination-bar">
-                        <div className="page-info">
-                            Showing page <strong>{pagination.page}</strong> of <strong>{pagination.pages || 1}</strong> (Total <strong>{pagination.total}</strong> accounts)
-                        </div>
-                        <div className="page-buttons">
-                            <button
-                                className="page-btn"
-                                disabled={pagination.page <= 1 || loading}
-                                onClick={() => fetchUsersList(pagination.page - 1)}
-                            >
-                                ← Previous Page
-                            </button>
-                            <button
-                                className="page-btn"
-                                disabled={pagination.page >= pagination.pages || loading}
-                                onClick={() => fetchUsersList(pagination.page + 1)}
-                            >
-                                Next Page →
-                            </button>
-                        </div>
-                    </div>
-                </>
-            )}
+                    {/* View 7: Broadcast & Alerts */}
+                    {activeTab === 'broadcast' && <AdminBroadcastTab />}
 
-            {/* Modal for User Evaluation & Granular Feature Control */}
+                    {/* View 8: Admin Management */}
+                    {activeTab === 'admins' && (
+                        <AdminManagementTab
+                            stats={stats}
+                            users={users}
+                            onRefresh={handleRefreshAll}
+                        />
+                    )}
+
+                    {/* View 9: Bonus Credits */}
+                    {activeTab === 'credits' && (
+                        <AdminCreditsTab onRefresh={handleRefreshAll} />
+                    )}
+                </main>
+            </div>
+
+            {/* Modal: Quick Feature Control */}
             {evalUser && (
                 <div className="modal-overlay" onClick={() => setEvalUser(null)}>
-                    <div className="modal-card evaluation-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '580px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-                                <div className="avatar-circle" style={{ width: '42px', height: '42px', fontSize: '1.2rem' }}>
+                    <div className="modal-card evaluation-modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header-row">
+                            <div className="modal-user-title">
+                                <div className="avatar-circle">
                                     {(evalUser.username || "U")[0].toUpperCase()}
                                 </div>
                                 <div>
-                                    <h2 style={{ margin: 0, fontSize: '1.3rem', color: '#ffffff' }}>User Evaluation & Feature Control</h2>
-                                    <span style={{ fontSize: '0.82rem', color: '#94a3b8' }}>{evalUser.email} (ID: {evalUser._id})</span>
+                                    <h3>Feature Access Controls</h3>
+                                    <span className="user-sub">{evalUser.email}</span>
                                 </div>
                             </div>
-                            <button onClick={() => setEvalUser(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
-                        </div>
-
-                        {/* Account Quick Metrics */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.5rem', marginBottom: '1.25rem', background: 'rgba(255, 255, 255, 0.03)', padding: '0.75rem', borderRadius: '10px', textAlign: 'center' }}>
-                            <div>
-                                <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>PLAN</div>
-                                <div style={{ fontWeight: 800, color: '#38bdf8', fontSize: '0.9rem' }}>{(evalUser.plan || 'free').toUpperCase()}</div>
-                            </div>
-                            <div>
-                                <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>REPORTS</div>
-                                <div style={{ fontWeight: 800, color: '#818cf8', fontSize: '0.9rem' }}>{evalUser.totalReports || 0}</div>
-                            </div>
-                            <div>
-                                <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>RESUMES</div>
-                                <div style={{ fontWeight: 800, color: '#34d399', fontSize: '0.9rem' }}>{evalUser.totalResumes || 0}</div>
-                            </div>
-                            <div>
-                                <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>COVER LETTERS / CV</div>
-                                <div style={{ fontWeight: 800, color: '#c084fc', fontSize: '0.9rem' }}>{evalUser.totalCoverLetters || 0}</div>
-                            </div>
-                            <div>
-                                <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>BONUS CREDITS</div>
-                                <div style={{ fontWeight: 800, color: '#4ade80', fontSize: '0.9rem' }}>+{evalUser.customBonusCredits || 0}</div>
-                            </div>
+                            <button className="modal-close-btn" onClick={() => setEvalUser(null)}>✕</button>
                         </div>
 
                         {evalMsg.text && (
-                            <div style={{
-                                padding: '0.6rem 0.9rem',
-                                borderRadius: '8px',
-                                fontSize: '0.82rem',
-                                marginBottom: '1rem',
-                                background: evalMsg.type === 'error' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
-                                color: evalMsg.type === 'error' ? '#f87171' : '#4ade80',
-                                border: `1px solid ${evalMsg.type === 'error' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`
-                            }}>
+                            <div className={`modal-msg-banner ${evalMsg.type}`}>
                                 {evalMsg.text}
                             </div>
                         )}
 
                         <form onSubmit={handleSaveFeatureAccess}>
-                            <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#e2e8f0', marginBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.4rem' }}>
-                                Granular Feature Access Permissions
-                            </h3>
-
-                            <div className="feature-toggle-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
-                                {/* AI Assistant Access */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15, 23, 42, 0.6)', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                            <div className="feature-toggle-list">
+                                <div className="feature-item-row">
                                     <div>
-                                        <div style={{ fontWeight: 700, color: '#ffffff', fontSize: '0.9rem' }}>AI Assistant & Section Writer</div>
-                                        <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>AI resume section rewriter and optimization assistant</div>
+                                        <div className="feature-name">AI Assistant & Section Writer</div>
+                                        <div className="feature-desc">AI suggestions and section optimization</div>
                                     </div>
                                     <button
                                         type="button"
-                                        style={{
-                                            padding: '0.4rem 0.85rem',
-                                            borderRadius: '8px',
-                                            fontWeight: 800,
-                                            fontSize: '0.8rem',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            background: evalFeatures.aiAssistant ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
-                                            color: evalFeatures.aiAssistant ? '#f87171' : '#4ade80'
-                                        }}
+                                        className={`feature-btn ${evalFeatures.aiAssistant ? 'blocked' : 'allowed'}`}
                                         onClick={() => setEvalFeatures(prev => ({ ...prev, aiAssistant: !prev.aiAssistant }))}
                                     >
-                                        {evalFeatures.aiAssistant ? 'BLOCKED' : 'ALLOWED'}
+                                        {evalFeatures.aiAssistant ? 'BLOCKED' : 'ENABLED'}
                                     </button>
                                 </div>
 
-                                {/* Mock Interview & Report Access */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15, 23, 42, 0.6)', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                                <div className="feature-item-row">
                                     <div>
-                                        <div style={{ fontWeight: 700, color: '#ffffff', fontSize: '0.9rem' }}>Mock Interview & Report Generation</div>
-                                        <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Full AI mock interview questions and score analysis</div>
+                                        <div className="feature-name">Mock Interview & Reports</div>
+                                        <div className="feature-desc">AI interview questions and score evaluation</div>
                                     </div>
                                     <button
                                         type="button"
-                                        style={{
-                                            padding: '0.4rem 0.85rem',
-                                            borderRadius: '8px',
-                                            fontWeight: 800,
-                                            fontSize: '0.8rem',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            background: evalFeatures.interviewReports ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
-                                            color: evalFeatures.interviewReports ? '#f87171' : '#4ade80'
-                                        }}
+                                        className={`feature-btn ${evalFeatures.interviewReports ? 'blocked' : 'allowed'}`}
                                         onClick={() => setEvalFeatures(prev => ({ ...prev, interviewReports: !prev.interviewReports }))}
                                     >
-                                        {evalFeatures.interviewReports ? 'BLOCKED' : 'ALLOWED'}
+                                        {evalFeatures.interviewReports ? 'BLOCKED' : 'ENABLED'}
                                     </button>
                                 </div>
 
-                                {/* Cover Letter & CV Access */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15, 23, 42, 0.6)', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                                <div className="feature-item-row">
                                     <div>
-                                        <div style={{ fontWeight: 700, color: '#ffffff', fontSize: '0.9rem' }}>Cover Letter & CV Generation</div>
-                                        <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Tailored job application cover letters</div>
+                                        <div className="feature-name">Cover Letter & CV Generation</div>
+                                        <div className="feature-desc">AI tailored cover letter generator</div>
                                     </div>
                                     <button
                                         type="button"
-                                        style={{
-                                            padding: '0.4rem 0.85rem',
-                                            borderRadius: '8px',
-                                            fontWeight: 800,
-                                            fontSize: '0.8rem',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            background: evalFeatures.coverLetterGeneration ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
-                                            color: evalFeatures.coverLetterGeneration ? '#f87171' : '#4ade80'
-                                        }}
+                                        className={`feature-btn ${evalFeatures.coverLetterGeneration ? 'blocked' : 'allowed'}`}
                                         onClick={() => setEvalFeatures(prev => ({ ...prev, coverLetterGeneration: !prev.coverLetterGeneration }))}
                                     >
-                                        {evalFeatures.coverLetterGeneration ? 'BLOCKED' : 'ALLOWED'}
+                                        {evalFeatures.coverLetterGeneration ? 'BLOCKED' : 'ENABLED'}
                                     </button>
                                 </div>
 
-                                {/* Resume Generation Access */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15, 23, 42, 0.6)', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                                <div className="feature-item-row">
                                     <div>
-                                        <div style={{ fontWeight: 700, color: '#ffffff', fontSize: '0.9rem' }}>Resume Builder & PDF Generation</div>
-                                        <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Resume creation, template editing, and PDF download</div>
+                                        <div className="feature-name">Resume Builder & PDF</div>
+                                        <div className="feature-desc">Full resume generation and export</div>
                                     </div>
                                     <button
                                         type="button"
-                                        style={{
-                                            padding: '0.4rem 0.85rem',
-                                            borderRadius: '8px',
-                                            fontWeight: 800,
-                                            fontSize: '0.8rem',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            background: evalFeatures.resumeGeneration ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
-                                            color: evalFeatures.resumeGeneration ? '#f87171' : '#4ade80'
-                                        }}
+                                        className={`feature-btn ${evalFeatures.resumeGeneration ? 'blocked' : 'allowed'}`}
                                         onClick={() => setEvalFeatures(prev => ({ ...prev, resumeGeneration: !prev.resumeGeneration }))}
                                     >
-                                        {evalFeatures.resumeGeneration ? 'BLOCKED' : 'ALLOWED'}
+                                        {evalFeatures.resumeGeneration ? 'BLOCKED' : 'ENABLED'}
                                     </button>
                                 </div>
                             </div>
@@ -1112,7 +1064,7 @@ export default function AdminDashboard() {
                                     Close
                                 </button>
                                 <button type="submit" className="btn-submit" disabled={evalSubmitting}>
-                                    {evalSubmitting ? 'Saving Access...' : 'Save Permissions'}
+                                    {evalSubmitting ? 'Saving...' : 'Save Permissions'}
                                 </button>
                             </div>
                         </form>
@@ -1120,23 +1072,17 @@ export default function AdminDashboard() {
                 </div>
             )}
 
-            {/* Modal for Creating New Admin */}
+            {/* Modal: Quick Create Admin */}
             {isAdminModalOpen && (
                 <div className="modal-overlay" onClick={() => setIsAdminModalOpen(false)}>
                     <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-                        <h2>Create New Admin Account</h2>
-                        <p>Directly register a new administrator in the dedicated <code>admins</code> collection.</p>
+                        <div className="modal-header-row">
+                            <h3>Register Platform Administrator</h3>
+                            <button className="modal-close-btn" onClick={() => setIsAdminModalOpen(false)}>✕</button>
+                        </div>
 
                         {adminMsg.text && (
-                            <div style={{
-                                padding: '0.6rem 0.9rem',
-                                borderRadius: '8px',
-                                fontSize: '0.82rem',
-                                marginBottom: '1rem',
-                                background: adminMsg.type === 'error' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
-                                color: adminMsg.type === 'error' ? '#f87171' : '#4ade80',
-                                border: `1px solid ${adminMsg.type === 'error' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`
-                            }}>
+                            <div className={`modal-msg-banner ${adminMsg.type}`}>
                                 {adminMsg.text}
                             </div>
                         )}
@@ -1146,7 +1092,7 @@ export default function AdminDashboard() {
                                 <label>Admin Username</label>
                                 <input
                                     type="text"
-                                    placeholder="e.g. SystemAdmin"
+                                    placeholder="e.g. system_admin"
                                     value={newAdminForm.username}
                                     onChange={(e) => setNewAdminForm(prev => ({ ...prev, username: e.target.value }))}
                                     required
@@ -1154,10 +1100,10 @@ export default function AdminDashboard() {
                             </div>
 
                             <div className="form-group">
-                                <label>Admin Email Address</label>
+                                <label>Email Address</label>
                                 <input
                                     type="email"
-                                    placeholder="e.g. admin@domain.com"
+                                    placeholder="e.g. admin@kivi.ai"
                                     value={newAdminForm.email}
                                     onChange={(e) => setNewAdminForm(prev => ({ ...prev, email: e.target.value }))}
                                     required
@@ -1165,7 +1111,7 @@ export default function AdminDashboard() {
                             </div>
 
                             <div className="form-group">
-                                <label>Password</label>
+                                <label>Temporary Password</label>
                                 <input
                                     type="password"
                                     placeholder="••••••••••••"
@@ -1176,9 +1122,10 @@ export default function AdminDashboard() {
                             </div>
 
                             <div className="form-group">
-                                <label>Admin Role Hierarchy</label>
+                                <label>Security Role</label>
                                 <select
-                                    style={{ width: '100%', padding: '0.65rem 0.85rem', background: '#1e293b', border: '1px solid rgba(255, 255, 255, 0.12)', color: '#ffffff', borderRadius: '8px' }}
+                                    className="action-select"
+                                    style={{ width: '100%' }}
                                     value={newAdminForm.role}
                                     onChange={(e) => setNewAdminForm(prev => ({ ...prev, role: e.target.value }))}
                                 >
@@ -1189,7 +1136,7 @@ export default function AdminDashboard() {
 
                             <div className="modal-actions">
                                 <button type="button" className="btn-cancel" onClick={() => setIsAdminModalOpen(false)}>
-                                    Close
+                                    Cancel
                                 </button>
                                 <button type="submit" className="btn-submit" disabled={adminSubmitting}>
                                     {adminSubmitting ? 'Creating...' : 'Create Admin'}
@@ -1200,33 +1147,27 @@ export default function AdminDashboard() {
                 </div>
             )}
 
-            {/* Modal for Granting Credits */}
+            {/* Modal: Quick Grant Credits */}
             {isCreditModalOpen && (
                 <div className="modal-overlay" onClick={() => setIsCreditModalOpen(false)}>
                     <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-                        <h2>Grant Custom Bonus Credits</h2>
-                        <p>Increase generation attempt limit for a specific user by Email or User ID.</p>
+                        <div className="modal-header-row">
+                            <h3>Grant Bonus Credits</h3>
+                            <button className="modal-close-btn" onClick={() => setIsCreditModalOpen(false)}>✕</button>
+                        </div>
 
                         {creditMsg.text && (
-                            <div style={{
-                                padding: '0.6rem 0.9rem',
-                                borderRadius: '8px',
-                                fontSize: '0.82rem',
-                                marginBottom: '1rem',
-                                background: creditMsg.type === 'error' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
-                                color: creditMsg.type === 'error' ? '#f87171' : '#4ade80',
-                                border: `1px solid ${creditMsg.type === 'error' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`
-                            }}>
+                            <div className={`modal-msg-banner ${creditMsg.type}`}>
                                 {creditMsg.text}
                             </div>
                         )}
 
                         <form onSubmit={handleGrantCreditsSubmit}>
                             <div className="form-group">
-                                <label>User Email or User ID</label>
+                                <label>User Email or Database User ID</label>
                                 <input
                                     type="text"
-                                    placeholder="e.g. user@gmail.com or 64b8f..."
+                                    placeholder="e.g. candidate@gmail.com or 64b8f..."
                                     value={creditIdentifier}
                                     onChange={(e) => setCreditIdentifier(e.target.value)}
                                     required
@@ -1234,23 +1175,23 @@ export default function AdminDashboard() {
                             </div>
 
                             <div className="form-group">
-                                <label>Bonus Credits Offset (Positive to Add, Negative to Reduce)</label>
+                                <label>Credits to Allocate</label>
                                 <input
                                     type="number"
                                     min="-500"
                                     max="1000"
                                     value={creditAmount}
-                                    onChange={(e) => setCreditAmount(e.target.value)}
+                                    onChange={(e) => setCreditAmount(Number(e.target.value))}
                                     required
                                 />
                             </div>
 
                             <div className="modal-actions">
                                 <button type="button" className="btn-cancel" onClick={() => setIsCreditModalOpen(false)}>
-                                    Close
+                                    Cancel
                                 </button>
                                 <button type="submit" className="btn-submit" disabled={creditSubmitting}>
-                                    {creditSubmitting ? 'Granting...' : 'Grant Credits'}
+                                    {creditSubmitting ? 'Applying...' : 'Apply Credits'}
                                 </button>
                             </div>
                         </form>
@@ -1258,43 +1199,35 @@ export default function AdminDashboard() {
                 </div>
             )}
 
-            {/* Modal: Send Admin Broadcast / Message */}
+            {/* Modal: Quick Send Broadcast */}
             {isMsgModalOpen && (
-                <div className="admin-modal-overlay" onClick={() => setIsMsgModalOpen(false)}>
-                    <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h3>Send Admin Broadcast / Message</h3>
-                            <button className="close-btn" onClick={() => setIsMsgModalOpen(false)}>✕</button>
+                <div className="modal-overlay" onClick={() => setIsMsgModalOpen(false)}>
+                    <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header-row">
+                            <h3>Send Platform Notification</h3>
+                            <button className="modal-close-btn" onClick={() => setIsMsgModalOpen(false)}>✕</button>
                         </div>
 
                         {msgResult.text && (
-                            <div className="modal-msg" style={{
-                                padding: '0.65rem 0.85rem',
-                                borderRadius: '0.5rem',
-                                fontSize: '0.82rem',
-                                marginBottom: '1rem',
-                                background: msgResult.type === 'error' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
-                                color: msgResult.type === 'error' ? '#f87171' : '#4ade80',
-                                border: `1px solid ${msgResult.type === 'error' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`
-                            }}>
+                            <div className={`modal-msg-banner ${msgResult.type}`}>
                                 {msgResult.text}
                             </div>
                         )}
 
                         <form onSubmit={handleSendAdminMessageSubmit}>
                             <div className="form-group">
-                                <label>Target Audience Scope</label>
+                                <label>Audience Scope</label>
                                 <select
                                     value={msgForm.targetType}
                                     onChange={(e) => setMsgForm({ ...msgForm, targetType: e.target.value, targetValue: '' })}
                                     className="action-select"
-                                    style={{ width: '100%', padding: '0.75rem', background: '#090e17', border: '1px solid #1e293b', color: '#fff', borderRadius: '0.65rem' }}
+                                    style={{ width: '100%' }}
                                 >
-                                    <option value="all">🌐 All Users (Platform-wide)</option>
-                                    <option value="free">🆓 Free Plan Users</option>
-                                    <option value="pro">⚡ Pro Plan Users</option>
-                                    <option value="premium">💎 Premium Plan Users</option>
-                                    <option value="user">👤 Individual User (By Email / User ID)</option>
+                                    <option value="all">All Platform Users</option>
+                                    <option value="free">Free Plan Users</option>
+                                    <option value="pro">Pro Plan Users</option>
+                                    <option value="premium">Premium Plan Users</option>
+                                    <option value="user">Direct Individual User</option>
                                 </select>
                             </div>
 
@@ -1303,7 +1236,7 @@ export default function AdminDashboard() {
                                     <label>User Email or User ID</label>
                                     <input
                                         type="text"
-                                        placeholder="e.g. user@gmail.com or 64b8f..."
+                                        placeholder="e.g. user@gmail.com"
                                         value={msgForm.targetValue}
                                         onChange={(e) => setMsgForm({ ...msgForm, targetValue: e.target.value })}
                                         required
@@ -1315,7 +1248,7 @@ export default function AdminDashboard() {
                                 <label>Notification Title</label>
                                 <input
                                     type="text"
-                                    placeholder="e.g. System Maintenance Notice / Special Offer"
+                                    placeholder="e.g. Scheduled System Upgrade"
                                     value={msgForm.title}
                                     onChange={(e) => setMsgForm({ ...msgForm, title: e.target.value })}
                                     required
@@ -1325,21 +1258,20 @@ export default function AdminDashboard() {
                             <div className="form-group">
                                 <label>Message Content</label>
                                 <textarea
-                                    rows="4"
-                                    placeholder="Write your message to the user(s)..."
+                                    rows={4}
+                                    placeholder="Write your announcement..."
                                     value={msgForm.message}
                                     onChange={(e) => setMsgForm({ ...msgForm, message: e.target.value })}
-                                    style={{ width: '100%', padding: '0.65rem', background: '#090e17', border: '1px solid #1e293b', color: '#fff', borderRadius: '0.5rem', resize: 'vertical' }}
                                     required
                                 />
                             </div>
 
                             <div className="modal-actions">
                                 <button type="button" className="btn-cancel" onClick={() => setIsMsgModalOpen(false)}>
-                                    Close
+                                    Cancel
                                 </button>
                                 <button type="submit" className="btn-submit" disabled={msgSubmitting}>
-                                    {msgSubmitting ? 'Sending...' : 'Send Message'}
+                                    {msgSubmitting ? 'Dispatching...' : 'Dispatch Alert'}
                                 </button>
                             </div>
                         </form>
@@ -1347,7 +1279,7 @@ export default function AdminDashboard() {
                 </div>
             )}
 
-            {/* Action Confirmation Modal */}
+            {/* Sensitive Action Confirmation Modal */}
             <ConfirmModal
                 {...confirmModal}
                 onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}

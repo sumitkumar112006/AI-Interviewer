@@ -225,6 +225,7 @@ export async function streamAssistantChatApi({
     instruction = '',
     activeTab = '',
     currentRoute = '',
+    currentResumeHtml = '',
     onStatus = () => {},
     onToken = () => {},
     onDone = () => {},
@@ -250,6 +251,7 @@ export async function streamAssistantChatApi({
                 instruction,
                 activeTab,
                 currentRoute,
+                currentResumeHtml,
                 stream: true
             }),
             signal
@@ -312,9 +314,11 @@ export async function streamAssistantChatApi({
         }
 
         const finalResult = {
-            replyText: doneData?.reply || accumulatedText,
+            replyText: doneData?.messageForUser || doneData?.reply || accumulatedText,
+            messageForUser: doneData?.messageForUser || doneData?.reply || accumulatedText,
+            ResumeUpdations: doneData?.ResumeUpdations !== undefined ? doneData?.ResumeUpdations : (doneData?.suggestedSnippet || false),
             targetText: doneData?.targetText || selectedText || null,
-            suggestedSnippet: doneData?.suggestedSnippet || null,
+            suggestedSnippet: doneData?.suggestedSnippet || (doneData?.ResumeUpdations !== false ? doneData?.ResumeUpdations : null),
             resources: doneData?.resources || [],
             profile: doneData?.profile || null
         };

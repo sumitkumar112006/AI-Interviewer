@@ -941,6 +941,31 @@
             gap: 0.5rem;
             flex-wrap: wrap;
             margin-top: 0.2rem;
+
+            .reject-snippet-btn {
+                padding: 0.38rem 0.85rem;
+                border-radius: 4px;
+                font-family: var(--font-mono, monospace);
+                font-size: 0.72rem;
+                font-weight: 700;
+                letter-spacing: 0.04em;
+                background: rgba(239, 68, 68, 0.1);
+                color: #f87171 !important;
+                border: 1px solid rgba(239, 68, 68, 0.25);
+                cursor: pointer;
+                transition: all 0.15s ease;
+
+                &:hover:not(:disabled) {
+                    background: rgba(239, 68, 68, 0.25);
+                    color: #ef4444 !important;
+                    border-color: #ef4444;
+                }
+
+                &:disabled {
+                    opacity: 0.6;
+                    cursor: default;
+                }
+            }
         }
 
         .copy-snippet-btn {

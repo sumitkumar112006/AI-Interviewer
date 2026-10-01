@@ -1,6 +1,6 @@
 import React, { useEffect, useImperativeHandle, forwardRef, useCallback, useState, useRef } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
-import { Extension } from '@tiptap/core'
+import { Extension, Mark, mergeAttributes } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
@@ -20,6 +20,68 @@ import {
 } from 'lucide-react'
 import { parseAndSanitizeSnippet } from '../utils/sanitizeResumeHtml'
 import '../style/editor.scss'
+
+// ── Custom TipTap Marks for Google Docs-style Diff Preview ───────────────────
+export const DiffDel = Mark.create({
+    name: 'diffDel',
+    addOptions() {
+        return {
+            HTMLAttributes: {
+                class: 'kivi-diff-del',
+            },
+        }
+    },
+    parseHTML() {
+        return [
+            { tag: 'del' },
+            { tag: 's.kivi-diff-del' },
+            { tag: 'span.kivi-diff-del' },
+            {
+                tag: 'span',
+                getAttrs: (element) => element.classList?.contains('kivi-diff-del') && null,
+            },
+            {
+                tag: 's',
+                getAttrs: (element) => element.classList?.contains('kivi-diff-del') && null,
+            },
+            {
+                tag: 'del',
+                getAttrs: (element) => element.classList?.contains('kivi-diff-del') && null,
+            },
+        ]
+    },
+    renderHTML({ HTMLAttributes }) {
+        return ['del', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0]
+    },
+})
+
+export const DiffIns = Mark.create({
+    name: 'diffIns',
+    addOptions() {
+        return {
+            HTMLAttributes: {
+                class: 'kivi-diff-ins',
+            },
+        }
+    },
+    parseHTML() {
+        return [
+            { tag: 'ins' },
+            { tag: 'span.kivi-diff-ins' },
+            {
+                tag: 'span',
+                getAttrs: (element) => element.classList?.contains('kivi-diff-ins') && null,
+            },
+            {
+                tag: 'ins',
+                getAttrs: (element) => element.classList?.contains('kivi-diff-ins') && null,
+            },
+        ]
+    },
+    renderHTML({ HTMLAttributes }) {
+        return ['ins', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0]
+    },
+})
 
 // ── Custom FontSize Extension for Tiptap ───────────────────────────────────
 export const FontSize = Extension.create({
@@ -262,6 +324,9 @@ const ResumeEditor = forwardRef(function ResumeEditor(
     const [lastTextColor, setLastTextColor] = useState('#1e293b')
     const [lastHighlightColor, setLastHighlightColor] = useState('#fef08a')
 
+    // ── Active AI Diff State ──────────────────────────────────────────────────
+    const [activeDiff, setActiveDiff] = useState(null)
+
     const editor = useEditor({
         extensions: [
             StarterKit.configure({
@@ -270,6 +335,8 @@ const ResumeEditor = forwardRef(function ResumeEditor(
                 orderedList: { keepMarks: true, keepAttributes: false },
             }),
             Underline,
+            DiffDel,
+            DiffIns,
             TextStyle,
             FontFamily.configure({
                 types: ['textStyle'],
@@ -344,6 +411,110 @@ const ResumeEditor = forwardRef(function ResumeEditor(
         },
     })
 
+    const handleAcceptDiff = useCallback(() => {
+        if (!activeDiff || !editor) return
+        const { mergedFullResumeHtml, newFullResumeHtml, replacementHtml, targetText, msgId } = activeDiff
+
+        const cleanMerged = mergedFullResumeHtml || newFullResumeHtml
+        if (cleanMerged && cleanMerged.length > 50) {
+            // Strip any residual diff tags to ensure pristine clean resume HTML
+            const strippedHtml = cleanMerged
+                .replace(/<del\b[^>]*>[\s\S]*?<\/del>/gi, '')
+                .replace(/<\/?ins\b[^>]*>/gi, '')
+                .replace(/class="kivi-diff-[^"]*"/gi, '')
+            editor.commands.setContent(strippedHtml, false)
+        } else if (targetText && replacementHtml) {
+            const cleanTarget = (targetText || '').trim()
+            const cleanReplacement = parseAndSanitizeSnippet(replacementHtml) || replacementHtml.trim()
+            const doc = editor.state.doc
+            const { charToPos, plainText } = buildDocTextIndex(doc)
+            const range = findTextRange(charToPos, plainText, cleanTarget)
+            if (range) {
+                editor.chain().focus().setTextSelection(range).insertContent(cleanReplacement).run()
+            } else {
+                editor.commands.insertContent(cleanReplacement)
+            }
+        } else if (replacementHtml) {
+            editor.commands.insertContent(replacementHtml)
+        } else {
+            // Fallback: clean current editor HTML by removing del and unwrapping ins
+            const curHtml = editor.getHTML()
+            const strippedHtml = curHtml
+                .replace(/<del\b[^>]*>[\s\S]*?<\/del>/gi, '')
+                .replace(/<\/?ins\b[^>]*>/gi, '')
+                .replace(/class="kivi-diff-[^"]*"/gi, '')
+            editor.commands.setContent(strippedHtml, false)
+        }
+
+        setActiveDiff(null)
+        onChange?.(editor.getHTML())
+
+        window.dispatchEvent(new CustomEvent('kivi-diff-status-change', {
+            detail: { status: 'accepted', msgId }
+        }))
+    }, [activeDiff, editor, onChange])
+
+    const handleRejectDiff = useCallback(() => {
+        if (!activeDiff || !editor) return
+        const { oldFullResumeHtml, oldDocumentHtml, msgId } = activeDiff
+
+        const restoreHtml = oldFullResumeHtml || oldDocumentHtml
+        if (restoreHtml && restoreHtml.length > 20) {
+            editor.commands.setContent(restoreHtml, false)
+            onChange?.(editor.getHTML())
+        } else {
+            // Fallback: strip ins tags and unwrap del tags from current editor
+            const curHtml = editor.getHTML()
+            const revertedHtml = curHtml
+                .replace(/<ins\b[^>]*>[\s\S]*?<\/ins>/gi, '')
+                .replace(/<\/?del\b[^>]*>/gi, '')
+                .replace(/class="kivi-diff-[^"]*"/gi, '')
+            editor.commands.setContent(revertedHtml, false)
+            onChange?.(editor.getHTML())
+        }
+
+        setActiveDiff(null)
+        window.dispatchEvent(new CustomEvent('kivi-diff-status-change', {
+            detail: { status: 'rejected', msgId }
+        }))
+    }, [activeDiff, editor, onChange])
+
+    const showDiff = useCallback((diffData) => {
+        if (!diffData || !editor) return
+
+        const currentDocHtml = editor.getHTML()
+        const payload = {
+            ...diffData,
+            oldFullResumeHtml: diffData.oldFullResumeHtml || diffData.oldDocumentHtml || currentDocHtml
+        }
+        setActiveDiff(payload)
+
+        // 1. If diffPreviewHtml is provided (with <del class="kivi-diff-del"> and <ins class="kivi-diff-ins">), apply directly
+        if (diffData.diffPreviewHtml && diffData.diffPreviewHtml.length > 20) {
+            editor.commands.setContent(diffData.diffPreviewHtml, false)
+        } else if (diffData.targetText && diffData.replacementHtml) {
+            // 2. Fallback: locate target text and replace with inline del + ins
+            const cleanTarget = (diffData.targetText || '').trim()
+            const cleanReplacement = parseAndSanitizeSnippet(diffData.replacementHtml) || diffData.replacementHtml.trim()
+            const doc = editor.state.doc
+            const { charToPos, plainText } = buildDocTextIndex(doc)
+            const range = findTextRange(charToPos, plainText, cleanTarget)
+            if (range) {
+                const targetMatchedText = plainText.slice(plainText.indexOf(cleanTarget), plainText.indexOf(cleanTarget) + cleanTarget.length) || cleanTarget
+                const diffSnippet = `<del class="kivi-diff-del">${targetMatchedText}</del> <ins class="kivi-diff-ins">${cleanReplacement}</ins>`
+                editor.chain().focus().setTextSelection(range).insertContent(diffSnippet).run()
+            }
+        }
+
+        // 3. Smooth scroll to the diff element
+        setTimeout(() => {
+            const diffNode = document.querySelector('.kivi-diff-del, .kivi-diff-ins, .kivi-floating-diff-banner')
+            if (diffNode) {
+                diffNode.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            }
+        }, 60)
+    }, [editor])
+
     // When initialHtml changes externally, update editor content
     useEffect(() => {
         if (editor && initialHtml) {
@@ -366,11 +537,32 @@ const ResumeEditor = forwardRef(function ResumeEditor(
         isEmpty: () => editor?.isEmpty ?? true,
         isFocused: () => editor?.isFocused ?? false,
         getLastSelection: () => lastSelectionRef.current,
+        showDiff,
+        acceptDiff: handleAcceptDiff,
+        rejectDiff: handleRejectDiff,
+        getActiveDiff: () => activeDiff,
         replaceExactText: (targetText, replacementText) => {
             if (!editor || !replacementText) return false
 
-            const cleanTarget = (targetText || '').trim()
-            const cleanReplacement = parseAndSanitizeSnippet(replacementText) || replacementText.trim()
+            let cleanTarget = (targetText || '').trim()
+            let cleanReplacement = parseAndSanitizeSnippet(replacementText) || replacementText.trim()
+
+            // Regex to detect standard resume section headers at start of replacement HTML/text
+            const LEADING_HEADING_REGEX = /^(?:<h[1-6][^>]*>|<p[^>]*>(?:<strong>|\*\*|###?\s*)?)\s*(Summary|Professional Summary|Executive Summary|Technical Skills|Skills|Core Competencies|Experience|Work Experience|Employment History|Education|Projects|Certifications|Achievements)\s*(?:<\/strong>|\*\*|:)?\s*(?:<\/p>|<\/h[1-6]>)\s*/i
+
+            // If replacement starts with a section heading (e.g. <h3>Summary</h3> or <p>Summary</p>)
+            // but cleanTarget does NOT contain that heading title, strip the leading heading so we don't insert a duplicate heading!
+            const leadingMatch = cleanReplacement.match(LEADING_HEADING_REGEX)
+            if (leadingMatch) {
+                const headingTitle = leadingMatch[1].toLowerCase()
+                const targetHasHeading = cleanTarget.toLowerCase().includes(headingTitle)
+                if (!targetHasHeading) {
+                    const withoutHeading = cleanReplacement.replace(LEADING_HEADING_REGEX, '').trim()
+                    if (withoutHeading.length > 5) {
+                        cleanReplacement = withoutHeading
+                    }
+                }
+            }
 
             // Prepare stripped versions (strip leading bullet markers or numbers)
             const strippedTarget = cleanTarget.replace(/^[•\-\*\d\.]+\s*/, '').trim()
@@ -1517,6 +1709,38 @@ const ResumeEditor = forwardRef(function ResumeEditor(
                             title="Close player panel (audio continues in background)"
                         >
                             <X size={13} />
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Floating AI Diff Accept / Reject Banner ── */}
+            {activeDiff && (
+                <div className="kivi-floating-diff-banner">
+                    <div className="diff-banner-left">
+                        <Sparkles size={14} className="diff-sparkle-icon" />
+                        <span className="diff-banner-title">
+                            {activeDiff.sectionName ? `AI Suggested: ${activeDiff.sectionName}` : 'AI Suggested Resume Update'}
+                        </span>
+                    </div>
+                    <div className="diff-banner-actions">
+                        <button
+                            type="button"
+                            className="diff-reject-btn"
+                            onClick={handleRejectDiff}
+                            title="Reject and keep current content"
+                        >
+                            <X size={14} />
+                            <span>Reject</span>
+                        </button>
+                        <button
+                            type="button"
+                            className="diff-accept-btn"
+                            onClick={handleAcceptDiff}
+                            title="Accept and apply change to resume"
+                        >
+                            <Check size={14} />
+                            <span>Accept</span>
                         </button>
                     </div>
                 </div>

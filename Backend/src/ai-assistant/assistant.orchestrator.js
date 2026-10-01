@@ -56,11 +56,13 @@ async function runUnifiedMicroRouter({ promptText, selectedText = '', action = '
 Analyze the user's message and determine:
 1. CONTEXT REQUIREMENTS (whether to inject Resume, Job Description, or Roadmap).
 2. REAL-TIME TOOLS (whether to search Web, LeetCode, YouTube, GitHub, Official Docs).
+3. RESUME EDIT INTENT (whether user is requesting adding/updating resume content).
 
 LENIENCY RULES (60% Threshold — When in doubt, set true):
 - "needs_jd" (Job Description): Set TRUE if user mentions "this company", company name, job role, hiring process, interview rounds, salary, JD requirements, or asks how to align for a role.
 - "needs_resume" (Candidate Resume): Set TRUE if user asks to review, tailor, rewrite, improve, check gaps in their experience, bullet points, skills, or projects.
 - "needs_roadmap" (Preparation Roadmap): Set TRUE if user asks about their 14-day study plan, milestones, completed/pending tasks.
+- "is_resume_edit": Set TRUE if user asks to add, modify, rewrite, enhance, shorten, replace, or update any part of their resume (e.g. "add product management", "rewrite summary", "change bullet 2", "make this ATS-friendly"). Set FALSE if it is purely informational (e.g. "what is my match score?", "explain technical questions", "give me leetcode questions").
 - If probability of needing context is ≥60%, set it to TRUE.
 - Set ALL context to FALSE ONLY if the query is 100% general programming/computer science (e.g. "what is binary search", "how does useEffect work", "explain CAP theorem").
 
@@ -71,18 +73,12 @@ AVAILABLE TOOLS:
 - "github": Open-source repos & starter templates.
 - "docs": Official framework/language documentation.
 
-MULTI-TOOL DECISION RULES:
-- When user asks for resources, videos, tutorials, links, or study material: ALWAYS select "video" (YouTube tutorials/crash courses) + ("leetcode" or "docs" or "web").
-- When user asks for a preparation roadmap / study plan / video resources: select "video" + "leetcode" (or "docs").
-- When user asks about a specific company / "this company": select "web" + "video".
-- When user asks for coding / DSA practice: select "leetcode" + "video".
-- When user asks for project ideas or code repositories: select "github" + "docs".
-
 Respond with ONLY valid JSON:
 {
   "needs_resume": true or false,
   "needs_jd": true or false,
   "needs_roadmap": true or false,
+  "is_resume_edit": true or false,
   "tools": [
     { "tool": "web" | "leetcode" | "video" | "github" | "docs", "query": "concise search keywords" }
   ],
@@ -125,14 +121,17 @@ JSON Decision:`;
                 .filter(t => validTools.includes(t.tool) && t.query.length > 0)
                 .slice(0, 3);
 
+            const isResumeEdit = Boolean(parsed.is_resume_edit) || parsed.output_format === 'SUGGESTION_SNIPPET' || isDirectEditPreset;
+
             return {
-                needs_resume: Boolean(parsed.needs_resume),
+                needs_resume: Boolean(parsed.needs_resume) || isResumeEdit,
                 needs_jd: Boolean(parsed.needs_jd),
                 needs_roadmap: Boolean(parsed.needs_roadmap),
+                is_resume_edit: isResumeEdit,
                 tools: filteredTools,
-                intent: parsed.intent || 'GENERAL',
-                output_format: parsed.output_format || 'MARKDOWN_BULLETS',
-                is_rewrite: parsed.output_format === 'SUGGESTION_SNIPPET' || isDirectEditPreset,
+                intent: parsed.intent || (isResumeEdit ? 'RESUME' : 'GENERAL'),
+                output_format: parsed.output_format || (isResumeEdit ? 'SUGGESTION_SNIPPET' : 'MARKDOWN_BULLETS'),
+                is_rewrite: isResumeEdit,
                 reasoning: parsed.reasoning || 'Micro-router classified'
             };
         }
@@ -145,10 +144,11 @@ JSON Decision:`;
         needs_resume: true,
         needs_jd: true,
         needs_roadmap: false,
+        is_resume_edit: isDirectEditPreset,
         tools: [],
         intent: 'GENERAL',
         output_format: 'MARKDOWN_BULLETS',
-        is_rewrite: false,
+        is_rewrite: isDirectEditPreset,
         reasoning: 'Fallback default'
     };
 }
@@ -160,6 +160,67 @@ function detectToolRequirement(message) {
     return {
         needsResources: false,
         needsWebSearch: false
+    };
+}
+
+/**
+ * Dual-Payload Response Extraction:
+ * Case 1 (Resume Edit): { messageForUser: string, ResumeUpdations: string (HTML), toolCalls: array }
+ * Case 2 (Non-Edit / Q&A): { messageForUser: string, ResumeUpdations: false, toolCalls: array }
+ */
+function parseDualPayloadAssistantReply(rawReply, isExplicitRewrite = false) {
+    if (!rawReply || typeof rawReply !== 'string') {
+        return {
+            messageForUser: 'Here is information to assist you.',
+            ResumeUpdations: false,
+            targetText: null,
+            suggestedSnippet: null
+        };
+    }
+
+    const trimmed = rawReply.trim();
+
+    // 1. Check if reply is wrapped in valid JSON with messageForUser / ResumeUpdations
+    const jsonMatch = trimmed.match(/\{[\s\S]*"(?:messageForUser|replyText|ResumeUpdations)"[\s\S]*\}/);
+    if (jsonMatch) {
+        try {
+            const parsed = JSON.parse(jsonMatch[0]);
+            const messageForUser = parsed.messageForUser || parsed.replyText || parsed.message || 'Here is the response.';
+            const rawResumeUpdation = parsed.ResumeUpdations ?? parsed.resumeUpdations ?? parsed.suggestedSnippet;
+            const isResumeEdit = rawResumeUpdation && rawResumeUpdation !== false && rawResumeUpdation !== 'false' && rawResumeUpdation !== 'null';
+            const resumeHtml = isResumeEdit ? String(rawResumeUpdation).trim() : false;
+
+            return {
+                messageForUser,
+                ResumeUpdations: resumeHtml,
+                targetText: parsed.targetText || null,
+                suggestedSnippet: resumeHtml ? resumeHtml : null
+            };
+        } catch (e) {
+            // Fall through to markdown code fence extraction
+        }
+    }
+
+    // 2. Fallback parser for markdown code blocks (```suggestion, ```html, etc.)
+    const { suggestedSnippet, targetText } = extractSnippetAndTargetFromReply(rawReply, isExplicitRewrite);
+
+    // Clean conversational message without raw code blocks
+    let cleanMessage = rawReply
+        .replace(/```(?:suggestion|rewrite|snippet|original|target|html)[\s\S]*?```/gi, '')
+        .replace(/(?:Suggested Rewrite|Improved Version|Refined Bullet|Original Line|Original Text):\s*["“]?([^"”\n\r]+)["”]?/gi, '')
+        .trim();
+
+    if (!cleanMessage) {
+        cleanMessage = suggestedSnippet 
+            ? "I've generated the improved ATS version for your resume. Review and apply the changes below." 
+            : rawReply;
+    }
+
+    return {
+        messageForUser: cleanMessage,
+        ResumeUpdations: suggestedSnippet ? suggestedSnippet : false,
+        targetText: targetText || null,
+        suggestedSnippet: suggestedSnippet || null
     };
 }
 
@@ -228,7 +289,7 @@ function extractSnippetAndTargetFromReply(replyText, isExplicitRewrite = false) 
 /**
  * Builds formatted prompt and context for KIVI AI Assistant using Unified Micro-Router
  */
-async function buildAssistantPromptAndMessages({ userId, reportId = null, message = '', selectedText = '', action = '', instruction = '', activeTab = '', currentRoute = '', userPlan = 'free', onStatus = null }) {
+async function buildAssistantPromptAndMessages({ userId, reportId = null, message = '', selectedText = '', action = '', instruction = '', activeTab = '', currentRoute = '', userPlan = 'free', currentResumeHtml = '', onStatus = null }) {
     const promptText = (message || instruction || '').trim();
 
     // 1. Step 1: Run Single Fast Unified Micro-Router (Context Needs + Multi-Tool Selection)
@@ -241,7 +302,7 @@ async function buildAssistantPromptAndMessages({ userId, reportId = null, messag
         userPlan
     });
 
-    const isExplicitRewrite = routerDecision.is_rewrite || ['enhance', 'shorten', 'fix_grammar', 'rephrase', 'make_ats'].includes(action);
+    const isExplicitRewrite = routerDecision.is_rewrite || routerDecision.is_resume_edit || ['enhance', 'shorten', 'fix_grammar', 'rephrase', 'make_ats'].includes(action);
 
     // 2. Step 2: Dynamically load ONLY the required pieces of context (Selective DB query with 60% leniency)
     const { candidateContextSnippet, recentHistory, profile, companyName, dbCallsAvoided } = await loadDynamicContext({
@@ -254,7 +315,8 @@ async function buildAssistantPromptAndMessages({ userId, reportId = null, messag
         },
         intentData: routerDecision,
         promptText,
-        selectedText
+        selectedText,
+        currentResumeHtml
     });
 
     // 3. Step 3: Execute Selected Multi-Tools in Parallel
@@ -360,19 +422,43 @@ async function buildAssistantPromptAndMessages({ userId, reportId = null, messag
         }
     }
 
-    // 4. Step 4: Construct Grounded System Prompt
+    // 4. Step 4: Construct Grounded System Prompt with Dual-Payload Schema
     let systemPrompt = `You are KIVI AI, a concise, highly factual AI Career Coach, Coding Mentor, and ATS Resume Copilot embedded in the KIVI-AI platform.
 
+DUAL-PAYLOAD RESPONSE SCHEMA:
+You MUST structure your response based on the query type:
+
+── CASE 1: RESUME MODIFICATION (When user requests adding, updating, rewriting, enhancing, or shortening resume content) ──
+Respond in valid JSON with:
+{
+  "messageForUser": "Short, friendly 1-2 sentence explanation of the enhancement made (e.g. 'I refreshed your Summary to highlight React, Node, REST APIs, Git, AWS, and AI focus.').",
+  "ResumeUpdations": "<valid semantic HTML of the updated section or full resume ready for TipTap editor>",
+  "targetText": "<exact text from original resume being replaced, or null if inserting new content>"
+}
+HTML Formatting for ResumeUpdations:
+- Use semantic HTML tags matching TipTap typography: '<p>', '<h3>', '<ul><li><strong>...</strong></li></ul>', '<a href=\"...\">'.
+- SKILLS & BULLET POINT UPDATES: When modifying, adding, or deleting a skill or bullet point in an existing list (e.g. 'AI & ML APIs', 'Databases', or a work experience bullet), set 'targetText' to the EXACT original line from the candidate's resume (e.g. 'AI & ML APIs: OpenAI API, Google Gemini API, GitHub Copilot') and return ONLY the updated line in 'ResumeUpdations' (e.g. '<li><strong>AI & ML APIs:</strong> OpenAI API, Google Gemini API, GitHub Copilot, LangChain (RAG) (NEW)</li>'). DO NOT return other unrelated bullet points or the entire section!
+- SECTION & PARAGRAPH REWRITES: When rewriting a specific section (e.g. Summary or full Experience), DO NOT repeat the section title/heading (e.g. do NOT output '<h3>Summary</h3>' or 'Summary') if the heading already exists in the document. Return ONLY the updated body content ('<p>...</p>' or '<ul><li>...</li></ul>').
+- If you DO include the section heading, ensure 'targetText' includes BOTH the original section heading and its content so the entire section is replaced cleanly.
+- Append '(NEW)' to any missing skills added from the JD (e.g. '<strong>Product Management (NEW)</strong>').
+- DO NOT dump raw markdown code fences inside 'messageForUser'.
+
+── CASE 2: NON-EDIT QUERY (Q&A, Match Score, Job Description analysis, Interview prep, Technical Coaching, Search) ──
+Respond in valid JSON with:
+{
+  "messageForUser": "Direct, structured markdown answer using headings (###) and bullet points (•). Include verified clickable markdown links [Title](URL) for resources.",
+  "ResumeUpdations": false
+}
+
 CRITICAL FORMATTING & LINK INTEGRITY RULES:
-1. STRICTLY FORBIDDEN: NEVER USE MARKDOWN TABLES (pipes and dashes \`| col1 | col2 |\`). Tables are STRICTLY PROHIBITED in responses because they overflow, truncate text, and degrade the chat drawer interface.
-2. USE STRUCTURED MARKDOWN HEADINGS & BULLETS: Structure all responses with clean markdown headings (\`### Section Title\`) and clear bullet points (\`•\`).
-3. CLICKABLE VERIFIED LINKS & VIDEOS:
-   - When asked for resources, study plans, or videos, ALWAYS return direct clickable markdown links: \`• [Title](URL) - Key takeaway\`.
-   - Cite and embed the exact verified URLs provided in the "[Verified ...]" context below (from YouTube, LeetCode, GitHub, Docs, and Web).
-   - NEVER INVENT RANDOM YOUTUBE VIDEO IDs (e.g. NEVER make up fake URLs like \`watch?v=...\`). If recommending a course or video that is not in the verified context, format it as a guaranteed live YouTube search link:
-     \`[▶️ Course Title](https://www.youtube.com/results?search_query=topic+tutorial+interview)\`
-   - NEVER write plain search instructions like "YouTube (search '...')" or unlinked platform names. Always provide direct clickable links.
-4. ZERO FLUFF & ANSWER ONLY WHAT IS ASKED: Jump straight into the response without conversational filler.`;
+1. STRICTLY FORBIDDEN: NEVER USE MARKDOWN TABLES (pipes and dashes | col1 | col2 |) in messageForUser.
+2. CLICKABLE VERIFIED LINKS & VIDEOS:
+   - When asked for resources, study plans, or videos, ALWAYS return direct clickable markdown links: '• [Title](URL) - Key takeaway'.
+   - Cite and embed the exact verified URLs provided in the '[Verified ...]' context below (from YouTube, LeetCode, GitHub, Docs, and Web).
+   - NEVER INVENT RANDOM YOUTUBE VIDEO IDs (e.g. NEVER make up fake URLs like 'watch?v=...'). If recommending a course or video that is not in the verified context, format it as a guaranteed live YouTube search link:
+     '[▶️ Course Title](https://www.youtube.com/results?search_query=topic+tutorial+interview)'
+   - NEVER write plain search instructions like 'YouTube (search ...)'. Always provide direct clickable links.
+3. ZERO FLUFF & ANSWER ONLY WHAT IS ASKED: Jump straight into the response without conversational filler.`;
 
     if (routerDecision.intent === 'ROADMAP' || routerDecision.intent === 'ROADMAP_JD') {
         systemPrompt += `\n\nTask: Provide a structured, milestone-based preparation roadmap with clear daily/weekly objectives and verified clickable video/resource links for each phase.`;
@@ -381,16 +467,7 @@ CRITICAL FORMATTING & LINK INTEGRITY RULES:
     } else if (routerDecision.intent === 'RESUME_JD') {
         systemPrompt += `\n\nTask: Evaluate and align Candidate's Resume against the Target Job Description. Identify matching skills, missing ATS keywords, and specific impact improvements.`;
     } else if (routerDecision.intent === 'RESUME' || isExplicitRewrite) {
-        if (isExplicitRewrite) {
-            systemPrompt += `\n\nTask: Provide targeted ATS-optimized text revisions for the user's resume.
-CRITICAL REWRITE RULES:
-- Output ONLY the specific line, bullet point, or skills section being added or updated.
-- Wrap the EXACT original text in candidate context inside \`\`\`original ... \`\`\`
-- Wrap ONLY the exact improved replacement snippet inside \`\`\`suggestion ... \`\`\`
-- Keep conversational commentary to 1 brief sentence maximum outside the code blocks.`;
-        } else {
-            systemPrompt += `\n\nTask: Provide resume advice and actionable recommendations in clean markdown bullets.`;
-        }
+        systemPrompt += `\n\nTask: Provide targeted ATS-optimized text revisions or advice for the user's resume according to the dual-payload JSON schema.`;
     } else if (routerDecision.intent === 'DYNAMIC_SEARCH') {
         systemPrompt += `\n\nTask: Present verified technical resources, GitHub projects, LeetCode challenges, or official documentation with clickable links based on the search results.`;
     } else {
@@ -415,7 +492,7 @@ CRITICAL REWRITE RULES:
 Instruction / Goal:
 ${promptText || actionGuide}
 
-Please provide your improvement and wrap the exact suggested replacement text in a markdown code block tagged \`\`\`suggestion ... \`\`\` so it can be applied directly to the document.`;
+Respond with the dual-payload JSON schema with "messageForUser", "ResumeUpdations", and "targetText".`;
         } else {
             userContent = `[Referenced Context]:
 "${selectedText.trim()}"
@@ -510,11 +587,12 @@ function logAssistantQueryPayload({
  * @param {string} [params.selectedText] - Highlighted editor text snippet
  * @param {string} [params.action] - Improvement action preset
  * @param {string} [params.instruction] - Specific instructions
+ * @param {string} [params.currentResumeHtml] - Live uncommitted editor content
  * @param {string} [params.userPlan] - User plan ('free'|'pro'|'premium')
  * @param {Function} params.onToken - Callback for streaming tokens (token: string) => void
- * @returns {Promise<Object>} Assembled result with reply, suggestedSnippet, resources, profile, intentData
+ * @returns {Promise<Object>} Assembled result with reply, messageForUser, ResumeUpdations, resources, profile, intentData
  */
-async function streamAssistantChat({ userId, reportId, message, selectedText, action, instruction, activeTab = '', currentRoute = '', userPlan = 'free', onStatus = null, onToken }) {
+async function streamAssistantChat({ userId, reportId, message, selectedText, action, instruction, activeTab = '', currentRoute = '', userPlan = 'free', currentResumeHtml = '', onStatus = null, onToken }) {
     const { formattedMessages, promptText, foundResources, profile, intentData, isExplicitRewrite, dbCallsAvoided } = await buildAssistantPromptAndMessages({
         userId,
         reportId,
@@ -525,6 +603,7 @@ async function streamAssistantChat({ userId, reportId, message, selectedText, ac
         activeTab,
         currentRoute,
         userPlan,
+        currentResumeHtml,
         onStatus
     });
 
@@ -538,16 +617,18 @@ async function streamAssistantChat({ userId, reportId, message, selectedText, ac
     // Guarantee 100% active links (replaces any hallucinated video IDs)
     const fullReply = sanitizeOutputLinks(rawReply, foundResources);
 
-    // Extract any suggested snippet and target text for in-place 1-click apply
-    const { suggestedSnippet, targetText } = extractSnippetAndTargetFromReply(fullReply, isExplicitRewrite);
+    // Extract Dual-Payload (messageForUser + ResumeUpdations)
+    const dualPayload = parseDualPayloadAssistantReply(fullReply, isExplicitRewrite);
 
     // Save active turn in Redis memory buffer asynchronously
-    processTurnInBackground(userId, promptText, fullReply);
+    processTurnInBackground(userId, promptText, dualPayload.messageForUser || fullReply);
 
     return {
-        reply: fullReply,
-        targetText: suggestedSnippet ? (targetText || selectedText || null) : null,
-        suggestedSnippet,
+        reply: dualPayload.messageForUser || fullReply,
+        messageForUser: dualPayload.messageForUser || fullReply,
+        ResumeUpdations: dualPayload.ResumeUpdations,
+        targetText: dualPayload.suggestedSnippet ? (dualPayload.targetText || selectedText || null) : null,
+        suggestedSnippet: dualPayload.suggestedSnippet || (dualPayload.ResumeUpdations !== false ? dualPayload.ResumeUpdations : null),
         resources: foundResources,
         candidateProfile: profile,
         intentData,
@@ -558,7 +639,7 @@ async function streamAssistantChat({ userId, reportId, message, selectedText, ac
 /**
  * Non-streaming AI Assistant Orchestrator function (backward compatible)
  */
-async function processAssistantChat({ userId, reportId, message, selectedText, action, instruction, activeTab = '', currentRoute = '', userPlan = 'free' }) {
+async function processAssistantChat({ userId, reportId, message, selectedText, action, instruction, activeTab = '', currentRoute = '', userPlan = 'free', currentResumeHtml = '' }) {
     const { formattedMessages, promptText, foundResources, profile, intentData, isExplicitRewrite, dbCallsAvoided } = await buildAssistantPromptAndMessages({
         userId,
         reportId,
@@ -568,7 +649,8 @@ async function processAssistantChat({ userId, reportId, message, selectedText, a
         instruction,
         activeTab,
         currentRoute,
-        userPlan
+        userPlan,
+        currentResumeHtml
     });
 
     const llmResult = await callLlmWithFallback({
@@ -579,14 +661,16 @@ async function processAssistantChat({ userId, reportId, message, selectedText, a
 
     const rawReplyText = typeof llmResult === 'string' ? llmResult : (llmResult?.replyText || llmResult?.content || JSON.stringify(llmResult));
     const replyText = sanitizeOutputLinks(rawReplyText, foundResources);
-    const { suggestedSnippet, targetText } = extractSnippetAndTargetFromReply(replyText, isExplicitRewrite);
+    const dualPayload = parseDualPayloadAssistantReply(replyText, isExplicitRewrite);
 
-    processTurnInBackground(userId, promptText, replyText);
+    processTurnInBackground(userId, promptText, dualPayload.messageForUser || replyText);
 
     return {
-        reply: replyText,
-        targetText: suggestedSnippet ? (targetText || selectedText || null) : null,
-        suggestedSnippet,
+        reply: dualPayload.messageForUser || replyText,
+        messageForUser: dualPayload.messageForUser || replyText,
+        ResumeUpdations: dualPayload.ResumeUpdations,
+        targetText: dualPayload.suggestedSnippet ? (dualPayload.targetText || selectedText || null) : null,
+        suggestedSnippet: dualPayload.suggestedSnippet || (dualPayload.ResumeUpdations !== false ? dualPayload.ResumeUpdations : null),
         resources: foundResources,
         candidateProfile: profile,
         intentData,
@@ -599,6 +683,7 @@ module.exports = {
     processAssistantChat,
     buildAssistantPromptAndMessages,
     detectToolRequirement,
-    extractSnippetFromReply: (replyText, isExplicitRewrite) => extractSnippetAndTargetFromReply(replyText, isExplicitRewrite).suggestedSnippet,
-    extractSnippetAndTargetFromReply
+    extractSnippetFromReply: (replyText, isExplicitRewrite) => parseDualPayloadAssistantReply(replyText, isExplicitRewrite).suggestedSnippet,
+    extractSnippetAndTargetFromReply,
+    parseDualPayloadAssistantReply
 };

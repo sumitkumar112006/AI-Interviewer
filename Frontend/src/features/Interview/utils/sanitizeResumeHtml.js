@@ -34,8 +34,14 @@ export function sanitizeResumeHtml(html) {
 
     // Sanitize all elements
     doc.querySelectorAll('*').forEach(el => {
-        // Strip class and id to prevent external dark theme CSS leakage
-        el.removeAttribute('class')
+        // Strip class and id to prevent external dark theme CSS leakage, preserving diff preview classes
+        const keepClasses = ['kivi-diff-del', 'kivi-diff-ins', 'kivi-diff-ins-block']
+        const currentClasses = [...(el.classList || [])].filter(c => keepClasses.includes(c))
+        if (currentClasses.length > 0) {
+            el.className = currentClasses.join(' ')
+        } else {
+            el.removeAttribute('class')
+        }
         el.removeAttribute('id')
 
         const attrs = [...el.attributes]
@@ -176,6 +182,7 @@ export function parseAndSanitizeSnippet(snippet) {
     const lines = text.split(/\r?\n/)
     let inList = false
     const formattedLines = []
+    const STANDALONE_SECTION_REGEX = /^(?:Summary|Professional Summary|Executive Summary|Technical Skills|Skills|Core Competencies|Experience|Work Experience|Employment History|Education|Projects|Certifications|Achievements)$/i
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim()
@@ -192,9 +199,11 @@ export function parseAndSanitizeSnippet(snippet) {
                 inList = false
             }
             if (line) {
-                // If line isn't already a heading or paragraph tag, wrap in <p>
+                // If line isn't already a heading or paragraph tag, wrap appropriately
                 if (/^<h[1-6]>/i.test(line) || /^<p>/i.test(line) || /^<ul>/i.test(line)) {
                     formattedLines.push(line)
+                } else if (STANDALONE_SECTION_REGEX.test(line)) {
+                    formattedLines.push(`<h3>${line}</h3>`)
                 } else {
                     formattedLines.push(`<p>${line}</p>`)
                 }

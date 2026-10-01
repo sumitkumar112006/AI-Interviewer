@@ -26,7 +26,7 @@ const userModel = require('../models/user.model');
  * @param {string} [params.selectedText]
  * @returns {Promise<Object>} { candidateContextSnippet, recentHistory, profile, dbCallsAvoided, targetRole, companyName }
  */
-async function loadDynamicContext({ userId, reportId = null, contextNeeds = null, intentData = null, promptText = '', selectedText = '' }) {
+async function loadDynamicContext({ userId, reportId = null, contextNeeds = null, intentData = null, promptText = '', selectedText = '', currentResumeHtml = '' }) {
     const historyLimit = typeof intentData?.history_turns_needed === 'number' 
         ? intentData.history_turns_needed 
         : 2;
@@ -36,7 +36,7 @@ async function loadDynamicContext({ userId, reportId = null, contextNeeds = null
     const needsRoadmap = contextNeeds ? Boolean(contextNeeds.needs_roadmap) : false;
 
     // Skip DB on security alerts or if no context is needed at all
-    if (intentData?.intent === 'SECURITY' || (!needsResume && !needsJd && !needsRoadmap && !selectedText)) {
+    if (intentData?.intent === 'SECURITY' || (!needsResume && !needsJd && !needsRoadmap && !selectedText && !currentResumeHtml)) {
         const recentHistory = historyLimit > 0 ? await getRecentChatHistory(userId, historyLimit) : [];
         return {
             candidateContextSnippet: '',
@@ -115,8 +115,8 @@ async function loadDynamicContext({ userId, reportId = null, contextNeeds = null
         }
 
         // ── B. Candidate Resume Context (Injected ONLY when needsResume is true) ──
-        if (needsResume && reportDoc) {
-            const resumeContent = reportDoc.generatedResumeHtml || reportDoc.resume;
+        if (needsResume) {
+            const resumeContent = currentResumeHtml || reportDoc?.generatedResumeHtml || reportDoc?.resume;
             if (resumeContent && typeof resumeContent === 'string' && resumeContent.trim()) {
                 const cleanFullResume = resumeContent
                     .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '\n[Candidate Name]: $1\n')

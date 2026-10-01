@@ -28,35 +28,143 @@ Raw markdown formatting (e.g. `### SKILLS`, `• **Product Management:**`) was a
 
 ---
 
-## 3. AI Assistant System Prompts Mapping
+## 3. AI Assistant System Prompts Directory & Code Locations
 
-| Component | File Path | Line Range | Purpose |
+| Component | File Path | Line Range | System Prompt Purpose & Logic |
 | :--- | :--- | :--- | :--- |
-| **Main Assistant Orchestrator** | `backend/src/ai-assistant/assistant.orchestrator.js` | Lines 292–383 | Base system prompt, role-specific guidelines, rewrite rules (` ```suggestion `). |
-| **Tool Decider Engine** | `backend/src/ai-assistant/assistant.orchestrator.js` | Lines 24–46 | Evaluates whether web, github, leetcode, or video tools should execute. |
-| **Standalone Section Rewriter** | `backend/src/services/ai.service.js` | Lines 1305–1330 | Direct `/resume/rewrite-section` endpoint prompt. |
-| **Intent Classifier Router** | `backend/src/ai-assistant/intentClassifier.js` | Lines 172–230 | Classifies query intent (`RESUME`, `ROADMAP`, `JOB_DESCRIPTION`, etc.). |
-| **Full Resume Generator** | `backend/src/services/ai.service.js` | Lines 1043–1128 | Initial ATS-compliant single-column A4 HTML resume generator. |
+| **Full Resume Generator** | `Backend/src/services/ai.service.js` | Lines 1042–1130 | Generates initial ATS-compliant single-column A4 semantic HTML resume from candidate profile & target JD. Enforces strict CSS styling and clean typography. |
+| **Standalone Section Rewriter** | `Backend/src/services/ai.service.js` | Lines 1269–1301 | Standalone `/resume/rewrite-section` endpoint prompt. Rewrites specific sections (Summary, Experience, Skills) with JD skill gap mapping, Google X-Y-Z formula, and TipTap semantic HTML. |
+| **Main Assistant Orchestrator** | `Backend/src/ai-assistant/assistant.orchestrator.js` | Lines 364–395 | System prompt for Kivi AI Assistant. Dictates conversational tone, actionable advice, and dual-payload JSON response formatting (`messageForUser` + `ResumeUpdations`). |
+| **MicroLLM Context Router & Decider** | `Backend/src/ai-assistant/assistant.orchestrator.js` | Lines 24–120 | Evaluates user query to dynamically load context (Resume, JD, Roadmap) with a 60% leniency threshold and picks up to 3 parallel tools. |
+| **Intent Classifier Router** | `Backend/src/ai-assistant/intentClassifier.js` | Lines 172–230 | Standalone classifier routing queries to `RESUME`, `ROADMAP`, `JOB_DESCRIPTION`, `GENERAL`, etc. |
 
 ---
 
 ## 4. Tool Execution & Multi-Tool Capabilities Analysis
 
-### Current Limitations
-1. **Strict Negative Prompting:** `decideToolCallWithLlm` in `assistant.orchestrator.js` defaults to `"none"` if questions can be answered with general knowledge, suppressing tool calls for company/resource searches.
-2. **Unused `searchWeb` Tool:** `searchWeb` was imported in `assistant.orchestrator.js` but routed to `searchDynamicRoadmapResources` instead of triggering live web searches.
-3. **Single-Tool Limitation:** The system currently handles only 1 tool output per query rather than firing parallel multi-tool searches (e.g., Company Research + LeetCode Problems + YouTube Tutorials).
-
-### Proposed Architectural Improvements & Implementation Status
+### Architectural Improvements & Implementation Status
 1. **Multi-Tool Calling Support:** [COMPLETED] Updated `decideToolCallWithLlm` in `assistant.orchestrator.js` to return `tools: [{ tool, query }]` array and execute up to 3 tools simultaneously via `Promise.allSettled`.
 2. **Active Web Tool Execution:** [COMPLETED] Direct `searchWeb(query, 3)` wired for live company & market research.
 3. **UI Component System in `src/UI`:** [COMPLETED] Created `ToolSymbol`, `ToolBadge`, `MultiToolStatusStrip`, and `ToolResourceCard` with custom styling and animations.
 4. **TipTap Markdown Sanitizer Upgrade:** [COMPLETED] Enhanced `parseAndSanitizeSnippet` to convert Markdown headings (`###`) and bullet points (`•`, `-`) to semantic HTML (`<h2>`, `<ul><li>`) before inserting into TipTap.
 5. **Always-Ready Context Engine (Streamlined):** [COMPLETED] Target JD and Candidate Resume are directly injected from MongoDB into the prompt on every turn without Vector RAG chunk embedding overhead.
-6. **Smart Company & Entity Extraction:** [COMPLETED] `decideToolCallWithLlm` in `assistant.orchestrator.js` now automatically resolves "this company" to the target company name from the Job Description (e.g., "Five9", "Google") when creating search queries.
-7. **On-Demand Roadmap Tool:** [COMPLETED] Candidate's 14-day roadmap is no longer dumped into every prompt; instead, it is fetched on-demand via the `"roadmap"` tool only when the user or LLM explicitly requests roadmap tasks/progress.
-8. **Clean LLM Payload Logger:** [COMPLETED] Streamlined terminal logger in `assistant.orchestrator.js` to log only the exact payload/messages sent to the LLM (including user query and injected prompts) without diagnostic clutter.
-9. **Unified Micro-Router (60% Leniency Threshold):** [COMPLETED] Replaced separate intent classification and tool decision passes with a single fast ~100-token Micro-Router call. Selectively loads Job Description, Resume, or Roadmap into LLM context with a lenient 60% threshold, saving 75–85% token costs on generic queries while ensuring context is never missed when relevant.
-10. **Markdown Table Restriction & Rich Clickable Links:** [COMPLETED] Strictly banned markdown tables (`| col1 | col2 |`) to prevent drawer overflow. Mandated direct, active markdown links (`[Title](URL)`) for all resources, YouTube videos, LeetCode problems, GitHub repos, and docs instead of text search instructions.
-11. **YouTube Video Hallucination Fix & Auto-Sanitizer:** [COMPLETED] LLMs inherently hallucinate 11-char random YouTube video IDs (e.g. `watch?v=Zc8cG9K5YVY` which 404s). Added `CURATED_YOUTUBE_VIDEOS` bank in `searchTool.service.js` and implemented `sanitizeOutputLinks` in `assistant.orchestrator.js` which verifies every link against real scraper/oEmbed results and automatically transforms any unverified video ID into a guaranteed 100% active YouTube live search URL (`https://www.youtube.com/results?search_query=...`).
+6. **Smart Company & Entity Extraction:** [COMPLETED] `decideToolCallWithLlm` in `assistant.orchestrator.js` automatically resolves "this company" to the target company name from the Job Description (e.g., "Five9", "Google") when creating search queries.
+7. **On-Demand Roadmap Tool:** [COMPLETED] Candidate's 14-day roadmap is fetched on-demand via the `"roadmap"` tool only when the user or LLM explicitly requests roadmap tasks/progress.
+8. **Clean LLM Payload Logger:** [COMPLETED] Streamlined terminal logger in `assistant.orchestrator.js` to log only the exact payload/messages sent to the LLM without diagnostic clutter.
+9. **Unified Micro-Router (60% Leniency Threshold):** [COMPLETED] Single fast ~100-token Micro-Router call selectively loads Job Description, Resume, or Roadmap into context, saving 75–85% token costs on generic queries.
+10. **Markdown Table Restriction & Rich Clickable Links:** [COMPLETED] Strictly banned markdown tables to prevent drawer overflow. Mandated direct, active markdown links (`[Title](URL)`) for all resources, YouTube videos, LeetCode problems, GitHub repos, and docs.
+11. **YouTube Video Hallucination Fix & Auto-Sanitizer:** [COMPLETED] Added `CURATED_YOUTUBE_VIDEOS` bank in `searchTool.service.js` and implemented `sanitizeOutputLinks` in `assistant.orchestrator.js` to transform unverified video IDs into guaranteed 100% active YouTube search URLs (`https://www.youtube.com/results?search_query=...`).
+
+---
+
+## 5. End-to-End AI Assistant & TipTap Diff Pipeline Architecture
+
+### The Complete 5-Step Execution Pipeline
+
+```
+[ Step 1: User Query ] ──► ("add product management skill" / "what is my match score?")
+           │
+           ▼
+[ Step 2: MicroLLM Router ] 
+  Fast decision returning: { tools: [...], needsResume: boolean, needsJD: boolean, is_resume_edit: boolean }
+           │
+           ▼
+[ Step 3: Main LLM Orchestrator ]
+  Executes with (System Prompt + Selected Context [Resume, JD, Tools] + Chat History + Query)
+           │
+           ├──────────────────────────────────────┬──────────────────────────────────────┐
+           ▼                                                                             ▼
+   ─── Case 1: Resume Edit ───                                                  ─── Case 2: Non-Edit Query ───
+   FinalResp = {                                                                FinalResp = {
+     messageForUser: "I've added product management...",                          messageForUser: "Your match score is 85%...",
+     ResumeUpdations: "<updated HTML content>",                                   ResumeUpdations: false,
+     targetText: "<original section/line>",                                       toolCalls: [...]
+     toolCalls: [...]                                                           }
+   }                                                                            
+           │                                                                             │
+           ▼                                                                             ▼
+[ Step 4: Diff Tracking & TipTap Viewport ]                                    [ Direct Chat Path ]
+  if (finalResp.ResumeUpdations) {                                               Editor remains untouched
+    updatedPart = TrackUpdatePart(oldResume, finalResp.ResumeUpdations)
+    Rendered(updatedPart)  // Highlighted in-place on TipTap canvas
+    // Renders [ ✓ Accept | ✕ Reject ] floating pill + chat action buttons
+    // If Accepted: Commit updatedPart to document state
+    // If Rejected: Revert to oldResume cleanly
+  }
+           │
+           ▼
+[ Step 5: Chat Assistant Output ]
+  Print `finalResp.messageForUser` in the AI Assistant chatbox
+  (Clean, conversational message without dumping full documents or raw code blocks)
+```
+
+### Component & File Mapping
+
+| Step | Component | File Path | Key Responsibilities |
+| :--- | :--- | :--- | :--- |
+| **Step 1** | Chat Input Drawer | `Frontend/src/features/Shared/components/KiviAiAssistant.jsx` | Captures user prompt, grabs live editor HTML via `window.__KIVI_GET_CURRENT_RESUME_HTML__()`, and triggers streaming SSE call. |
+| **Step 2** | MicroLLM Context Router | `Backend/src/ai-assistant/assistant.orchestrator.js` & `dynamicContextLoader.js` | Fast classification returning `{ tools, needsResume, needsJD, is_resume_edit }` to selectively assemble minimal context tokens. |
+| **Step 3** | Dual-Payload Orchestrator | `Backend/src/ai-assistant/assistant.orchestrator.js` | Generates structured JSON: Case 1 (`messageForUser` + `ResumeUpdations` HTML) vs Case 2 (`messageForUser` + `ResumeUpdations: false`). |
+| **Step 4** | Targeted Viewport Replacement | `Frontend/src/features/Interview/utils/trackUpdatePart.js`, `ResumeEditor.jsx`, `editor.scss`, `Resume.jsx` | Accurately distinguishes full documents from targeted snippets. Replaces ONLY the matching targeted section/line (e.g. Summary, Skills, Bullet) in-place without wiping or altering the rest of the resume. Includes heading deduplication to prevent double section titles. |
+| **Step 5** | Conversational Output Only | `Frontend/src/features/Shared/components/KiviAiAssistant.jsx` & `KiviAiAssistant.scss` | Streams only `messageForUser` cleanly into the chat drawer without duplicate code blocks, raw HTML cards, or document dumps. Displays verified learning resource cards when relevant. |
+
+### Section Heading Deduplication Fix
+- **Root Cause**: When the LLM outputs `ResumeUpdations` containing a section heading (e.g. `Summary\n...` or `<h3>Summary</h3><p>...</p>`), but `targetText` targets only the paragraph text under the existing template heading (`<h2>SUMMARY</h2>`), inserting the snippet resulted in two consecutive headings (`SUMMARY` followed by `Summary`).
+- **Resolution**:
+  1. **Prompt Enforcement** (`assistant.orchestrator.js`): Instructed LLM to output ONLY the body paragraph/list when rewriting a specific section under an existing heading.
+  2. **Parser Handling** (`sanitizeResumeHtml.js`): Correctly identifies standalone section title lines via `STANDALONE_SECTION_REGEX` instead of wrapping them in plain `<p>` tags.
+  3. **In-Editor Deduplication** (`ResumeEditor.jsx`): `replaceExactText` checks if the replacement text starts with a section heading while the target text does not, automatically stripping the redundant leading heading before inserting.
+
+---
+
+## 6. Admin Portal Redesign & Infrastructure Enhancements
+
+### 6.1 Admin Login Page (`AdminLogin.jsx` & `adminLogin.scss`)
+- **Visual Design:** Cyber dark-mode aesthetics with radial glow backgrounds, glassmorphism cards, and Lucide status icons.
+- **Security & Session Feedback:** Live TLS/encryption indicator pill, 60s OTP countdown timer with cooldown protection, and active session switch alerts.
+- **Backend Fix:** Updated `verifyOtpController` in `Backend/src/controller/auth.controller.js` to return `role` and `isAdmin` flags in both the signed JWT token and the JSON response body.
+
+### 6.2 Universal Admin Pagination Component (`AdminPagination.jsx`)
+- **Features:** Glassmorphic navigation bar with dynamic page numbers, previous/next controls, customizable items-per-page selector (`10`, `25`, `50`, `100`), and quick jump-to-page input.
+- **Integrated Across Tabs:**
+  1. `AdminFeatureMatrixTab.jsx` (Feature Access Matrix)
+  2. `AdminDashboard.jsx` (User Directory)
+  3. `AdminSubscriptionsTab.jsx` (Subscriptions)
+  4. `AdminPaymentsTab.jsx` (Payments)
+  5. `AdminAuditLogsTab.jsx` (Audit Trail)
+
+### 6.3 User Evaluation & Account Controls (`UserEvaluationPage.jsx` & `userEvaluation.scss`)
+- **Theme:** Google Cloud / Vertex AI dark telemetry theme with real-time analytics.
+- **Feature Permission Logic:** Corrected MongoDB inverted storage logic (`Switch ON = Enabled = sets blockedFeatures[key]: false`).
+- **Granular Credit Sliders:** Dual range sliders with manual numeric inputs for `customBonusCredits` (standard generations) and `customAiBonusCredits` (AI Assistant queries).
+- **In-Portal Inspection & Messaging:** Document preview modal for resumes and interview reports; quick template chips for direct administrative messaging.
+
+---
+
+## 7. Google Docs / Gemini-Style In-Canvas Diff Preview Mode
+
+### 7.1 Visual Specification & UX Behavior
+- **Strikethrough Cut Effect on Older Content (`<del class="kivi-diff-del">`):**
+  - Older/original text being replaced is rendered with `text-decoration: line-through !important`, `text-decoration-color: #ef4444 !important`, `opacity: 0.45 !important`, `color: #dc2626 !important`, and subtle red background tint `rgba(239, 68, 68, 0.08)`.
+  - On hover, opacity increases to `0.75` for inspection.
+- **Highlighted New Content (`<ins class="kivi-diff-ins">`):**
+  - New suggested text is placed immediately following the strikethrough text with `color: #047857 !important`, `background: rgba(16, 185, 129, 0.12) !important`, `border-bottom: 2px solid #10b981 !important`, and subtle glowing pulse animation (`diffGlowPulse`).
+- **Floating Pill Banner (`.kivi-floating-diff-banner`):**
+  - Centered floating action banner above the A4 canvas: `[ 🪄 AI Suggested Resume Update | ✕ Reject | ✓ Accept ]`.
+  - **Accept Click (`handleAcceptDiff`):** Strips all `<del class="kivi-diff-del">` nodes, unwraps `<ins class="kivi-diff-ins">` nodes into pristine resume text, commits to localStorage/state, and closes the floating banner.
+  - **Reject Click (`handleRejectDiff`):** Reverts document back to `oldFullResumeHtml` (clean original text without any diff tags), and closes the floating banner.
+
+### 7.2 TipTap & Architecture Integration
+1. **Custom TipTap Marks (`DiffDel`, `DiffIns`):** Registered in `ResumeEditor.jsx` to ensure ProseMirror preserves `<del class="kivi-diff-del">` and `<ins class="kivi-diff-ins">` tags during live DOM parsing.
+2. **Sanitizer Compatibility (`sanitizeResumeHtml.js`):** Whitelisted `kivi-diff-del`, `kivi-diff-ins`, and `kivi-diff-ins-block` classes so the sanitizer does not strip diff preview classes.
+3. **Diff Generator (`trackUpdatePart.js`):** Generates both `diffPreviewHtml` (strikethrough preview) and `mergedFullResumeHtml` (clean target for Accept) for full documents, section rewrites, and paragraph/line edits.
+
+### 7.3 Leaf-Node Target Matching Resolution (Preventing Section-Wide Strikethroughs)
+- **Problem**: When a user modified or added a single skill item inside a `<ul>` list (e.g. `AI & ML APIs`), the section matcher matched the parent container `<ul>` and struck through every single sibling `<li>` item in that entire section.
+- **Fix**:
+  1. Updated `TrackUpdatePart.js` to search and score leaf nodes (`<li>`, `<p>`, `<h1>`–`<h6>`) directly using `explicitTargetText` and category prefix matching (`<strong>Category:</strong>`).
+  2. Isolated diff `<del>` and `<ins>` tags to only the exact matching `<li>` or `<p>` node.
+  3. All sibling list items, paragraphs, and headings remain 100% untouched.
+  4. Updated `assistant.orchestrator.js` system prompt to enforce returning only the specific updated line and exact `targetText`.
+
 

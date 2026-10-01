@@ -235,7 +235,7 @@ async function verifyOtpController(req, res) {
 
         // Generate JWT token & login automatically
         const token = JWT.sign(
-            { id: user._id, username: user.username, plan: user.plan || 'free' },
+            { id: user._id, username: user.username, plan: user.plan || 'free', role: user.role || 'user', isAdmin: ['admin', 'super_admin'].includes(user.role) },
             process.env.JWT_SECRET,
             { expiresIn: "1d" }
         );
@@ -248,7 +248,9 @@ async function verifyOtpController(req, res) {
                 id: user._id,
                 username: user.username,
                 email: user.email,
-                plan: user.plan || 'free'
+                plan: user.plan || 'free',
+                role: user.role || 'user',
+                isAdmin: ['admin', 'super_admin'].includes(user.role)
             }
         });
     } catch (err) {

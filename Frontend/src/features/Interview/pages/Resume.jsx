@@ -369,8 +369,10 @@ const Resume = () => {
         }
     }, [])
 
-    // ── Listen for in-place replacement events from KIVI AI Assistant ───────
+    // ── Listen for in-place replacement & diff preview events from KIVI AI Assistant ───────
     useEffect(() => {
+        window.__KIVI_GET_CURRENT_RESUME_HTML__ = () => editorRef.current?.getHtml() || htmlContent || ''
+
         const onKiviReplace = (e) => {
             const { targetText, snippet } = e.detail || {}
             if (snippet && editorRef.current) {
@@ -392,9 +394,86 @@ const Resume = () => {
                 }
             }
         }
+
+        const onKiviApplyResumeUpdate = (e) => {
+            const { isFullDocument, targetText, replacementHtml, mergedFullResumeHtml, newFullHtml } = e.detail || {}
+            if (!editorRef.current) return
+
+            // Case 1: If it is an explicit full document regeneration
+            if (isFullDocument && (mergedFullResumeHtml || newFullHtml)) {
+                const fullContent = mergedFullResumeHtml || newFullHtml
+                if (fullContent && fullContent.trim().length > 50) {
+                    editorRef.current.setContent(fullContent)
+                    setIsDirty(true)
+                    return
+                }
+            }
+
+            // Case 2: Targeted section / line / snippet replacement
+            let applied = false
+
+            if (targetText && replacementHtml && editorRef.current.replaceExactText) {
+                const cleanReplacement = parseAndSanitizeSnippet(replacementHtml) || replacementHtml
+                applied = editorRef.current.replaceExactText(targetText, cleanReplacement)
+            }
+
+            // If exact substring replacement didn't find the range, use mergedFullResumeHtml
+            // which has ONLY the targeted section swapped in the tree and preserves all other sections
+            if (!applied && mergedFullResumeHtml && mergedFullResumeHtml.trim().length > 50) {
+                editorRef.current.setContent(mergedFullResumeHtml)
+                applied = true
+            } else if (!applied && replacementHtml && editorRef.current.isFocused && editorRef.current.isFocused()) {
+                const cleanReplacement = parseAndSanitizeSnippet(replacementHtml) || replacementHtml
+                editorRef.current.insertContent(cleanReplacement)
+                applied = true
+            }
+
+            if (applied) {
+                setIsDirty(true)
+            }
+        }
+
+        const onKiviShowDiff = (e) => {
+            const { diffData, updatedPart, newFullHtml, targetText, msgId } = e.detail || {}
+            const payload = diffData || {
+                targetText: targetText || updatedPart?.target,
+                replacementHtml: updatedPart?.replacement || '',
+                newFullResumeHtml: newFullHtml || updatedPart?.newFullHtml || '',
+                msgId
+            }
+            if (editorRef.current?.showDiff) {
+                editorRef.current.showDiff(payload)
+            }
+        }
+
+        const onKiviAcceptDiff = () => {
+            if (editorRef.current?.acceptDiff) {
+                editorRef.current.acceptDiff()
+                setIsDirty(true)
+            }
+        }
+
+        const onKiviRejectDiff = () => {
+            if (editorRef.current?.rejectDiff) {
+                editorRef.current.rejectDiff()
+            }
+        }
+
         window.addEventListener('kivi-replace-text', onKiviReplace)
-        return () => window.removeEventListener('kivi-replace-text', onKiviReplace)
-    }, [])
+        window.addEventListener('kivi-apply-resume-update', onKiviApplyResumeUpdate)
+        window.addEventListener('kivi-show-diff', onKiviShowDiff)
+        window.addEventListener('kivi-accept-diff', onKiviAcceptDiff)
+        window.addEventListener('kivi-reject-diff', onKiviRejectDiff)
+
+        return () => {
+            window.removeEventListener('kivi-replace-text', onKiviReplace)
+            window.removeEventListener('kivi-apply-resume-update', onKiviApplyResumeUpdate)
+            window.removeEventListener('kivi-show-diff', onKiviShowDiff)
+            window.removeEventListener('kivi-accept-diff', onKiviAcceptDiff)
+            window.removeEventListener('kivi-reject-diff', onKiviRejectDiff)
+            delete window.__KIVI_GET_CURRENT_RESUME_HTML__
+        }
+    }, [htmlContent])
 
     const RESUME_STEPS = [
         { id: 1, label: "Analyzing profile & technical skills" },

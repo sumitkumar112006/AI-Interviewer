@@ -10,6 +10,7 @@ import {
     clearAssistantHistoryApi 
 } from '../../Interview/services/interview.api';
 import { parseAndSanitizeSnippet } from '../../Interview/utils/sanitizeResumeHtml';
+import { TrackUpdatePart } from '../../Interview/utils/trackUpdatePart';
 import { MultiToolStatusStrip, ToolResourceCard } from '../../../UI';
 import './KiviAiAssistant.scss';
 
@@ -85,19 +86,9 @@ const getChatStorageKey = (uid) => uid ? `kivi_chat_history_${uid}` : 'kivi_chat
 /**
  * Memoized Chat Bubble Component
  * Prevents re-rendering and re-parsing markdown for already finished messages during streaming.
+ * Displays only clean conversational assistant output (messageForUser) and verified learning resources.
  */
-const ChatMessageBubble = React.memo(function ChatMessageBubble({
-    msg,
-    isEditorPage,
-    docTypeLabel,
-    isAiBlocked,
-    appliedMsgIds,
-    copiedMsgId,
-    currentReportId,
-    onApplySnippet,
-    onCopySnippet,
-    onOpenEditor
-}) {
+const ChatMessageBubble = React.memo(function ChatMessageBubble({ msg }) {
     // Memoize rendered HTML so static messages parse markdown only once
     const renderedHtml = useMemo(() => {
         return renderMarkdown(msg.text, msg.isStreaming);
@@ -197,68 +188,6 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                         {msg.text}
                     </p>
                 )}
-
-                {/* Suggested Snippet Apply Card / In-Place Diff View */}
-                {msg.suggestedSnippet && typeof msg.suggestedSnippet === 'string' && msg.suggestedSnippet.trim() !== '' && msg.suggestedSnippet !== 'null' && (
-                    <div className="suggested-snippet-card">
-                        {msg.targetText ? (
-                            <div className="snippet-diff-container">
-                                <div className="snippet-diff-item diff-original">
-                                    <span className="diff-tag original">Original Line</span>
-                                    <p className="diff-text">{msg.targetText}</p>
-                                </div>
-                                <div className="snippet-diff-divider">⬇ Improved ATS Version</div>
-                                <div className="snippet-diff-item diff-replacement">
-                                    <span className="diff-tag updated">Suggested Update</span>
-                                    <p className="diff-text">{msg.suggestedSnippet}</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="snippet-body">"{msg.suggestedSnippet}"</div>
-                        )}
-
-                        <div className="snippet-actions-row">
-                            {isEditorPage ? (
-                                <button
-                                    type="button"
-                                    className={`apply-snippet-btn ${appliedMsgIds.has(msg.id) ? 'btn-applied' : msg.targetText ? 'btn-replace-target' : 'btn-insert-target'}`}
-                                    onClick={() => onApplySnippet(msg.id, msg.suggestedSnippet, msg.targetText || null)}
-                                    disabled={isAiBlocked || appliedMsgIds.has(msg.id)}
-                                >
-                                    {isAiBlocked
-                                        ? '❌ Disabled by Admin'
-                                        : appliedMsgIds.has(msg.id)
-                                            ? `✅ Applied to ${docTypeLabel}`
-                                            : msg.targetText
-                                                ? `⚡ Replace in ${docTypeLabel}`
-                                                : `➕ Insert into ${docTypeLabel}`
-                                    }
-                                </button>
-                            ) : (
-                                <>
-                                    <button
-                                        type="button"
-                                        className={`copy-snippet-btn ${copiedMsgId === msg.id ? 'is-copied' : ''}`}
-                                        onClick={() => onCopySnippet(msg.id, msg.suggestedSnippet)}
-                                        title="Copy to clipboard"
-                                    >
-                                        {copiedMsgId === msg.id ? '✅ Copied to Clipboard!' : '📋 Copy Snippet'}
-                                    </button>
-                                    {currentReportId && (
-                                        <button
-                                            type="button"
-                                            className="open-editor-link-btn"
-                                            onClick={() => onOpenEditor(currentReportId)}
-                                            title="Open Resume Studio to edit and apply"
-                                        >
-                                            📄 Open Resume Studio ↗
-                                        </button>
-                                    )}
-                                </>
-                            )}
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     );
@@ -315,7 +244,45 @@ export function KiviAiAssistant() {
 
     const [selectedSnippet, setSelectedSnippet] = useState('');
     const [appliedMsgIds, setAppliedMsgIds] = useState(new Set());
+    const [rejectedMsgIds, setRejectedMsgIds] = useState(new Set());
     const [copiedMsgId, setCopiedMsgId] = useState(null);
+
+    // Listen for Accept/Reject events originating from TipTap's in-canvas floating pill
+    useEffect(() => {
+        const handleDiffStatusChange = (e) => {
+            const { status, msgId } = e.detail || {};
+            if (status === 'accepted') {
+                if (msgId) {
+                    setAppliedMsgIds(prev => new Set(prev).add(msgId));
+                } else {
+                    setChatMessages(prev => {
+                        const lastSnippetMsg = [...prev].reverse().find(m => m.suggestedSnippet && m.sender === 'ai');
+                        if (lastSnippetMsg) {
+                            setAppliedMsgIds(a => new Set(a).add(lastSnippetMsg.id));
+                        }
+                        return prev;
+                    });
+                }
+            } else if (status === 'rejected') {
+                if (msgId) {
+                    setRejectedMsgIds(prev => new Set(prev).add(msgId));
+                } else {
+                    setChatMessages(prev => {
+                        const lastSnippetMsg = [...prev].reverse().find(m => m.suggestedSnippet && m.sender === 'ai');
+                        if (lastSnippetMsg) {
+                            setRejectedMsgIds(r => new Set(r).add(lastSnippetMsg.id));
+                        }
+                        return prev;
+                    });
+                }
+            }
+        };
+
+        window.addEventListener('kivi-diff-status-change', handleDiffStatusChange);
+        return () => {
+            window.removeEventListener('kivi-diff-status-change', handleDiffStatusChange);
+        };
+    }, []);
 
     const handleCopySnippet = useCallback((msgId, snippet) => {
         if (!snippet) return;
@@ -327,6 +294,15 @@ export function KiviAiAssistant() {
     const handleOpenEditor = useCallback((reportId) => {
         if (reportId) navigate(`/resume/${reportId}`);
     }, [navigate]);
+
+    const handleRejectSnippet = useCallback((msgId) => {
+        if (msgId) {
+            setRejectedMsgIds(prev => new Set(prev).add(msgId));
+        }
+        window.dispatchEvent(new CustomEvent('kivi-reject-diff', {
+            detail: { msgId }
+        }));
+    }, []);
 
     // Chat messages initialized from persistent local storage
     const [chatMessages, setChatMessages] = useState(() => {
@@ -758,6 +734,11 @@ export function KiviAiAssistant() {
         // Start smooth rendering loop
         startSmoothStreamDrain(aiMsgId);
 
+        // Capture live HTML from the TipTap viewport so real-time modifications are preserved
+        const currentResumeHtml = typeof window.__KIVI_GET_CURRENT_RESUME_HTML__ === 'function' 
+            ? window.__KIVI_GET_CURRENT_RESUME_HTML__() 
+            : '';
+
         try {
             await streamAssistantChatApi({
                 reportId: currentReportId,
@@ -765,6 +746,7 @@ export function KiviAiAssistant() {
                 selectedText: activeSnippet || '',
                 action: actionPreset || '',
                 instruction: messageToSend,
+                currentResumeHtml,
                 signal: abortControllerRef.current.signal,
                 onStatus: (statusData) => {
                     setChatMessages(prev => prev.map(msg => {
@@ -782,6 +764,36 @@ export function KiviAiAssistant() {
                     pendingDoneDataRef.current = data;
                     isStreamingDoneRef.current = true;
                     if (fetchUsage) fetchUsage();
+
+                    // Step 4: Visual Diff Preview & Tracking on TipTap Viewport (Strikethrough Old + Green New)
+                    if (data?.ResumeUpdations && data.ResumeUpdations !== false && typeof data.ResumeUpdations === 'string') {
+                        const currentLiveHtml = typeof window.__KIVI_GET_CURRENT_RESUME_HTML__ === 'function'
+                            ? window.__KIVI_GET_CURRENT_RESUME_HTML__()
+                            : (currentResumeHtml || '');
+
+                        const diffRes = TrackUpdatePart(currentLiveHtml, data.ResumeUpdations, data.targetText);
+
+                        if (diffRes) {
+                            window.dispatchEvent(new CustomEvent('kivi-show-diff', {
+                                detail: {
+                                    diffData: {
+                                        diffPreviewHtml: diffRes.diffPreviewHtml,
+                                        mergedFullResumeHtml: diffRes.mergedFullResumeHtml,
+                                        oldFullResumeHtml: diffRes.oldFullResumeHtml || currentLiveHtml,
+                                        targetText: diffRes.targetText || data.targetText || '',
+                                        replacementHtml: diffRes.replacementHtml || data.ResumeUpdations || '',
+                                        sectionName: diffRes.sectionName || null,
+                                        msgId: aiMsgId
+                                    },
+                                    updatedPart: diffRes,
+                                    msgId: aiMsgId,
+                                    newFullHtml: diffRes?.mergedFullResumeHtml || data.ResumeUpdations,
+                                    targetText: diffRes?.targetText || data.targetText || '',
+                                    messageForUser: data.messageForUser || data.reply || ''
+                                }
+                            }));
+                        }
+                    }
                 },
                 onError: (err) => {
                     if (err.name === 'AbortError') return;
@@ -832,6 +844,15 @@ export function KiviAiAssistant() {
         if (!cleanSnippet) return;
         if (fetchUsage) fetchUsage();
 
+        if (msgId) {
+            setAppliedMsgIds(prev => new Set(prev).add(msgId));
+        }
+
+        // Trigger TipTap live diff accept if active
+        window.dispatchEvent(new CustomEvent('kivi-accept-diff', {
+            detail: { msgId, snippet: cleanSnippet, targetText }
+        }));
+
         const evt = new CustomEvent('kivi-replace-text', {
             detail: { targetText, snippet: cleanSnippet },
             cancelable: true
@@ -839,9 +860,6 @@ export function KiviAiAssistant() {
         window.dispatchEvent(evt);
 
         if (evt.defaultPrevented) {
-            if (msgId) {
-                setAppliedMsgIds(prev => new Set(prev).add(msgId));
-            }
             return;
         }
 
@@ -858,7 +876,6 @@ export function KiviAiAssistant() {
                     if (node.nodeValue && node.nodeValue.includes(cleanTarget)) {
                         node.nodeValue = node.nodeValue.replace(cleanTarget, cleanSnippet);
                         editorEl.dispatchEvent(new Event('input', { bubbles: true }));
-                        if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
                         return;
                     }
                 }
@@ -876,7 +893,6 @@ export function KiviAiAssistant() {
                     range.insertNode(textNode);
                     
                     editorEl.dispatchEvent(new Event('input', { bubbles: true }));
-                    if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
                     return;
                 } catch (err) {
                     console.warn("Could not restore saved selection range:", err);
@@ -891,14 +907,12 @@ export function KiviAiAssistant() {
                     const textNode = document.createTextNode(snippet);
                     range.insertNode(textNode);
                     editorEl.dispatchEvent(new Event('input', { bubbles: true }));
-                    if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
                     return;
                 }
             }
 
             document.execCommand('insertText', false, snippet);
             editorEl.dispatchEvent(new Event('input', { bubbles: true }));
-            if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
             return;
         }
 
@@ -918,7 +932,6 @@ export function KiviAiAssistant() {
                     if (doc.body) {
                         doc.body.dispatchEvent(new Event('input', { bubbles: true }));
                     }
-                    if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
                     return;
                 }
             }
@@ -927,7 +940,6 @@ export function KiviAiAssistant() {
                 if (doc.body) {
                     doc.body.dispatchEvent(new Event('input', { bubbles: true }));
                 }
-                if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
             }
         }
     }, [fetchUsage]);
@@ -1099,15 +1111,6 @@ export function KiviAiAssistant() {
                             <ChatMessageBubble
                                 key={msg.id}
                                 msg={msg}
-                                isEditorPage={isEditorPage}
-                                docTypeLabel={docTypeLabel}
-                                isAiBlocked={isAiBlocked}
-                                appliedMsgIds={appliedMsgIds}
-                                copiedMsgId={copiedMsgId}
-                                currentReportId={currentReportId}
-                                onApplySnippet={handleApplySuggestedSnippet}
-                                onCopySnippet={handleCopySnippet}
-                                onOpenEditor={handleOpenEditor}
                             />
                         ))}
                         <div ref={chatEndRef} />
