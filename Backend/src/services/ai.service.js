@@ -1127,6 +1127,13 @@ CRITICAL FORMATTING & ATS RULES:
    - Deeply analyze the provided Job Description for target skills, technologies, frameworks, and domain keywords, Role based keywords skills and try to add them with proper proof you can show them in their projects if possible.
    - Match and highlight transferable technical competencies and relevant project/experience evidence provided by the candidate.
 
+4. VERIFIED HYPERLINKS & ANCHOR ASSOCIATION (MANDATORY):
+   - When the resume contains a "VERIFIED RESUME HYPERLINKS" section, you MUST embed those EXACT URLs into the resume HTML:
+     * Header contact bar: <a href="[GitHub URL]">GitHub</a> | <a href="[LinkedIn URL]">LinkedIn</a> | <a href="[Portfolio URL]">Portfolio</a> | <a href="mailto:[Email]">[Email]</a>
+     * Project headers: Embed the live demo or code repository link associated with that specific project:
+       <h3><strong>[Project Name]</strong> <span style="float: right;">[Date Range] | <a href="[Verified Project URL]">Live Demo</a></span></h3>
+   - Strictly associate each URL with the entity/anchor indicated in the verified links.
+
 Candidate details:
 Resume: ${resume || 'None provided'}
 Self Description: ${selfDescription || 'None provided'}

@@ -96,6 +96,13 @@ interviewRouter.delete('/:interviewReportId', authMidleware.authUser, interviewC
 // Update resume HTML content
 interviewRouter.put('/resume/:interviewReportId', authMidleware.authUser, checkResumeGenerationAccess, interviewController.updateResumeHtmlController)
 
+/**
+ * @route POST /api/interview/resume/ats-score/:interviewReportId
+ * @description Dynamically calculates and saves ATS match score comparing resume against target JD
+ * @access private
+ */
+interviewRouter.post('/resume/ats-score/:interviewReportId', authMidleware.authUser, interviewController.calculateResumeAtsScoreController)
+
 // Update interview progress (questions responses, roadmap tasks)
 interviewRouter.put('/progress/:interviewId', authMidleware.authUser, interviewController.updateInterviewProgressController)
 

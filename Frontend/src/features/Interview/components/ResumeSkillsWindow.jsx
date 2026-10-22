@@ -30,6 +30,7 @@ function cleanSkillName(name) {
  * - Color diff: Green (New), Blue (Retained), Red (Not in Current Resume)
  * - Top header with collapse button
  * - Live filter and search bar
+ * - Draggable slider edge for adjustable panel width
  */
 export default function ResumeSkillsWindow({
     isOpen = true,
@@ -37,14 +38,17 @@ export default function ResumeSkillsWindow({
     olderSkills = [],
     currentSkills = { all: [], newSkills: [], previousSkills: [] },
     stats = {},
-    loading = false
+    loading = false,
+    missingKeywords = [],
+    onInsertKeyword = null
 }) {
     const [searchTerm, setSearchTerm] = useState('');
-    const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'new' | 'previous' | 'omitted' | 'older'
+    const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'new' | 'previous' | 'omitted' | 'older' | 'missing'
     
-    // Independent collapse/open states for both windows with dropdown button
+    // Independent collapse/open states for all sub-windows with dropdown button
     const [isCurrentOpen, setIsCurrentOpen] = useState(true);
     const [isOlderOpen, setIsOlderOpen] = useState(true);
+    const [isMissingOpen, setIsMissingOpen] = useState(true);
 
     // Dynamic width slider management (resizable edge)
     const [windowWidth, setWindowWidth] = useState(() => {
@@ -182,11 +186,18 @@ export default function ResumeSkillsWindow({
         });
     }, [olderList, activeFilter, currentSkillsLowerSet, cleanSearch]);
 
+    const filteredMissing = useMemo(() => {
+        if (!Array.isArray(missingKeywords)) return [];
+        if (!cleanSearch) return missingKeywords;
+        return missingKeywords.filter(kw => kw.toLowerCase().includes(cleanSearch));
+    }, [missingKeywords, cleanSearch]);
+
     // Counts
     const newCount = newSkillsList.length;
     const previousCount = prevSkillsList.length;
     const olderCount = olderList.length;
     const totalCurrentCount = allCurrent.length;
+    const missingCount = Array.isArray(missingKeywords) ? missingKeywords.length : 0;
 
     const omittedCount = useMemo(() => {
         return olderList.filter(sk => {
@@ -255,6 +266,7 @@ export default function ResumeSkillsWindow({
                                 <option value="previous">Retained ({previousCount})</option>
                                 <option value="omitted">Not in Resume ({omittedCount})</option>
                                 <option value="older">Original Baseline ({olderCount})</option>
+                                {missingCount > 0 && <option value="missing">Missing JD Keywords (+{missingCount})</option>}
                             </select>
                             <span className="select-chevron">▾</span>
                         </div>
@@ -302,6 +314,18 @@ export default function ResumeSkillsWindow({
                         <span className="chip-label">Not in Resume</span>
                         <span className="chip-count red">{omittedCount}</span>
                     </div>
+
+                    {missingCount > 0 && (
+                        <div 
+                            className={`metric-chip missing-metric ${activeFilter === 'missing' ? 'active' : ''}`}
+                            onClick={() => setActiveFilter(activeFilter === 'missing' ? 'all' : 'missing')}
+                            title="Filter by missing JD keywords (Click to insert)"
+                        >
+                            <span className="chip-badge-dot amber"></span>
+                            <span className="chip-label">Missing JD</span>
+                            <span className="chip-count amber">+{missingCount}</span>
+                        </div>
+                    )}
 
                     <div 
                         className={`metric-chip older-metric ${activeFilter === 'older' ? 'active' : ''}`}
@@ -485,6 +509,72 @@ export default function ResumeSkillsWindow({
                                                     </div>
                                                 );
                                             })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </section>
+                    )}
+
+                    {/* ══════════════════════════════════════════════════════
+                        SUB-WINDOW 3: Missing Job Description Keywords (1-Click Add)
+                       ══════════════════════════════════════════════════════ */}
+                    {(activeFilter === 'all' || activeFilter === 'missing') && missingKeywords && missingKeywords.length > 0 && (
+                        <section className="skills-card-subwindow missing-window">
+                            <div 
+                                className="subwindow-header"
+                                onClick={() => setIsMissingOpen(prev => !prev)}
+                                title={isMissingOpen ? "Click to collapse window" : "Click to expand window"}
+                            >
+                                <div className="subwindow-header-left">
+                                    <span className="subwindow-icon">🎯</span>
+                                    <div className="subwindow-title-group">
+                                        <h3 className="subwindow-title">Missing JD Keywords</h3>
+                                        <span className="subwindow-counter">
+                                            {filteredMissing.length} of {missingCount} Missing (1-Click Add)
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="subwindow-header-right">
+                                    <button 
+                                        type="button" 
+                                        className={`subwindow-dropdown-btn ${isMissingOpen ? 'is-open' : 'is-closed'}`}
+                                        onClick={(e) => { e.stopPropagation(); setIsMissingOpen(prev => !prev); }}
+                                        title={isMissingOpen ? "Collapse section" : "Expand section"}
+                                        aria-label={isMissingOpen ? "Collapse Missing Keywords Window" : "Expand Missing Keywords Window"}
+                                    >
+                                        <svg className="dropdown-chevron-icon" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+                                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {isMissingOpen && (
+                                <div className="capsules-scroll-area">
+                                    {filteredMissing.length === 0 ? (
+                                        <div className="capsules-empty-state">
+                                            <span className="empty-icon">🎉</span>
+                                            <p>All target job keywords have been matched!</p>
+                                        </div>
+                                    ) : (
+                                        <div className="capsules-flex-grid">
+                                            {filteredMissing.map((kw, idx) => (
+                                                <button
+                                                    key={`${kw}-${idx}`}
+                                                    type="button"
+                                                    className="skill-capsule capsule-missing is-clickable-inserter"
+                                                    onClick={() => onInsertKeyword && onInsertKeyword(kw)}
+                                                    title={`Click to insert "${kw}" into resume and boost ATS score`}
+                                                >
+                                                    <span className="capsule-indicator-dot amber"></span>
+                                                    <span className="capsule-text">{kw}</span>
+                                                    <span className="capsule-badge-pill badge-insert">
+                                                        + Add
+                                                    </span>
+                                                </button>
+                                            ))}
                                         </div>
                                     )}
                                 </div>

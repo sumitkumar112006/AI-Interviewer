@@ -106,6 +106,123 @@
     animation: pulse-badge 2s ease infinite;
 }
 
+.rp-ats-badge {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--rp-text);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--rp-border);
+    padding: 0.2rem 0.65rem;
+    border-radius: 9999px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+    overflow: hidden;
+    transition: all 0.25s ease;
+
+    .rp-ats-dot {
+        font-size: 0.55rem;
+        transition: transform 0.2s ease;
+    }
+
+    // ── Shimmer Effect while executing / calculating ATS score ──
+    &.is-calculating {
+        border-color: rgba(239, 123, 93, 0.55);
+        color: #fff;
+        background: linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.04) 0%,
+            rgba(239, 123, 93, 0.2) 50%,
+            rgba(255, 255, 255, 0.04) 100%
+        );
+        background-size: 200% 100%;
+        animation: ats-badge-shimmer 1.4s ease-in-out infinite;
+        box-shadow: 0 0 14px rgba(239, 123, 93, 0.3);
+
+        &::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 70%;
+            height: 100%;
+            background: linear-gradient(
+                90deg,
+                transparent 0%,
+                rgba(255, 255, 255, 0.28) 50%,
+                transparent 100%
+            );
+            transform: skewX(-22deg);
+            animation: ats-shimmer-sweep 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+            pointer-events: none;
+        }
+
+        .rp-ats-dot {
+            animation: ats-dot-pulse 0.7s ease-in-out infinite alternate;
+        }
+    }
+
+    .light-theme &,
+    [data-theme="light"] & {
+        &.is-calculating {
+            border-color: rgba(223, 105, 77, 0.6);
+            color: #1b211c;
+            background: linear-gradient(
+                90deg,
+                rgba(0, 0, 0, 0.03) 0%,
+                rgba(223, 105, 77, 0.16) 50%,
+                rgba(0, 0, 0, 0.03) 100%
+            );
+            background-size: 200% 100%;
+            box-shadow: 0 0 10px rgba(223, 105, 77, 0.25);
+
+            &::after {
+                background: linear-gradient(
+                    90deg,
+                    transparent 0%,
+                    rgba(255, 255, 255, 0.75) 50%,
+                    transparent 100%
+                );
+            }
+        }
+    }
+}
+
+@keyframes ats-badge-shimmer {
+    0% {
+        background-position: 100% 0;
+    }
+    100% {
+        background-position: -100% 0;
+    }
+}
+
+@keyframes ats-shimmer-sweep {
+    0% {
+        left: -90%;
+    }
+    100% {
+        left: 190%;
+    }
+}
+
+@keyframes ats-dot-pulse {
+    0% {
+        transform: scale(0.85);
+        opacity: 0.6;
+    }
+    100% {
+        transform: scale(1.35);
+        opacity: 1;
+        filter: drop-shadow(0 0 4px currentColor);
+    }
+}
+
 @keyframes pulse-badge {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.6; }
@@ -868,4 +985,132 @@
         opacity: 1;
         transform: translate(-50%, 0) scale(1);
     }
+}
+
+// ── 1-Click Missing Keywords Inserter Bar ──────────────────────────────────
+.rp-missing-keywords-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.45rem 1.25rem;
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.12) 0%, rgba(223, 105, 77, 0.08) 100%);
+    border-bottom: 1px solid rgba(245, 158, 11, 0.25);
+    flex-shrink: 0;
+    overflow: hidden;
+    animation: toastSlideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+    .mkw-bar-header {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        flex-shrink: 0;
+
+        .mkw-sparkle {
+            font-size: 0.95rem;
+            animation: pulseGlow 2s infinite ease-in-out;
+        }
+
+        .mkw-title {
+            font-size: 0.76rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            color: #fbbf24;
+            white-space: nowrap;
+        }
+    }
+
+    .mkw-chips-scroll {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        overflow-x: auto;
+        padding-bottom: 2px;
+        min-width: 0;
+        flex: 1;
+
+        &::-webkit-scrollbar {
+            height: 3px;
+        }
+        &::-webkit-scrollbar-thumb {
+            background: rgba(245, 158, 11, 0.3);
+            border-radius: 3px;
+        }
+    }
+
+    .mkw-chip-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.22rem 0.6rem;
+        border-radius: 9999px;
+        background: rgba(245, 158, 11, 0.14);
+        border: 1px solid rgba(245, 158, 11, 0.4);
+        color: #fef3c7;
+        font-size: 0.74rem;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+
+        .mkw-plus {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #fbbf24;
+            transition: transform 0.15s ease;
+        }
+
+        .mkw-name {
+            white-space: nowrap;
+        }
+
+        &:hover {
+            background: rgba(245, 158, 11, 0.28);
+            border-color: #f59e0b;
+            color: #ffffff;
+            transform: translateY(-1px) scale(1.04);
+            box-shadow: 0 3px 10px rgba(245, 158, 11, 0.3);
+
+            .mkw-plus {
+                transform: scale(1.2) rotate(90deg);
+            }
+        }
+
+        &:active {
+            transform: scale(0.96);
+        }
+    }
+
+    .light-theme &,
+    [data-theme="light"] & {
+        background: #fffbeb;
+        border-bottom: 1px solid #fde68a;
+
+        .mkw-bar-header .mkw-title {
+            color: #b45309;
+        }
+
+        .mkw-chip-btn {
+            background: #ffffff;
+            border-color: #fcd34d;
+            color: #92400e;
+            box-shadow: 0 1px 3px rgba(180, 83, 9, 0.08);
+
+            .mkw-plus {
+                color: #d97706;
+            }
+
+            &:hover {
+                background: #fef3c7;
+                border-color: #f59e0b;
+                color: #78350f;
+                box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
+            }
+        }
+    }
+}
+
+@keyframes pulseGlow {
+    0%, 100% { transform: scale(1); filter: brightness(1); }
+    50% { transform: scale(1.15); filter: brightness(1.3); }
 }

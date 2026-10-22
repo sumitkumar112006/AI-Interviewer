@@ -389,4 +389,16 @@ export async function clearAssistantHistoryApi() {
         console.warn('Failed to clear assistant history:', err);
         return { message: 'Failed to clear history' };
     }
+}
+
+export async function calculateResumeAtsScore(interviewReportId, resumeHtml = null) {
+    try {
+        const response = await api.post(`/api/interview/resume/ats-score/${interviewReportId}`, {
+            resumeHtml
+        });
+        return response.data;
+    } catch (err) {
+        console.warn('Failed to calculate dynamic ATS score:', err);
+        return null;
+    }
 }

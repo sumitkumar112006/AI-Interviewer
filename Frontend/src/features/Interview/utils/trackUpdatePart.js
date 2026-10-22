@@ -373,7 +373,97 @@ export function TrackUpdatePart(oldResumeHtml = '', updatedResume = '', explicit
         }
     }
 
-    // Fallback: If no node matched, return clean merged
+    // ── Fallback Insertion into a Target Section (e.g. Adding Project to PROJECTS) ──
+    let targetSectionName = null
+    const lowerUpdated = cleanUpdated.toLowerCase()
+    if (lowerUpdated.includes('project') || /<h[23][^>]*>.*<\/h[23]>/i.test(cleanUpdated)) {
+        targetSectionName = 'PROJECT'
+    } else if (lowerUpdated.includes('experience') || lowerUpdated.includes('intern') || lowerUpdated.includes('engineer')) {
+        targetSectionName = 'EXPERIENCE'
+    } else if (lowerUpdated.includes('skill')) {
+        targetSectionName = 'SKILL'
+    }
+
+    if (targetSectionName) {
+        const headings = Array.from(mergedDoc.body.querySelectorAll('h1, h2, h3'))
+        const matchedHeading = headings.find(h => h.textContent.trim().toUpperCase().includes(targetSectionName))
+
+        if (matchedHeading) {
+            let insertBeforeNode = null
+            let sibling = matchedHeading.nextElementSibling
+            while (sibling) {
+                if (/^H[12]$/i.test(sibling.tagName)) {
+                    insertBeforeNode = sibling
+                    break
+                }
+                sibling = sibling.nextElementSibling
+            }
+
+            const fragMerged = mergedDoc.createDocumentFragment()
+            const fragDiff = diffDoc.createDocumentFragment()
+
+            const tempDiv = mergedDoc.createElement('div')
+            tempDiv.innerHTML = cleanUpdated
+            Array.from(tempDiv.childNodes).forEach(child => {
+                fragMerged.appendChild(child.cloneNode(true))
+                const diffChild = child.cloneNode(true)
+                if (diffChild.nodeType === 1) { // ELEMENT_NODE
+                    diffChild.innerHTML = `<ins class="kivi-diff-ins">${diffChild.innerHTML}</ins>`
+                    fragDiff.appendChild(diffChild)
+                }
+            })
+
+            if (insertBeforeNode) {
+                matchedHeading.parentNode.insertBefore(fragMerged, insertBeforeNode)
+            } else {
+                matchedHeading.parentNode.appendChild(fragMerged)
+            }
+
+            const diffHeadings = Array.from(diffDoc.body.querySelectorAll('h1, h2, h3'))
+            const matchedDiffHeading = diffHeadings.find(h => h.textContent.trim().toUpperCase().includes(targetSectionName))
+            if (matchedDiffHeading) {
+                let diffInsertBefore = null
+                let diffSib = matchedDiffHeading.nextElementSibling
+                while (diffSib) {
+                    if (/^H[12]$/i.test(diffSib.tagName)) {
+                        diffInsertBefore = diffSib
+                        break
+                    }
+                    diffSib = diffSib.nextElementSibling
+                }
+                if (diffInsertBefore) {
+                    matchedDiffHeading.parentNode.insertBefore(fragDiff, diffInsertBefore)
+                } else {
+                    matchedDiffHeading.parentNode.appendChild(fragDiff)
+                }
+            }
+
+            const mergedFullResumeHtml = sanitizeResumeHtml(mergedDoc.body.innerHTML)
+            const diffPreviewHtml = sanitizeResumeHtml(diffDoc.body.innerHTML)
+
+            return {
+                hasChanges: true,
+                isFullDocument: false,
+                changeType: 'section_insert',
+                sectionName: targetSectionName,
+                targetText: null,
+                replacementHtml: cleanUpdated,
+                diffPreviewHtml: diffPreviewHtml || mergedFullResumeHtml,
+                mergedFullResumeHtml,
+                oldFullResumeHtml: cleanOldHtml
+            }
+        }
+    }
+
+    // Default Fallback: If no section heading matched, append to end of document
+    const fragMerged = mergedDoc.createDocumentFragment()
+    const tempDiv = mergedDoc.createElement('div')
+    tempDiv.innerHTML = cleanUpdated
+    Array.from(tempDiv.childNodes).forEach(child => {
+        fragMerged.appendChild(child.cloneNode(true))
+    })
+    mergedDoc.body.appendChild(fragMerged)
+
     const mergedFullResumeHtml = sanitizeResumeHtml(mergedDoc.body.innerHTML)
     const diffPreviewHtml = sanitizeResumeHtml(diffDoc.body.innerHTML)
 
@@ -384,8 +474,8 @@ export function TrackUpdatePart(oldResumeHtml = '', updatedResume = '', explicit
         sectionName: null,
         targetText: explicitTargetText || null,
         replacementHtml: cleanUpdated,
-        diffPreviewHtml: diffPreviewHtml || cleanUpdated,
-        mergedFullResumeHtml: mergedFullResumeHtml || cleanUpdated,
+        diffPreviewHtml: diffPreviewHtml || mergedFullResumeHtml,
+        mergedFullResumeHtml,
         oldFullResumeHtml: cleanOldHtml
     }
 }

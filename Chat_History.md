@@ -308,6 +308,50 @@
 
 ---
 
+### 🔹 Session: 2026-10-22
+- **Topic**: Production ATS Match Engine Implementation & Resume Studio ATS Display
+- **Completed Actions**:
+  1. **Production-Quality ATS Scoring Engine (`Backend/src/services/atsScorer.js`)**:
+     - Engineered modular `calculateATSScore(resumeText, jobDescriptionText, options)` function with ES Modules and CommonJS dual compatibility.
+     - **Keyword Match (30%)**: TF-IDF extraction with logarithmic repetition scaling (`1 + ln(tf)`), exact, stemmed (`PorterStemmer`), and synonym/alias matching (`JS` $\rightarrow$ `JavaScript`, `Mongo` $\rightarrow$ `MongoDB`, `Node` $\rightarrow$ `Node.js`, `K8s` $\rightarrow$ `Kubernetes`, `AWS` $\rightarrow$ `Amazon Web Services`).
+     - **Skills Match (25%)**: Categorized hard skills (languages, frameworks, databases, cloud, devops) vs. soft skills (communication, agile, leadership). Weighted hard skills at 75% and soft skills at 25%, with extensive canonical alias dictionary.
+     - **Experience Match (20%)**: Regex-based required years extraction (`5+ years`, `3-5 years`), candidate date range extraction (`Jan 2019 - Present`, `03/2018 - 11/2021`, etc.), and overlapping interval merging algorithm to prevent double-counting tenure. Proportional scoring capped at 100.
+     - **Education Match (10%)**: Hierarchy comparison (Doctorate $\rightarrow$ Master's $\rightarrow$ Bachelor's $\rightarrow$ Associate's) with STEM/Tech field detection.
+     - **Job Title Match (10%)**: Fuzzy string similarity combining Jaro-Winkler distance and token set overlap with substring bonuses.
+     - **Formatting & Parsability (5%)**: Standard ATS section detection (Summary, Skills, Experience, Education, Projects), contact info (valid email, phone), bullet points presence, table structure detection, and word count validation.
+     - **Actionable Suggestions Generator**: Dynamic generation of prioritized fixes for missing skills, core keywords, experience gaps, and formatting flaws.
+     - **Optional Signals**: Cosine similarity blending on semantic vector embeddings (`options.useEmbeddings`) and LLM suggestion hook (`options.useLLM`).
+     - **Jest Unit Test Suite (`Backend/src/tests/atsScorer.test.js`)**: 6 comprehensive unit tests covering empty inputs, perfect match, zero matching skills, experience cap, tech aliases, and embeddings/LLM calls. All 32 backend tests pass (100%).
+  2. **Dual-Engine Link Extraction Module (`Backend/src/services/linkExtractor.js`, `urlUtils.js`)**:
+     - Recovers hidden hyperlinks from PDF annotation dictionaries (`/Annots`) with coordinate matching to visible text layer.
+     - Extracts relationships from DOCX `word/_rels/document.xml.rels`.
+     - Deduplicates, validates, and classifies candidate links (GitHub, LinkedIn, Portfolio, Demos).
+     - Connected to interview & cover letter AI prompt injection pipeline.
+  3. **Resume Studio Minimalist ATS View (`Frontend/src/features/Interview/pages/Resume.jsx`, `ResumeSkillsWindow.jsx`)**:
+     - Streamlined the Resume Studio view to show **ONLY the ATS Score** without visual clutter or extra text.
+     - Docked side trigger: `• ATS SCORE: {score}%`.
+     - Clean SVG radial gauge displaying the exact match score (0-100%).
+     - Top navigation bar integration: `ATS Score: {score}%` badge.
+
+---
+
+## 🔮 Capabilities Preserved for Future Frontend Implementation
+
+The following advanced capabilities are fully built and verified in the backend engine, preserved in history for future implementation in the UI:
+
+1. **Interactive ATS Category Breakdown Drawer**:
+   - Tabbed or accordion view expanding the overall ATS score into its 6 constituent categories: Keyword Match (30%), Skills Match (25%), Experience (20%), Education (10%), Title Alignment (10%), and Document Formatting (5%).
+2. **Missing Keywords & Skills 1-Click Injector**:
+   - Interactive badge chips listing high-frequency missing technical skills and JD keywords with a click-to-insert mechanism into active TipTap editor bullet points.
+3. **AI-Powered ATS Actionable Improvement Suggestions**:
+   - Dedicated drawer or modal displaying LLM-generated recommendations to tailor bullet points and close experience/title gaps.
+4. **Live Dynamic ATS Score Recalculator**:
+   - Real-time client-side debounced scoring as the candidate edits resume text in TipTap.
+5. **Direct File Upload ATS Scoring API**:
+   - `POST /api/ats/score` endpoint to upload and evaluate PDF / DOCX resumes directly with `pdf-parse` and `multer`.
+
+---
+
 ## 📌 Active Tasks & Backlog for Next Sessions
 - [x] Connect KIVI AI assistant orchestrator to `/api/assistant/chat` endpoint and frontend drawer.
 - [x] Add SSE Token Streaming to KIVI AI Assistant.
@@ -318,8 +362,15 @@
 - [x] Overhaul Intent Classifier into Tiered Semantic Context & Intent Router (Replacing Brittle Regex Rules).
 - [x] Implement 60 FPS Word-to-Word Smooth Streaming Buffer & Layout Auto-Closer.
 - [x] Fix AI Resume Structured HTML Generation, TipTap Sanitization, & Auto Report Worker Pipeline.
-- [ ] Implement `atsCalculator.js` and `AtsScorePanel.jsx` in Resume Studio (`Resume.jsx`).
+- [x] Build Production ATS Match Scoring Engine with 6 modular categories (`Backend/src/services/atsScorer.js`).
+- [x] Integrate PDF/DOCX hyperlink extraction into AI prompt pipelines (`Backend/src/services/linkExtractor.js`).
+- [x] Streamline Resume Studio page to show ONLY the ATS score.
+- [x] Enable real-time, responsive ATS score recalculation upon updating resume in editor or saving.
+- [ ] Implement Future Capability 1: Interactive ATS Category Breakdown Drawer.
+- [ ] Implement Future Capability 2: 1-Click Missing Keyword & Skills Injector.
+- [ ] Implement Future Capability 3: Actionable AI ATS Improvement Suggestions Drawer.
 - [ ] Test Google Supabase login & OTP flow end-to-end.
 - [ ] Finalize deployment pipelines (Vercel Frontend + Railway/Render Backend).
+
 
 

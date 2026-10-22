@@ -43,7 +43,7 @@ function initAiWorker() {
             switch (jobDoc.type) {
                 // 1. MOCK INTERVIEW & REPORT GENERATION
                 case 'interview_report': {
-                    const { resumeText, selfDescription, jobDescription, userPlan } = jobDoc.input;
+                    const { resumeText, selfDescription, jobDescription, userPlan, extractedLinks } = jobDoc.input;
 
                     // Concurrently generate the interview report and the structured ATS resume HTML
                     const [reportResult, resumeResult] = await Promise.allSettled([
@@ -96,6 +96,7 @@ function initAiWorker() {
                         jobDescription,
                         detectedSkills,
                         resumeSkills: resumeSkills.length > 0 ? resumeSkills : (comparison.currentSkills?.all || []).map(s => s.name),
+                        resumeLinks: extractedLinks || null,
                         older: comparison.originalSkills,
                         olderSkills: comparison.originalSkills,
                         originalSkills: comparison.originalSkills,

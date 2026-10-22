@@ -1,6 +1,8 @@
 const pdfParse = require('pdf-parse')
 const mongoose = require('mongoose')
 const crypto = require('crypto')
+const { parseResumeLinks, formatExtractedLinksForPrompt } = require('../services/linkExtractor.js')
+const { calculateATSScore } = require('../services/atsScorer.js')
 const { generateInterviewReport, generateResumePfd, generateResumeHtml, rewriteResumeSection, extractSkillsFromResumeHtml, getAIStatus } = require('../services/ai.service')
 const interviewReportModle = require('../models/interviewReport.model')
 const interviewReportModel = require('../models/interviewReport.model')
@@ -18,6 +20,26 @@ function isValidResumeHtmlContent(html) {
     if (clean.length < 30) return false;
     if (/^[a-f0-9]{24}$/i.test(clean)) return false;
     return true;
+}
+
+function extractPlainTextFromResume(content) {
+    if (!content || typeof content !== 'string') return '';
+    if (/<[a-z][\s\S]*>/i.test(content)) {
+        return content
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<li[^>]*>/gi, '\n• ')
+            .replace(/<\/p>|<\/div>|<\/li>|<br\s*\/?>|<\/h[1-6]>/gi, '\n')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/[ \t]+/g, ' ')
+            .replace(/\n\s*\n+/g, '\n\n')
+            .trim();
+    }
+    return content.trim();
 }
 
 async function generateInterviewReportController(req, res, next) {
@@ -61,9 +83,32 @@ async function generateInterviewReportController(req, res, next) {
             });
         }
 
-        // 2. Parse PDF buffer in milliseconds (lean payload for Redis)
-        const resumeContent = await (new pdfParse.PDFParse(Uint8Array.from(req.file.buffer))).getText()
-        const { jobDescription } = req.body
+        // 2. Extract visible text and recover hidden hyperlinks & anchor associations
+        let rawResumeText = '';
+        try {
+            const resumeContent = await (new pdfParse.PDFParse(Uint8Array.from(req.file.buffer))).getText();
+            rawResumeText = resumeContent?.text || '';
+        } catch (pdfErr) {
+            console.warn('[Interview Controller] pdf-parse fallback notice:', pdfErr.message);
+        }
+
+        // Recover all hidden links, anchor text associations, and social/portfolio profiles
+        let formattedLinksText = '';
+        let extractedLinks = null;
+        let rawLinks = [];
+        try {
+            const parsedLinksResult = await parseResumeLinks(req.file.buffer, req.file.mimetype || req.file.originalname);
+            extractedLinks = parsedLinksResult?.links || null;
+            rawLinks = parsedLinksResult?.rawLinks || [];
+            formattedLinksText = formatExtractedLinksForPrompt(parsedLinksResult);
+        } catch (linkErr) {
+            console.warn('[Interview Controller] parseResumeLinks notice:', linkErr.message);
+        }
+
+        // Combine raw text with explicit link indicators for the LLM
+        const effectiveResumeText = [rawResumeText, formattedLinksText].filter(Boolean).join('\n\n');
+
+        const { jobDescription } = req.body;
         const userPlan = (req.user?.plan || "free").toLowerCase();
 
         // 3. Create Job document in MongoDB
@@ -74,7 +119,10 @@ async function generateInterviewReportController(req, res, next) {
             resourceModel: 'InterviewReport',
             status: 'pending',
             input: {
-                resumeText: resumeContent.text,
+                resumeText: effectiveResumeText,
+                rawResumeText,
+                extractedLinks,
+                rawLinks,
                 selfDescription: effectiveSelfDescription,
                 jobDescription,
                 userPlan
@@ -203,6 +251,25 @@ async function getInterviewReportByIdController(req, res, next) {
                     currentSkills: comparison.currentSkills
                 }
             );
+        }
+
+        // Dynamically calculate and update ATS matchScore if resume & JD are present
+        const effectiveResumeText = extractPlainTextFromResume(interviewReport.generatedResumeHtml || interviewReport.resume || '');
+        const targetJdText = interviewReport.jobDescription || '';
+        if (effectiveResumeText && targetJdText) {
+            try {
+                const atsResult = await calculateATSScore(effectiveResumeText, targetJdText);
+                if (typeof atsResult?.overallScore === 'number') {
+                    interviewReport.matchScore = atsResult.overallScore;
+                    interviewReport.atsScoreBreakdown = atsResult.breakdown;
+                    await interviewReportModel.updateOne(
+                        { _id: interviewReport._id },
+                        { matchScore: atsResult.overallScore, atsScoreBreakdown: atsResult.breakdown }
+                    );
+                }
+            } catch (atsErr) {
+                console.warn("[getInterviewReportByIdController] Dynamic ATS scoring notice:", atsErr.message);
+            }
         }
 
         await setCache(cacheKey, interviewReport, 3600)
@@ -464,13 +531,12 @@ async function updateResumeHtmlController(req, res, next) {
             ? req.body.resumeSkills
             : (Array.isArray(req.body?.skills) ? req.body.skills : null);
 
-        const existingReport = await interviewReportModel.findOne({
-            _id: interviewReportId,
-            $or: [
-                { user: userObjectId },
-                { user: userIdStr }
-            ]
-        });
+        const query = { _id: interviewReportId };
+        if (req.user?.role !== 'admin') {
+            query.$or = [{ user: userObjectId }, { user: userIdStr }];
+        }
+
+        const existingReport = await interviewReportModel.findOne(query);
 
         if (!existingReport) {
             return res.status(404).json({ message: "Interview report not found" });
@@ -487,6 +553,24 @@ async function updateResumeHtmlController(req, res, next) {
             ? resumeSkills
             : (comparison.currentSkills?.all || []).map(s => s.name);
 
+        // Dynamically compute updated ATS match score on resume save
+        const savedResumeText = extractPlainTextFromResume(generatedResumeHtml);
+        const jdText = existingReport.jobDescription || '';
+        let dynamicScore = existingReport.matchScore;
+        let atsBreakdown = existingReport.atsScoreBreakdown || null;
+
+        if (savedResumeText && jdText) {
+            try {
+                const atsResult = await calculateATSScore(savedResumeText, jdText);
+                if (typeof atsResult?.overallScore === 'number') {
+                    dynamicScore = atsResult.overallScore;
+                    atsBreakdown = atsResult.breakdown;
+                }
+            } catch (atsErr) {
+                console.warn("[updateResumeHtmlController] Dynamic ATS scoring notice:", atsErr.message);
+            }
+        }
+
         const updateData = {
             generatedResumeHtml,
             resumeSkills: effectiveSkills,
@@ -494,7 +578,9 @@ async function updateResumeHtmlController(req, res, next) {
             olderSkills: comparison.originalSkills,
             originalSkills: comparison.originalSkills,
             current: comparison.currentSkills,
-            currentSkills: comparison.currentSkills
+            currentSkills: comparison.currentSkills,
+            matchScore: dynamicScore,
+            atsScoreBreakdown: atsBreakdown
         };
 
         const report = await interviewReportModel.findByIdAndUpdate(
@@ -510,7 +596,9 @@ async function updateResumeHtmlController(req, res, next) {
 
         res.status(200).json({
             message: "Resume updated successfully!",
-            interviewReport: report
+            interviewReport: report,
+            matchScore: dynamicScore,
+            atsScoreBreakdown: atsBreakdown
         });
     } catch (error) {
         next(error);
@@ -723,6 +811,68 @@ async function getResumeSkillsComparisonController(req, res, next) {
     }
 }
 
+async function calculateResumeAtsScoreController(req, res, next) {
+    try {
+        const { interviewReportId } = req.params;
+        if (!mongoose.isValidObjectId(interviewReportId)) {
+            return res.status(400).json({ message: "Invalid report id" });
+        }
+
+        const userIdStr = req.user.id || req.user._id?.toString();
+        const userObjectId = mongoose.Types.ObjectId.isValid(userIdStr) ? new mongoose.Types.ObjectId(userIdStr) : userIdStr;
+
+        const query = { _id: interviewReportId };
+        if (req.user?.role !== 'admin') {
+            query.$or = [{ user: userObjectId }, { user: userIdStr }];
+        }
+
+        const report = await interviewReportModel.findOne(query);
+
+        if (!report) {
+            return res.status(404).json({ message: "Interview report not found" });
+        }
+
+        const rawInput = req.body?.resumeHtml || req.body?.resumeText || report.generatedResumeHtml || report.resume || '';
+        const resumeText = extractPlainTextFromResume(rawInput);
+        const jdText = report.jobDescription || '';
+
+        if (!resumeText) {
+            return res.status(400).json({ message: "Resume content is required to calculate ATS score" });
+        }
+
+        const atsResult = await calculateATSScore(resumeText, jdText);
+        const dynamicScore = atsResult.overallScore;
+
+        const updateDoc = {
+            matchScore: dynamicScore,
+            atsScoreBreakdown: atsResult.breakdown
+        };
+        if (isValidResumeHtmlContent(req.body?.resumeHtml)) {
+            updateDoc.generatedResumeHtml = req.body.resumeHtml;
+        }
+
+        // Persist dynamically calculated score to DB
+        await interviewReportModel.updateOne(
+            { _id: report._id },
+            updateDoc
+        );
+
+        // Invalidate cache
+        const cacheKey = `cache:report:${interviewReportId}:${userIdStr}`;
+        await deleteCache(cacheKey);
+
+        return res.status(200).json({
+            success: true,
+            matchScore: dynamicScore,
+            breakdown: atsResult.breakdown,
+            suggestions: atsResult.suggestions
+        });
+    } catch (error) {
+        console.error("calculateResumeAtsScoreController error:", error.message);
+        next(error);
+    }
+}
+
 module.exports = {
     generateInterviewReportController,
     getInterviewReportByIdController,
@@ -734,5 +884,6 @@ module.exports = {
     updateInterviewProgressController,
     rewriteResumeSectionController,
     getAiModelInfoController,
-    getResumeSkillsComparisonController
+    getResumeSkillsComparisonController,
+    calculateResumeAtsScoreController
 }

@@ -175,6 +175,10 @@ const interviewReportSchema = new mongoose.Schema({
         type: [String],
         default: []
     },
+    resumeLinks: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null
+    },
     // Older / original resume skills extracted from the uploaded resume
     older: {
         type: [String],
@@ -201,8 +205,11 @@ const interviewReportSchema = new mongoose.Schema({
         name: { type: String, required: true },
         category: { type: String, default: "General" },
         score: { type: Number, default: 75 }
-    }]
-
+    }],
+    atsScoreBreakdown: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null
+    }
 }, {
     timestamps: true
 })
