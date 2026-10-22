@@ -160,18 +160,37 @@ function extractSkillsFromResumeHtml(htmlContent) {
     const skillsSectionMatch = normalizedHtml.match(/<h[1-3][^>]*>[\s\S]*?skills[\s\S]*?<\/h[1-3]>([\s\S]*?)(?=<h[1-3]|$)/i);
     const targetBlock = skillsSectionMatch ? skillsSectionMatch[1] : normalizedHtml;
 
-    // Strip categories like <strong>Technical:</strong>, <b>Languages:</b>, etc.
-    const cleanBlock = targetBlock
+    // Decode HTML entities and add separators for block tags
+    let decodedBlock = targetBlock
+        .replace(/&amp;/gi, '&')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/<\/(li|p|div|h[1-6]|tr|td)>/gi, ', ')
         .replace(/<(?:strong|b)\b[^>]*>[\s\S]*?<\/(?:strong|b)>/gi, ' ')
         .replace(/<[^>]+>/g, ' ');
 
-    // Split items by commas, semicolons, bullets (•, ·, |, /), or newlines
-    const rawTokens = cleanBlock.split(/[,;•·|\n\r\t/]+/);
+    // Preserve common slash acronyms like A/B Testing, CI/CD, TCP/IP
+    decodedBlock = decodedBlock
+        .replace(/\bA\/B\b/gi, 'A_SLASH_B')
+        .replace(/\bCI\/CD\b/gi, 'CI_SLASH_CD')
+        .replace(/\bTCP\/IP\b/gi, 'TCP_SLASH_IP');
+
+    // Split items by commas, semicolons, bullets (•, ·, |), or standalone slashes
+    const rawTokens = decodedBlock.split(/[,;•·|\n\r\t]+|\s+\/\s+/);
     for (let raw of rawTokens) {
-        let token = raw.replace(/\(.*?\)/g, ' ').replace(/[^a-zA-Z0-9+#.\s-]/g, ' ').trim();
+        let token = raw
+            .replace(/\(.*?\)/g, ' ')
+            .replace(/A_SLASH_B/gi, 'A/B')
+            .replace(/CI_SLASH_CD/gi, 'CI/CD')
+            .replace(/TCP_SLASH_IP/gi, 'TCP/IP')
+            .replace(/[^a-zA-Z0-9+#.\s/&-]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
         // Remove common headings/filler prefixes
         token = token.replace(/^(and|etc|tools|platforms|skills|technologies|frameworks|languages)\s+/i, '').trim();
-        if (token.length >= 2 && token.length <= 40 && !/^\d+$/.test(token)) {
+        if (token.length >= 2 && token.length <= 40 && !/^\d+$/.test(token) && !/^(amp|nbsp|and|etc)$/i.test(token)) {
             found.add(token);
         }
     }
@@ -360,8 +379,8 @@ function compareResumeSkillsDiff({
             removedSkills.push({
                 name: origName,
                 version: 'removed',
-                color: 'gray',
-                colorHex: '#94a3b8'
+                color: 'red',
+                colorHex: '#ef4444'
             });
         }
     });

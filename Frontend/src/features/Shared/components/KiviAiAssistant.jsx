@@ -77,7 +77,7 @@ const DEFAULT_HEIGHT = 580;
 const DEFAULT_WELCOME_MSG = {
     id: 1,
     sender: 'ai',
-    text: '👋 Hi! I am KIVI, your AI Assistant. Highlight any text in your Resume or Cover Letter editor, then send me instructions or click quick presets to improve it!',
+    text: '👋 Hello! I am KIVI, your AI Career Coach & ATS Copilot. Select any section in your document to refine it, or ask me any question regarding your resume, interview preparation, or target role.',
     isStreaming: false
 };
 

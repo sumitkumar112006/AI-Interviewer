@@ -1,16 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { generateResumePdf, getInterviewReportById, updateResumeHtml, rewriteResumeSection, getActiveJob } from '../services/interview.api'
+import { generateResumePdf, getInterviewReportById, updateResumeHtml, rewriteResumeSection, getActiveJob, getResumeSkillsComparison } from '../services/interview.api'
 import { useInterview } from '../hooks/useInterview'
 import { useAuth } from '../../Auth/hooks/useAuth'
 import ShimmerLoading from '../../Shared/components/ShimmerLoading'
 import Loading from '../Loading'
 import ResumeEditor from '../components/ResumeEditor'
+import ResumeSkillsWindow from '../components/ResumeSkillsWindow'
 import { exportElementToPdf } from '../utils/exportToPdf'
 import { sanitizeResumeHtml, parseAndSanitizeSnippet } from '../utils/sanitizeResumeHtml'
 import { 
     parseSkillsFromHtml, 
-    mergeSkills 
+    mergeSkills,
+    compareResumeSkills 
 } from '../utils/resumeSkillsManager'
 import '../style/resume.scss'
 
@@ -49,6 +51,17 @@ const Resume = () => {
     const [saveLoading, setSaveLoading] = useState(false)
     const [printLoading, setPrintLoading] = useState(false)
     const [saveNotification, setSaveNotification] = useState(null) // { message: string, type: 'manual' | 'auto' }
+
+    // Skills Evolution & Comparison Window state
+    const [isSkillsWindowOpen, setIsSkillsWindowOpen] = useState(() => {
+        try {
+            return localStorage.getItem('resume_skills_window_open') !== 'false'
+        } catch {
+            return true
+        }
+    })
+    const [olderSkills, setOlderSkills] = useState([])
+    const [skillsLoading, setSkillsLoading] = useState(false)
 
     // AI Copilot state
     const [isAiOpen, setIsAiOpen]     = useState(false)
@@ -117,6 +130,28 @@ const Resume = () => {
                         localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(currentSkills))
                     } catch {}
                 }
+
+                // Extract older / original resume skills from report
+                const rawOlder = Array.isArray(fetched?.older) && fetched.older.length > 0
+                    ? fetched.older
+                    : (Array.isArray(fetched?.olderSkills) && fetched.olderSkills.length > 0
+                        ? fetched.olderSkills
+                        : (Array.isArray(fetched?.originalSkills) ? fetched.originalSkills : []))
+                if (mounted && rawOlder.length > 0) {
+                    setOlderSkills(rawOlder)
+                }
+
+                // Asynchronously fetch canonical skills comparison from server
+                getResumeSkillsComparison(interviewId).then(compRes => {
+                    if (mounted && compRes?.skillsComparison) {
+                        const sComp = compRes.skillsComparison
+                        if (Array.isArray(sComp.originalSkills) && sComp.originalSkills.length > 0) {
+                            setOlderSkills(sComp.originalSkills)
+                        }
+                    }
+                }).catch(err => {
+                    console.warn('[Resume] Initial skills comparison fetch notice:', err.message)
+                })
 
                 // 3. Health check: Does DB already have a healthy generatedResumeHtml?
                 if (isHealthyResumeHtml(fetched?.generatedResumeHtml)) {
@@ -229,6 +264,22 @@ const Resume = () => {
         if (!report) return 'Resume'
         return report.developerTitle || report?.Title || report?.title || 'Generated Resume'
     }, [report])
+
+    // ── Toggle Skills Window ───────────────────────────────────────────────
+    const toggleSkillsWindow = useCallback(() => {
+        setIsSkillsWindowOpen(prev => {
+            const next = !prev
+            try {
+                localStorage.setItem('resume_skills_window_open', String(next))
+            } catch {}
+            return next
+        })
+    }, [])
+
+    // ── Live Reactive Skills Comparison Diff ───────────────────────────────
+    const skillsDiff = useMemo(() => {
+        return compareResumeSkills(olderSkills, resumeSkills)
+    }, [olderSkills, resumeSkills])
 
     // ── Unified Save & Auto-Save Function ──────────────────────────────────
     const saveResumeChanges = useCallback(async (isAuto = false) => {
@@ -612,6 +663,21 @@ const Resume = () => {
                         ← Back
                     </button>
 
+                    {/* ── Button to Open/Collapse Skills Difference Window ── */}
+                    <button
+                        type="button"
+                        className={`rp-btn rp-btn-skills-diff ${isSkillsWindowOpen ? 'active' : ''}`}
+                        onClick={toggleSkillsWindow}
+                        title={isSkillsWindowOpen ? "Collapse Skills Difference Window (<)" : "Open Skills Difference Window (>)"}
+                    >
+                        <span className="diff-icon">⚡</span>
+                        <span>{isSkillsWindowOpen ? 'Skills Difference' : 'Open Skills Difference'}</span>
+                        {skillsDiff?.stats?.newCount > 0 && (
+                            <span className="skills-badge-new">+{skillsDiff.stats.newCount} New</span>
+                        )}
+                        <span className={`skills-toggle-arrow ${isSkillsWindowOpen ? 'arrow-open' : ''}`}>&gt;</span>
+                    </button>
+
                     <button
                         type="button"
                         className="rp-btn rp-btn-save"
@@ -654,8 +720,38 @@ const Resume = () => {
 
             {/* ── Main workspace ─────────────────────────────────────── */}
             <div className="rp-workspace">
-                {/* Center: TipTap editor */}
+                {/* Left Side: Skills Diff & Evolution Window (Part 1: Skill Windows) */}
+                <ResumeSkillsWindow
+                    isOpen={isSkillsWindowOpen}
+                    onToggle={toggleSkillsWindow}
+                    olderSkills={olderSkills}
+                    currentSkills={skillsDiff?.currentSkills}
+                    stats={skillsDiff?.stats}
+                    loading={skillsLoading}
+                />
+
+                {/* Right Side: TipTap editor (Part 2: Resume Preview) */}
                 <main className="rp-editor-col">
+                    {!isSkillsWindowOpen && (
+                        <div className="editor-skills-diff-strip">
+                            <button
+                                type="button"
+                                className="btn-open-skills-diff"
+                                onClick={() => setIsSkillsWindowOpen(true)}
+                                title="Open Skills Difference Window (>)"
+                            >
+                                <span className="strip-icon">⚡</span>
+                                <span className="strip-label">Open Skills Difference Window</span>
+                                {skillsDiff?.stats?.newCount > 0 && (
+                                    <span className="strip-badge-new">+{skillsDiff.stats.newCount} New</span>
+                                )}
+                                {skillsDiff?.stats?.removedCount > 0 && (
+                                    <span className="strip-badge-omitted">{skillsDiff.stats.removedCount} Not in Resume</span>
+                                )}
+                                <span className="strip-chevron">&gt;</span>
+                            </button>
+                        </div>
+                    )}
                     {htmlContent ? (
                         <ResumeEditor
                             ref={editorRef}

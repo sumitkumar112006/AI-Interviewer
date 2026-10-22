@@ -33,18 +33,40 @@ export function parseSkillsFromHtml(html) {
     const targetBlock = skillsMatch ? skillsMatch[1] : '';
 
     if (targetBlock) {
-        // Strip bold headers (e.g. <strong>Technical:</strong>, <b>Tools:</b>)
-        const strippedBlock = targetBlock
+        // Decode HTML entities so &amp; becomes & and &nbsp; becomes space
+        let decodedBlock = targetBlock
+            .replace(/&amp;/gi, '&')
+            .replace(/&nbsp;/gi, ' ')
+            .replace(/&lt;/gi, '<')
+            .replace(/&gt;/gi, '>')
+            // Add comma separator when closing tags like </li>, </p>, </div> are encountered
+            .replace(/<\/(li|p|div|h[1-6]|tr|td)>/gi, ', ')
+            // Strip bold category labels like <strong>Technical:</strong>, <b>Tools:</b>
             .replace(/<(?:strong|b)\b[^>]*>[\s\S]*?<\/(?:strong|b)>/gi, ' ')
+            // Strip remaining HTML tags
             .replace(/<[^>]+>/g, ' ');
-        
-        // Split tokens by commas, semicolons, bullets, pipes, or newlines
-        const tokens = strippedBlock.split(/[,;•·|\n\r\t/]+/);
+
+        // Preserve common slash acronyms like A/B Testing, CI/CD, TCP/IP
+        decodedBlock = decodedBlock
+            .replace(/\bA\/B\b/gi, 'A_SLASH_B')
+            .replace(/\bCI\/CD\b/gi, 'CI_SLASH_CD')
+            .replace(/\bTCP\/IP\b/gi, 'TCP_SLASH_IP');
+
+        // Split tokens by commas, semicolons, bullets, pipes, or standalone slashes
+        const tokens = decodedBlock.split(/[,;•·|\n\r\t]+|\s+\/\s+/);
         for (let token of tokens) {
-            let clean = token.replace(/\(.*?\)/g, ' ').replace(/[^a-zA-Z0-9+#.\s-]/g, ' ').trim();
+            let clean = token
+                .replace(/\(.*?\)/g, ' ')
+                .replace(/A_SLASH_B/gi, 'A/B')
+                .replace(/CI_SLASH_CD/gi, 'CI/CD')
+                .replace(/TCP_SLASH_IP/gi, 'TCP/IP')
+                .replace(/[^a-zA-Z0-9+#.\s/&-]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+
             // Remove common section filler prefixes
             clean = clean.replace(/^(and|etc|tools|platforms|skills|technologies|frameworks|languages|competencies)\s+/i, '').trim();
-            if (clean.length >= 2 && clean.length <= 40 && !/^\d+$/.test(clean)) {
+            if (clean.length >= 2 && clean.length <= 40 && !/^\d+$/.test(clean) && !/^(amp|nbsp|and|etc)$/i.test(clean)) {
                 found.add(clean);
             }
         }
@@ -149,7 +171,8 @@ export function compareResumeSkills(originalSkills = [], currentSkills = []) {
                 version: 'previous',
                 color: 'blue',
                 colorHex: '#3b82f6',
-                isNew: false
+                isNew: false,
+                isNewlyAdded: false
             };
             previousSkills.push(item);
             all.push(item);
@@ -159,7 +182,8 @@ export function compareResumeSkills(originalSkills = [], currentSkills = []) {
                 version: 'new',
                 color: 'green',
                 colorHex: '#10b981',
-                isNew: true
+                isNew: true,
+                isNewlyAdded: true
             };
             newSkills.push(item);
             all.push(item);

@@ -155,6 +155,59 @@
         }
     }
 
+    &.rp-btn-skills-diff,
+    &.rp-btn-skills-toggle {
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(59, 130, 246, 0.12) 100%);
+        border: 1px solid rgba(16, 185, 129, 0.35);
+        color: var(--rp-text);
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+
+        .diff-icon {
+            font-size: 0.85rem;
+            color: #10b981;
+        }
+
+        .skills-badge-new {
+            background: rgba(16, 185, 129, 0.25);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.45);
+            font-size: 0.62rem;
+            padding: 0.12rem 0.45rem;
+            border-radius: 9999px;
+            font-weight: 800;
+        }
+
+        .skills-toggle-arrow {
+            display: inline-block;
+            font-size: 0.82rem;
+            font-weight: 800;
+            color: var(--rp-accent);
+            transition: transform 0.22s ease;
+
+            &.arrow-open {
+                transform: rotate(90deg);
+            }
+        }
+
+        &:not(:disabled):hover {
+            border-color: #10b981;
+            color: #10b981;
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.22) 0%, rgba(59, 130, 246, 0.2) 100%);
+            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.22);
+            transform: translateY(-1px);
+        }
+
+        &.active {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.24) 0%, rgba(59, 130, 246, 0.22) 100%);
+            border-color: #10b981;
+            color: #10b981;
+            box-shadow: 0 0 14px rgba(16, 185, 129, 0.28);
+        }
+    }
+
     &.rp-btn-save {
         background: var(--rp-green);
         border: 1px solid var(--rp-green);
@@ -247,6 +300,7 @@
     min-height: 0;
     overflow: hidden;
     gap: 0;
+    position: relative;
 }
 
 // ── Editor column ──────────────────────────────────────────────────────────
@@ -258,9 +312,88 @@
     overflow: hidden;
     background: var(--rp-bg, #121513);
 
+    .editor-skills-diff-strip {
+        padding: 0.55rem 1.25rem 0.25rem 1.25rem;
+        background: transparent;
+        display: flex;
+        align-items: center;
+
+        .btn-open-skills-diff {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.55rem;
+            padding: 0.38rem 0.85rem;
+            border-radius: 7px;
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(59, 130, 246, 0.12) 100%);
+            border: 1px solid rgba(16, 185, 129, 0.35);
+            color: var(--rp-text, #f3f0e9);
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+            .strip-icon {
+                color: #10b981;
+                font-size: 0.85rem;
+            }
+
+            .strip-badge-new {
+                background: rgba(16, 185, 129, 0.22);
+                color: #10b981;
+                border: 1px solid rgba(16, 185, 129, 0.45);
+                font-size: 0.65rem;
+                padding: 0.1rem 0.45rem;
+                border-radius: 9999px;
+                font-weight: 700;
+            }
+
+            .strip-badge-omitted {
+                background: rgba(239, 68, 68, 0.22);
+                color: #fca5a5;
+                border: 1px solid rgba(239, 68, 68, 0.5);
+                font-size: 0.65rem;
+                padding: 0.1rem 0.45rem;
+                border-radius: 9999px;
+                font-weight: 700;
+            }
+
+            .strip-chevron {
+                font-size: 0.85rem;
+                font-weight: 800;
+                color: var(--rp-accent, #ef7b5d);
+                margin-left: 0.15rem;
+                transition: transform 0.2s ease;
+            }
+
+            &:hover {
+                border-color: #10b981;
+                background: linear-gradient(135deg, rgba(16, 185, 129, 0.22) 0%, rgba(59, 130, 246, 0.2) 100%);
+                box-shadow: 0 4px 14px rgba(16, 185, 129, 0.25);
+                transform: translateY(-1px);
+
+                .strip-chevron {
+                    transform: translateX(3px);
+                }
+            }
+        }
+    }
+
     .light-theme &,
     [data-theme="light"] & {
         background: #f9f8f5;
+
+        .editor-skills-diff-strip .btn-open-skills-diff {
+            color: #1b211c;
+            background: linear-gradient(135deg, #ecfdf5 0%, #eff6ff 100%);
+            border-color: rgba(16, 185, 129, 0.4);
+
+            .strip-badge-omitted {
+                color: #dc2626;
+                background: #fef2f2;
+                border-color: rgba(220, 38, 38, 0.4);
+            }
+        }
     }
 }
 
