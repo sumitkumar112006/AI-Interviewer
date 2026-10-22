@@ -1,14 +1,14 @@
 const pdfParse = require('pdf-parse')
 const mongoose = require('mongoose')
 const crypto = require('crypto')
-const { generateInterviewReport, generateResumePfd, generateResumeHtml, rewriteResumeSection, getAIStatus } = require('../services/ai.service')
+const { generateInterviewReport, generateResumePfd, generateResumeHtml, rewriteResumeSection, extractSkillsFromResumeHtml, getAIStatus } = require('../services/ai.service')
 const interviewReportModle = require('../models/interviewReport.model')
 const interviewReportModel = require('../models/interviewReport.model')
 const userModel = require('../models/user.model')
 const JobModel = require('../models/job.model')
 const { enqueueAiJob } = require('../jobs/aiQueue')
 const { getCache, setCache, deleteCache } = require('../services/redis.service')
-const { processReportSkills, aggregateSkillAnalytics } = require('../services/skills.service')
+const { processReportSkills, aggregateSkillAnalytics, compareResumeSkillsDiff } = require('../services/skills.service')
 const { getUserGenCredits } = require('../middleware/rateLimiter.middleware')
 const { invalidateChunkCache, invalidateRoadmapChunkCache, invalidateJdChunkCache } = require('../ai-assistant')
 
@@ -158,6 +158,50 @@ async function getInterviewReportByIdController(req, res, next) {
             await interviewReportModel.updateOne(
                 { _id: interviewReport._id },
                 { generatedResumeHtml: interviewReport.generatedResumeHtml, resume: interviewReport.resume }
+            );
+        }
+
+        // Auto-heal / populate resumeSkills if missing
+        if ((!interviewReport.resumeSkills || interviewReport.resumeSkills.length === 0) && interviewReport.generatedResumeHtml) {
+            const extracted = extractSkillsFromResumeHtml(interviewReport.generatedResumeHtml);
+            if (extracted.length > 0) {
+                interviewReport.resumeSkills = extracted;
+                await interviewReportModel.updateOne(
+                    { _id: interviewReport._id },
+                    { resumeSkills: extracted }
+                );
+            } else if (Array.isArray(interviewReport.detectedSkills) && interviewReport.detectedSkills.length > 0) {
+                const detectedNames = interviewReport.detectedSkills.map(s => s.name);
+                interviewReport.resumeSkills = detectedNames;
+                await interviewReportModel.updateOne(
+                    { _id: interviewReport._id },
+                    { resumeSkills: detectedNames }
+                );
+            }
+        }
+
+        // Auto-heal / populate older and current skills in DB if missing
+        if ((!interviewReport.currentSkills || !interviewReport.currentSkills.all || interviewReport.currentSkills.all.length === 0) && interviewReport.generatedResumeHtml) {
+            const comparison = compareResumeSkillsDiff({
+                originalResumeText: interviewReport.resume || '',
+                currentResumeHtml: interviewReport.generatedResumeHtml || '',
+                currentResumeSkills: interviewReport.resumeSkills || [],
+                detectedSkills: interviewReport.detectedSkills || []
+            });
+            interviewReport.older = comparison.originalSkills;
+            interviewReport.olderSkills = comparison.originalSkills;
+            interviewReport.originalSkills = comparison.originalSkills;
+            interviewReport.current = comparison.currentSkills;
+            interviewReport.currentSkills = comparison.currentSkills;
+            await interviewReportModel.updateOne(
+                { _id: interviewReport._id },
+                {
+                    older: comparison.originalSkills,
+                    olderSkills: comparison.originalSkills,
+                    originalSkills: comparison.originalSkills,
+                    current: comparison.currentSkills,
+                    currentSkills: comparison.currentSkills
+                }
             );
         }
 
@@ -416,21 +460,48 @@ async function updateResumeHtmlController(req, res, next) {
         const userIdStr = req.user.id || req.user._id?.toString();
         const userObjectId = mongoose.Types.ObjectId.isValid(userIdStr) ? new mongoose.Types.ObjectId(userIdStr) : userIdStr;
 
-        const report = await interviewReportModel.findOneAndUpdate(
-            {
-                _id: interviewReportId,
-                $or: [
-                    { user: userObjectId },
-                    { user: userIdStr }
-                ]
-            },
-            { generatedResumeHtml },
-            { returnDocument: 'after' }
-        );
+        const resumeSkills = Array.isArray(req.body?.resumeSkills)
+            ? req.body.resumeSkills
+            : (Array.isArray(req.body?.skills) ? req.body.skills : null);
 
-        if (!report) {
+        const existingReport = await interviewReportModel.findOne({
+            _id: interviewReportId,
+            $or: [
+                { user: userObjectId },
+                { user: userIdStr }
+            ]
+        });
+
+        if (!existingReport) {
             return res.status(404).json({ message: "Interview report not found" });
         }
+
+        const comparison = compareResumeSkillsDiff({
+            originalResumeText: existingReport.resume || '',
+            currentResumeHtml: generatedResumeHtml,
+            currentResumeSkills: Array.isArray(resumeSkills) && resumeSkills.length > 0 ? resumeSkills : (existingReport.resumeSkills || []),
+            detectedSkills: existingReport.detectedSkills || []
+        });
+
+        const effectiveSkills = resumeSkills && Array.isArray(resumeSkills) && resumeSkills.length > 0
+            ? resumeSkills
+            : (comparison.currentSkills?.all || []).map(s => s.name);
+
+        const updateData = {
+            generatedResumeHtml,
+            resumeSkills: effectiveSkills,
+            older: comparison.originalSkills,
+            olderSkills: comparison.originalSkills,
+            originalSkills: comparison.originalSkills,
+            current: comparison.currentSkills,
+            currentSkills: comparison.currentSkills
+        };
+
+        const report = await interviewReportModel.findByIdAndUpdate(
+            interviewReportId,
+            updateData,
+            { returnDocument: 'after' }
+        );
 
         // Invalidate report detail cache & RAG vector chunk cache
         const cacheKey = `cache:report:${interviewReportId}:${userIdStr}`
@@ -579,6 +650,79 @@ async function getAiModelInfoController(req, res, next) {
     }
 }
 
+/**
+ * @description Compares skills from the original uploaded resume vs. current generated/edited resume.
+ * Returns an object containing all current skills categorized into two sub-arrays:
+ * - newSkills: newly added skills (green)
+ * - previousSkills: skills retained from original resume (blue)
+ * as well as the combined list tagged with version and color metadata.
+ * 
+ * @route GET /api/interview/resume/skills-comparison/:interviewReportId
+ * @access Private
+ */
+async function getResumeSkillsComparisonController(req, res, next) {
+    try {
+        const { interviewReportId } = req.params;
+
+        if (!mongoose.isValidObjectId(interviewReportId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid interview report id"
+            });
+        }
+
+        const userIdStr = req.user.id || req.user._id?.toString();
+        const userObjectId = mongoose.Types.ObjectId.isValid(userIdStr) ? new mongoose.Types.ObjectId(userIdStr) : userIdStr;
+
+        const report = await interviewReportModel.findOne({
+            _id: interviewReportId,
+            $or: [
+                { user: userObjectId },
+                { user: userIdStr }
+            ]
+        });
+
+        if (!report) {
+            return res.status(404).json({
+                success: false,
+                message: "Interview report not found"
+            });
+        }
+
+        // Compare original resume skills vs current resume skills using canonical service
+        const comparison = compareResumeSkillsDiff({
+            originalResumeText: report.resume || '',
+            currentResumeHtml: report.generatedResumeHtml || '',
+            currentResumeSkills: Array.isArray(report.resumeSkills) ? report.resumeSkills : [],
+            detectedSkills: Array.isArray(report.detectedSkills) ? report.detectedSkills : []
+        });
+
+        // Persist older and current skills to DB if missing
+        if (!report.currentSkills || !report.currentSkills.all || report.currentSkills.all.length === 0) {
+            await interviewReportModel.updateOne(
+                { _id: report._id },
+                {
+                    older: comparison.originalSkills,
+                    olderSkills: comparison.originalSkills,
+                    originalSkills: comparison.originalSkills,
+                    current: comparison.currentSkills,
+                    currentSkills: comparison.currentSkills
+                }
+            );
+        }
+
+        res.status(200).json({
+            success: true,
+            interviewReportId: report._id,
+            developerTitle: report.developerTitle || 'Resume',
+            skillsComparison: comparison
+        });
+    } catch (error) {
+        console.error("getResumeSkillsComparisonController error:", error.message);
+        next(error);
+    }
+}
+
 module.exports = {
     generateInterviewReportController,
     getInterviewReportByIdController,
@@ -589,5 +733,6 @@ module.exports = {
     updateResumeHtmlController,
     updateInterviewProgressController,
     rewriteResumeSectionController,
-    getAiModelInfoController
-}
+    getAiModelInfoController,
+    getResumeSkillsComparisonController
+}

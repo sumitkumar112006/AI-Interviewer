@@ -8,6 +8,10 @@ import Loading from '../Loading'
 import ResumeEditor from '../components/ResumeEditor'
 import { exportElementToPdf } from '../utils/exportToPdf'
 import { sanitizeResumeHtml, parseAndSanitizeSnippet } from '../utils/sanitizeResumeHtml'
+import { 
+    parseSkillsFromHtml, 
+    mergeSkills 
+} from '../utils/resumeSkillsManager'
 import '../style/resume.scss'
 
 // ── helper: normalise MongoDB ObjectId ────────────────────────────────────
@@ -38,6 +42,7 @@ const Resume = () => {
 
     const [error, setError]           = useState('')
     const [htmlContent, setHtmlContent] = useState('')
+    const [resumeSkills, setResumeSkills] = useState([])
     const [dbLoading, setDbLoading]     = useState(true)
     const [aiGenerating, setAiGenerating] = useState(false)
     const [isDirty, setIsDirty]       = useState(false)
@@ -77,10 +82,41 @@ const Resume = () => {
                 console.warn('[Resume] Local draft read notice:', e)
             }
 
+            // Load stored skills from local cache
+            let cachedSkills = []
+            try {
+                const storedSkills = localStorage.getItem(`resume_skills_${interviewId}`)
+                if (storedSkills) {
+                    const parsed = JSON.parse(storedSkills)
+                    if (Array.isArray(parsed) && parsed.length > 0) cachedSkills = parsed
+                }
+            } catch {}
+
             try {
                 // 2. Fetch current report from database
                 const fetched = await getReoprtById(interviewId)
                 if (!mounted) return
+
+                // Determine initial skills array from DB report, local cache, or parsed HTML
+                let currentSkills = cachedSkills
+                if (Array.isArray(fetched?.resumeSkills) && fetched.resumeSkills.length > 0) {
+                    currentSkills = mergeSkills(currentSkills, fetched.resumeSkills)
+                } else {
+                    const rawDoc = fetched?.generatedResumeHtml || cachedDraft || ''
+                    const extracted = parseSkillsFromHtml(rawDoc)
+                    if (extracted.length > 0) {
+                        currentSkills = mergeSkills(currentSkills, extracted)
+                    } else if (Array.isArray(fetched?.detectedSkills) && fetched.detectedSkills.length > 0) {
+                        currentSkills = mergeSkills(currentSkills, fetched.detectedSkills.map(s => s.name))
+                    }
+                }
+
+                if (mounted && currentSkills.length > 0) {
+                    setResumeSkills(currentSkills)
+                    try {
+                        localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(currentSkills))
+                    } catch {}
+                }
 
                 // 3. Health check: Does DB already have a healthy generatedResumeHtml?
                 if (isHealthyResumeHtml(fetched?.generatedResumeHtml)) {
@@ -98,7 +134,7 @@ const Resume = () => {
                     setHtmlContent(sanitizeResumeHtml(cachedDraft))
                     setDbLoading(false)
                     // Sync this draft to the database
-                    updateResumeHtml(interviewId, { generatedResumeHtml: cachedDraft }).catch(err => {
+                    updateResumeHtml(interviewId, { generatedResumeHtml: cachedDraft, resumeSkills: currentSkills }).catch(err => {
                         console.warn('[Resume] Background draft recovery sync notice:', err.message)
                     })
                     return
@@ -115,6 +151,15 @@ const Resume = () => {
                         if (mounted && isHealthyResumeHtml(reportWithHtml?.generatedResumeHtml)) {
                             const sanitized = sanitizeResumeHtml(reportWithHtml.generatedResumeHtml)
                             setHtmlContent(sanitized)
+                            const polledSkills = Array.isArray(reportWithHtml?.resumeSkills) && reportWithHtml.resumeSkills.length > 0
+                                ? reportWithHtml.resumeSkills
+                                : parseSkillsFromHtml(reportWithHtml.generatedResumeHtml)
+                            if (polledSkills.length > 0) {
+                                setResumeSkills(polledSkills)
+                                try {
+                                    localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(polledSkills))
+                                } catch {}
+                            }
                             try {
                                 localStorage.setItem(`resume_draft_${interviewId}`, sanitized)
                             } catch {}
@@ -135,6 +180,15 @@ const Resume = () => {
                 if (mounted && isHealthyResumeHtml(freshReport?.generatedResumeHtml)) {
                     const sanitized = sanitizeResumeHtml(freshReport.generatedResumeHtml)
                     setHtmlContent(sanitized)
+                    const freshSkills = Array.isArray(freshReport?.resumeSkills) && freshReport.resumeSkills.length > 0
+                        ? freshReport.resumeSkills
+                        : parseSkillsFromHtml(freshReport.generatedResumeHtml)
+                    if (freshSkills.length > 0) {
+                        setResumeSkills(freshSkills)
+                        try {
+                            localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(freshSkills))
+                        } catch {}
+                    }
                     try {
                         localStorage.setItem(`resume_draft_${interviewId}`, sanitized)
                     } catch {}
@@ -190,12 +244,16 @@ const Resume = () => {
         // Immediately persist to localStorage
         try {
             localStorage.setItem(`resume_draft_${interviewId}`, html)
+            localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(resumeSkills))
         } catch (e) {
             console.warn('[Resume] LocalStorage draft save warning:', e)
         }
 
         try {
-            const res = await updateResumeHtml(interviewId, { generatedResumeHtml: html })
+            const res = await updateResumeHtml(interviewId, { 
+                generatedResumeHtml: html,
+                resumeSkills
+            })
             if (res?.interviewReport && setReport) {
                 setReport(res.interviewReport)
             }
@@ -205,8 +263,8 @@ const Resume = () => {
 
             setSaveNotification({
                 message: isAuto
-                    ? 'Auto-saved: Your latest resume changes have been saved to the database.'
-                    : 'Saved: Your resume changes have been saved to the database successfully!',
+                    ? 'Auto-saved: Your latest resume changes and skills have been saved to the database.'
+                    : 'Saved: Your resume changes and skills have been saved to the database successfully!',
                 type: isAuto ? 'auto' : 'manual'
             })
 
@@ -224,9 +282,9 @@ const Resume = () => {
                 setSaveLoading(false)
             }
         }
-    }, [interviewId, setReport, fetchUsage])
+    }, [interviewId, resumeSkills, setReport, fetchUsage])
 
-    // ── Editor OnChange: Persist Draft Instantly ──────────────────────────
+    // ── Editor OnChange: Persist Draft Instantly & Update Skills at Runtime ──
     const handleEditorChange = useCallback((updatedHtml) => {
         setIsDirty(true)
         const html = updatedHtml || editorRef.current?.getHtml()
@@ -234,6 +292,21 @@ const Resume = () => {
             try {
                 localStorage.setItem(`resume_draft_${interviewId}`, html)
             } catch {}
+
+            // Detect any new skills added/typed in the editor at runtime
+            const detected = parseSkillsFromHtml(html)
+            if (detected && detected.length > 0) {
+                setResumeSkills(prev => {
+                    const next = mergeSkills(prev, detected)
+                    if (JSON.stringify(next) !== JSON.stringify(prev)) {
+                        try {
+                            localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(next))
+                        } catch {}
+                        return next
+                    }
+                    return prev
+                })
+            }
         }
     }, [interviewId])
 
@@ -373,6 +446,24 @@ const Resume = () => {
     useEffect(() => {
         window.__KIVI_GET_CURRENT_RESUME_HTML__ = () => editorRef.current?.getHtml() || htmlContent || ''
 
+        const syncSkillsFromLiveDom = () => {
+            setTimeout(() => {
+                const liveHtml = editorRef.current?.getHtml()
+                if (liveHtml) {
+                    const detected = parseSkillsFromHtml(liveHtml)
+                    if (detected && detected.length > 0) {
+                        setResumeSkills(prev => {
+                            const next = mergeSkills(prev, detected)
+                            try {
+                                localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(next))
+                            } catch {}
+                            return next
+                        })
+                    }
+                }
+            }, 120)
+        }
+
         const onKiviReplace = (e) => {
             const { targetText, snippet } = e.detail || {}
             if (snippet && editorRef.current) {
@@ -383,6 +474,7 @@ const Resume = () => {
                     const replaced = editorRef.current.replaceExactText(targetText, cleanSnippet)
                     if (replaced) {
                         setIsDirty(true)
+                        syncSkillsFromLiveDom()
                         if (typeof e.preventDefault === 'function') e.preventDefault()
                         return
                     }
@@ -390,6 +482,7 @@ const Resume = () => {
                 if (editorRef.current.isFocused && editorRef.current.isFocused()) {
                     editorRef.current.insertContent(cleanSnippet)
                     setIsDirty(true)
+                    syncSkillsFromLiveDom()
                     if (typeof e.preventDefault === 'function') e.preventDefault()
                 }
             }
@@ -405,6 +498,7 @@ const Resume = () => {
                 if (fullContent && fullContent.trim().length > 50) {
                     editorRef.current.setContent(fullContent)
                     setIsDirty(true)
+                    syncSkillsFromLiveDom()
                     return
                 }
             }
@@ -430,6 +524,7 @@ const Resume = () => {
 
             if (applied) {
                 setIsDirty(true)
+                syncSkillsFromLiveDom()
             }
         }
 
@@ -450,6 +545,7 @@ const Resume = () => {
             if (editorRef.current?.acceptDiff) {
                 editorRef.current.acceptDiff()
                 setIsDirty(true)
+                syncSkillsFromLiveDom()
             }
         }
 
@@ -458,6 +554,8 @@ const Resume = () => {
                 editorRef.current.rejectDiff()
             }
         }
+
+        window.__KIVI_GET_CURRENT_RESUME_SKILLS__ = () => resumeSkills
 
         window.addEventListener('kivi-replace-text', onKiviReplace)
         window.addEventListener('kivi-apply-resume-update', onKiviApplyResumeUpdate)
@@ -472,8 +570,9 @@ const Resume = () => {
             window.removeEventListener('kivi-accept-diff', onKiviAcceptDiff)
             window.removeEventListener('kivi-reject-diff', onKiviRejectDiff)
             delete window.__KIVI_GET_CURRENT_RESUME_HTML__
+            delete window.__KIVI_GET_CURRENT_RESUME_SKILLS__
         }
-    }, [htmlContent])
+    }, [htmlContent, resumeSkills, interviewId])
 
     const RESUME_STEPS = [
         { id: 1, label: "Analyzing profile & technical skills" },

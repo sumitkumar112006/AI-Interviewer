@@ -119,6 +119,20 @@ const interviewPreparationPlanSchema = new mongoose.Schema({
 })
 
 
+const skillDiffItemSchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    version: { type: String, default: "current" },
+    color: { type: String, default: "green" },
+    colorHex: { type: String, default: "#10b981" },
+    isNewlyAdded: { type: Boolean, default: false }
+}, { _id: false });
+
+const currentSkillsSchema = new mongoose.Schema({
+    all: [skillDiffItemSchema],
+    newSkills: [skillDiffItemSchema],
+    previousSkills: [skillDiffItemSchema]
+}, { _id: false });
+
 const interviewReportSchema = new mongoose.Schema({
     jobDescription: {
         type: String,
@@ -156,6 +170,32 @@ const interviewReportSchema = new mongoose.Schema({
     generatedResumeHtml: {
         type: String,
         default: ""
+    },
+    resumeSkills: {
+        type: [String],
+        default: []
+    },
+    // Older / original resume skills extracted from the uploaded resume
+    older: {
+        type: [String],
+        default: []
+    },
+    olderSkills: {
+        type: [String],
+        default: []
+    },
+    originalSkills: {
+        type: [String],
+        default: []
+    },
+    // Current skills object containing both sub-arrays (newSkills, previousSkills) and all
+    current: {
+        type: currentSkillsSchema,
+        default: () => ({ all: [], newSkills: [], previousSkills: [] })
+    },
+    currentSkills: {
+        type: currentSkillsSchema,
+        default: () => ({ all: [], newSkills: [], previousSkills: [] })
     },
     detectedSkills: [{
         name: { type: String, required: true },

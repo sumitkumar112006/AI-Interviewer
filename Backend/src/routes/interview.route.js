@@ -100,6 +100,13 @@ interviewRouter.put('/resume/:interviewReportId', authMidleware.authUser, checkR
 interviewRouter.put('/progress/:interviewId', authMidleware.authUser, interviewController.updateInterviewProgressController)
 
 /**
+ * @route GET /api/interview/resume/skills-comparison/:interviewReportId
+ * @description Compares original uploaded resume skills vs. current resume skills with color tagging (green for new, blue for previous)
+ * @access private
+ */
+interviewRouter.get('/resume/skills-comparison/:interviewReportId', authMidleware.authUser, interviewController.getResumeSkillsComparisonController)
+
+/**
  * @route GET /api/interview/:interviewId
  * @description backward-compatible interview report lookup by interview id (MUST STAY AT END)
  * @access private

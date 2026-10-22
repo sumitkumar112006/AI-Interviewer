@@ -518,6 +518,9 @@ ${normalizedHtml}
 </html>`
 }
 
+const { extractSkillsFromResumeHtml } = require('./skills.service');
+
+
 function normalizeInterviewReport(rawReport) {
     const rawPlan = normalizeObjectArray(rawReport?.preparationPlan ?? rawReport?.plan);
     const normalizedPreparationPlan = (rawPlan.length > 0 ? rawPlan : [
@@ -1040,14 +1043,17 @@ Job Description: ${roleDescription}
 
 
 async function generateResumeHtml({ resume, selfDescription, jobDescription, plan = "free" }) {
-    const systemPrompt = `You are an expert resume writer and ATS optimization specialist. You MUST respond ONLY with valid JSON — no markdown code fences, no commentary. The JSON must have exactly one top-level key: "html", whose value is a complete HTML string for a professional, single-column A4 resume, Always User you strong reasoning and capabilities to generate  the Resume content Your generated Resume content must be  optimized for  ATS(Applicant Tracking Systems) and do not look like AI generated always track all ke points from Job description and try to add them in resume with proof of work with projects bullet points and in experience sections`
+    const systemPrompt = `You are an expert resume writer and ATS optimization specialist. You MUST respond ONLY with valid JSON — no markdown code fences, no commentary. The JSON must have exactly two top-level keys:
+1. "html": a complete HTML string for a professional, single-column A4 resume. Always use your strong reasoning and capabilities to generate ATS-optimized resume content matching key points from the Job Description with proof of work in project bullets and experience sections.
+2. "skills": a clean array of strings containing all key technical skills, programming languages, frameworks, databases, cloud platforms, and developer tools derived for the candidate's resume (e.g. ["JavaScript", "TypeScript", "React", "Node.js", "Docker", "AWS", "PostgreSQL", "REST APIs", "Git"]).`
 
     const userPrompt = `
-Generate a professional, modern, ATS-optimized  resume in valid JSON only.
+Generate a professional, modern, ATS-optimized resume in valid JSON only.
 
 JSON STRUCTURE:
 {
-  "html": "<!DOCTYPE html><html lang=\\"en\\"><head><meta charset=\\"utf-8\\"/><style>...</style></head><body>...</body></html>"
+  "html": "<!DOCTYPE html><html lang=\\"en\\"><head><meta charset=\\"utf-8\\"/><style>...</style></head><body>...</body></html>",
+  "skills": ["JavaScript", "TypeScript", "React", "Node.js", "Docker", "AWS", "PostgreSQL", "REST APIs", "Git"]
 }
 
 SEQUENCE & SECTION ARCHITECTURE:
@@ -1131,9 +1137,15 @@ Job Description: ${jobDescription || 'None provided'}
     const jsonText = extractJsonFromText(rawText)
 
     let htmlContent = ""
+    let extractedSkills = []
     try {
         const jsonContent = JSON.parse(jsonText)
         htmlContent = extractResumeHtmlContent(jsonContent)
+        if (Array.isArray(jsonContent.skills)) {
+            extractedSkills = jsonContent.skills
+                .map(s => typeof s === 'string' ? s.trim() : (s?.name ? String(s.name).trim() : ''))
+                .filter(Boolean)
+        }
     } catch (parseError) {
         console.warn("[AI] JSON parsing failed in generateResumeHtml. Falling back to direct HTML extraction. Error:", parseError.message)
         const htmlMatch = rawText.match(/<!DOCTYPE html>[\s\S]*<\/html>/i) ||
@@ -1148,13 +1160,36 @@ Job Description: ${jobDescription || 'None provided'}
         }
     }
 
-    console.log(htmlContent);
-    return normalizeResumeHtmlDocument(htmlContent)
+    const normalizedHtml = normalizeResumeHtmlDocument(htmlContent)
+
+    // Fallback: If LLM did not return skills array, extract them directly from the normalized HTML
+    if (!extractedSkills || extractedSkills.length === 0) {
+        extractedSkills = extractSkillsFromResumeHtml(normalizedHtml)
+    }
+
+    // Deduplicate case-insensitively
+    const uniqueSkills = []
+    const seenLower = new Set()
+    for (const sk of extractedSkills) {
+        const lower = sk.toLowerCase().trim()
+        if (lower && !seenLower.has(lower)) {
+            seenLower.add(lower)
+            uniqueSkills.push(sk.trim())
+        }
+    }
+
+    const result = {
+        html: normalizedHtml,
+        skills: uniqueSkills,
+        toString() { return this.html; }
+    }
+
+    return result
 }
 
 async function generateResumePfd({ resume, selfDescription, jobDescription }) {
-    const normalizedHtmlDocument = await generateResumeHtml({ resume, selfDescription, jobDescription })
-    return normalizedHtmlDocument
+    const res = await generateResumeHtml({ resume, selfDescription, jobDescription })
+    return typeof res === 'object' && res?.html ? res.html : res
 }
 
 
@@ -1412,6 +1447,7 @@ module.exports = {
     generateCoverLetter,
     generateResumeHtml,
     rewriteResumeSection,
+    extractSkillsFromResumeHtml,
     getAIStatus,
     callLlmWithFallback,
     streamLlmWithFallback

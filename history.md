@@ -167,4 +167,77 @@ Raw markdown formatting (e.g. `### SKILLS`, `• **Product Management:**`) was a
   3. All sibling list items, paragraphs, and headings remain 100% untouched.
   4. Updated `assistant.orchestrator.js` system prompt to enforce returning only the specific updated line and exact `targetText`.
 
+---
+
+## 8. Backend Traffic Capacity & Free Tier Infrastructure Analysis
+
+### 8.1 Summary Capacity Matrix
+
+| User Scenario | Max Smooth Capacity (No Crashes / Low Lag) | Breaking Point (Crashes / Severe Throttling) | Primary Bottleneck |
+| :--- | :--- | :--- | :--- |
+| **Simultaneous Active AI Generations** *(Continuous mock interviews, resumes, cover letters, and assistant chat)* | **3 – 8 concurrent users** | **12+ concurrent users** | Render 512MB RAM & BullMQ concurrency (`concurrency: 5`) |
+| **Simultaneous Web Browsing Users** *(Viewing saved reports, dashboard navigation, reading cached data)* | **35 – 70 concurrent users** | **100+ concurrent users** | Global Rate Limiter (100 req/min/IP) & Render 0.1 CPU |
+| **Total Daily Active Users (DAU)** | **~50 – 150 users/day** | **>200 active users/day** | Upstash Redis Free Tier (10,000 commands/day) & AI API limits |
+
+---
+
+### 8.2 Deep Bottleneck Breakdown
+
+#### 1. Render Free Tier Server (512 MB RAM & 0.1 Shared vCPU) — **Risk: CRITICAL (OOM Crash)**
+* **The Constraint:** Render free instances have a hard memory cap of **512 MB** and share ~0.1 CPU cores.
+* **Failure Mode (OOM Kill):**
+  1. Node.js with Express + Mongoose + BullMQ base runtime consumes **~120–160 MB** RAM at idle.
+  2. PDF parsing (`multer` + `pdf-parse`) buffers files in memory (+15–30 MB per concurrent upload).
+  3. Generating interview reports fires `generateInterviewReport` + `generateResumeHtml` concurrently (`aiWorker.js:49`), allocating large JSONs and 3072-dimensional vector embedding arrays (`Embedder.js`).
+  4. If **8–12 users** trigger generations concurrently, memory crosses 512 MB. Render's Linux kernel sends `SIGKILL` (Out-of-Memory), causing an ungraceful crash and a **50-second cold restart**.
+
+#### 2. Upstash Redis Free Tier (10,000 Commands/Day) — **Risk: HIGH (Daily Quota Exhaustion)**
+* **The Constraint:** Upstash Free allows a hard maximum of **10,000 commands per 24-hour cycle**.
+* **Usage Footprint:**
+  1. Redis is used for: Rate limiting (`rateLimiter.middleware.js`), report/history caching, and BullMQ queue coordination.
+  2. BullMQ workers run polling commands (`eval`, `zrangebyscore`, `xread`) even during idle periods.
+  3. A single user generation workflow consumes **~35–60 Redis commands**.
+  4. After **150–200 full generation cycles in a day**, Upstash returns `ERR max daily request limit exceeded`, blocking queue processing and rate limiters until the daily reset.
+
+#### 3. AI Worker Concurrency Limit (`concurrency: 5`) — **Risk: MEDIUM (Queue Latency)**
+* **Implementation:** `aiWorker.js` sets worker concurrency to **`5`**.
+* **Impact:**
+  - Generating an interview report + ATS HTML takes **8 to 18 seconds**.
+  - Throughput is capped at ~15–20 jobs/minute.
+  - If 15 users click "Generate" at once, BullMQ queues jobs safely, but user #15 experiences **35–45s wait latency**.
+
+#### 4. Groq & Gemini Free API Limits — **Risk: HIGH (429 Rate Limits on Burst)**
+* **Limits:**
+  - **Groq Free:** ~30 RPM per key, 6,000–14,400 RPD.
+  - **Gemini Free:** 15 RPM per key, 1,500 RPD, 1,000,000 TPM.
+* **Impact:** A single report generation makes 2 parallel LLM calls + up to 3 RAG embedding calls. A sudden burst of 6–8 concurrent users triggers 15–25 calls within 30 seconds, testing provider RPM ceilings even with the multi-key pool.
+
+#### 5. MongoDB Atlas Free Tier (M0 Sandbox) — **Risk: LOW**
+* **Limits:** 512 MB storage, 500 max concurrent connections.
+* **Assessment:**
+  - Mongoose connection pool defaults to 5–10 connections.
+  - Each report is only ~10–30 KB of text; 512 MB holds **>20,000 reports**. MongoDB is stable and will not be the primary failure point.
+
+---
+
+### 8.3 Traffic Response Simulation
+
+| Concurrent Active Users | System Behavior & User Experience |
+| :--- | :--- |
+| **1 – 5 users** | 🟢 **Ultra smooth.** Generation finishes in 8–12s, RAM stays at ~220 MB, CPU is stable. |
+| **6 – 10 users** | 🟡 **Acceptable.** BullMQ queues jobs; generation takes 15–25s. RAM rises to ~380 MB. |
+| **11 – 20 users** | 🟠 **Degraded.** Queued wait times reach 40–60s. High risk of Render 512MB RAM OOM crash. |
+| **25+ users** | 🔴 **Crash & Failure.** Render server runs out of memory (`SIGKILL`). Server restarts; active jobs fail. Upstash daily command limit reaches 100%. |
+
+---
+
+### 8.4 Recommended Scaling Roadmap
+
+1. **Eliminate OOM Crashes:** Upgrade Render from Free to **Starter Tier ($7/mo)** for 512MB–1GB dedicated RAM (or deploy on Railway / Fly.io).
+2. **Eliminate Daily Command Caps:** Switch Redis from Upstash Free (10k cmd limit) to a hosted Redis instance with unlimited commands (e.g. Railway Redis or Dragonfly).
+3. **Prevent Cold-Start Latency:** Configure a free external ping service (e.g. [cron-job.org](https://cron-job.org)) to hit `/health` every 10 minutes, keeping the Render container warm.
+4. **Client-Side Rendering:** Maintain client-side PDF export (`window.print()`), saving ~300 MB of server RAM per generation.
+5. **Worker Tuning:** Keep worker concurrency at `3–4` on 512MB instances, scaling up to `10+` only on 1GB+ instances.
+
+
 

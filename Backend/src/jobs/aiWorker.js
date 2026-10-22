@@ -5,7 +5,7 @@ const JobModel = require('../models/job.model');
 const interviewReportModel = require('../models/interviewReport.model');
 const coverLetterModel = require('../models/coverLetter.model');
 const { deleteCache } = require('../services/redis.service');
-const { processReportSkills } = require('../services/skills.service');
+const { processReportSkills, compareResumeSkillsDiff } = require('../services/skills.service');
 const {
     generateInterviewReport,
     generateResumeHtml,
@@ -66,7 +66,9 @@ function initAiWorker() {
                     }
 
                     const interviewReportByAI = reportResult.value;
-                    const generatedResumeHtml = resumeResult.status === 'fulfilled' ? (resumeResult.value || '') : '';
+                    const resumeValue = resumeResult.status === 'fulfilled' ? resumeResult.value : null;
+                    const generatedResumeHtml = typeof resumeValue === 'object' && resumeValue?.html ? resumeValue.html : (resumeValue || '');
+                    const resumeSkills = typeof resumeValue === 'object' && Array.isArray(resumeValue?.skills) ? resumeValue.skills : [];
 
                     const detectedSkills = processReportSkills({
                         resume: resumeText,
@@ -80,12 +82,25 @@ function initAiWorker() {
                         ? new mongoose.Types.ObjectId(userIdStr)
                         : jobDoc.userId;
 
+                    const comparison = compareResumeSkillsDiff({
+                        originalResumeText: resumeText || '',
+                        currentResumeHtml: generatedResumeHtml || '',
+                        currentResumeSkills: resumeSkills,
+                        detectedSkills
+                    });
+
                     const interviewReport = await interviewReportModel.create({
                         user: userObjectId,
                         resume: resumeText,
                         selfDescription,
                         jobDescription,
                         detectedSkills,
+                        resumeSkills: resumeSkills.length > 0 ? resumeSkills : (comparison.currentSkills?.all || []).map(s => s.name),
+                        older: comparison.originalSkills,
+                        olderSkills: comparison.originalSkills,
+                        originalSkills: comparison.originalSkills,
+                        current: comparison.currentSkills,
+                        currentSkills: comparison.currentSkills,
                         generatedResumeHtml,
                         ...interviewReportByAI
                     });
@@ -165,14 +180,33 @@ function initAiWorker() {
                     }
 
                     const { selfDescription, jobDescription } = interviewReport;
-                    const generatedHtml = await generateResumeHtml({
+                    const resumeOutput = await generateResumeHtml({
                         resume: resumeText || selfDescription || jobDescription,
                         selfDescription,
                         jobDescription,
                         plan: userPlan || 'free'
                     });
 
+                    const generatedHtml = typeof resumeOutput === 'object' && resumeOutput?.html ? resumeOutput.html : (resumeOutput || '');
+                    const resumeSkills = typeof resumeOutput === 'object' && Array.isArray(resumeOutput?.skills) ? resumeOutput.skills : [];
+
                     interviewReport.generatedResumeHtml = generatedHtml;
+                    if (resumeSkills.length > 0) {
+                        interviewReport.resumeSkills = resumeSkills;
+                    }
+
+                    const comparison = compareResumeSkillsDiff({
+                        originalResumeText: interviewReport.resume || '',
+                        currentResumeHtml: generatedHtml,
+                        currentResumeSkills: resumeSkills,
+                        detectedSkills: interviewReport.detectedSkills || []
+                    });
+
+                    interviewReport.older = comparison.originalSkills;
+                    interviewReport.olderSkills = comparison.originalSkills;
+                    interviewReport.originalSkills = comparison.originalSkills;
+                    interviewReport.current = comparison.currentSkills;
+                    interviewReport.currentSkills = comparison.currentSkills;
                     await interviewReport.save();
 
                     // Invalidate report detail cache

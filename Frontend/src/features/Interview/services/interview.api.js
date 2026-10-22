@@ -184,12 +184,33 @@ export async function updateResumeHtml(interviewReportId, payload) {
         throw new Error('Invalid resume content: cannot save empty text or system IDs.');
     }
 
-    const response = await api.put(`/api/interview/resume/${interviewReportId}`, { generatedResumeHtml })
+    const resumeSkills = Array.isArray(payload?.resumeSkills)
+        ? payload.resumeSkills
+        : (Array.isArray(payload?.skills) ? payload.skills : undefined);
+
+    const body = { generatedResumeHtml };
+    if (resumeSkills) {
+        body.resumeSkills = resumeSkills;
+    }
+
+    const response = await api.put(`/api/interview/resume/${interviewReportId}`, body)
     return response.data
 }
 
 export async function updateInterviewProgress(interviewId, { technicalQuestions, behavioralQuestion, completedTasks }) {
     const response = await api.put(`/api/interview/progress/${interviewId}`, { technicalQuestions, behavioralQuestion, completedTasks })
+    return response.data
+}
+
+/**
+ * Fetches the skills comparison diff between original uploaded resume and current resume.
+ * Categorizes current skills into newSkills (green) and previousSkills (blue).
+ * 
+ * @param {string} interviewReportId
+ * @returns {Promise<Object>}
+ */
+export async function getResumeSkillsComparison(interviewReportId) {
+    const response = await api.get(`/api/interview/resume/skills-comparison/${interviewReportId}`)
     return response.data
 }
 
