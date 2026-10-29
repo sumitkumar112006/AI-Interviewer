@@ -1,5 +1,6 @@
 const pdfParse = require('pdf-parse');
 const mongoose = require('mongoose');
+const { parseResumeLinks, formatExtractedLinksForPrompt } = require('../services/linkExtractor.js');
 const { generateCoverLetter } = require('../services/ai.service');
 const coverLetterModel = require('../models/coverLetter.model');
 const interviewReportModel = require('../models/interviewReport.model');
@@ -32,8 +33,27 @@ async function createCoverLetterController(req, res, next) {
             });
         }
 
-        // 2. Parse PDF buffer in milliseconds
-        const resumeContent = await (new pdfParse.PDFParse(Uint8Array.from(req.file.buffer))).getText();
+        // 2. Extract visible text and recover hidden hyperlinks & anchor associations
+        let rawResumeText = '';
+        try {
+            const resumeContent = await (new pdfParse.PDFParse(Uint8Array.from(req.file.buffer))).getText();
+            rawResumeText = resumeContent?.text || '';
+        } catch (pdfErr) {
+            console.warn('[CoverLetter Controller] pdf-parse fallback notice:', pdfErr.message);
+        }
+
+        let formattedLinksText = '';
+        let extractedLinks = null;
+        try {
+            const parsedLinksResult = await parseResumeLinks(req.file.buffer, req.file.mimetype || req.file.originalname);
+            extractedLinks = parsedLinksResult?.links || null;
+            formattedLinksText = formatExtractedLinksForPrompt(parsedLinksResult);
+        } catch (linkErr) {
+            console.warn('[CoverLetter Controller] parseResumeLinks notice:', linkErr.message);
+        }
+
+        const effectiveResumeText = [rawResumeText, formattedLinksText].filter(Boolean).join('\n\n');
+
         const { jobDescription, companyName, roleName } = req.body;
         const effectiveSelfDescription = req.body?.selfDescription?.trim() || req.user?.careerProfile?.selfDescription?.trim() || '';
 
@@ -45,7 +65,9 @@ async function createCoverLetterController(req, res, next) {
             resourceModel: 'CoverLetter',
             status: 'pending',
             input: {
-                resumeText: resumeContent.text,
+                resumeText: effectiveResumeText,
+                rawResumeText,
+                extractedLinks,
                 selfDescription: effectiveSelfDescription,
                 jobDescription,
                 companyName,

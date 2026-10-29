@@ -1,14 +1,16 @@
 const pdfParse = require('pdf-parse')
 const mongoose = require('mongoose')
 const crypto = require('crypto')
-const { generateInterviewReport, generateResumePfd, generateResumeHtml, rewriteResumeSection, getAIStatus } = require('../services/ai.service')
+const { parseResumeLinks, formatExtractedLinksForPrompt } = require('../services/linkExtractor.js')
+const { calculateATSScore } = require('../services/atsScorer.js')
+const { generateInterviewReport, generateResumePfd, generateResumeHtml, rewriteResumeSection, extractSkillsFromResumeHtml, getAIStatus } = require('../services/ai.service')
 const interviewReportModle = require('../models/interviewReport.model')
 const interviewReportModel = require('../models/interviewReport.model')
 const userModel = require('../models/user.model')
 const JobModel = require('../models/job.model')
 const { enqueueAiJob } = require('../jobs/aiQueue')
 const { getCache, setCache, deleteCache } = require('../services/redis.service')
-const { processReportSkills, aggregateSkillAnalytics } = require('../services/skills.service')
+const { processReportSkills, aggregateSkillAnalytics, compareResumeSkillsDiff } = require('../services/skills.service')
 const { getUserGenCredits } = require('../middleware/rateLimiter.middleware')
 const { invalidateChunkCache, invalidateRoadmapChunkCache, invalidateJdChunkCache } = require('../ai-assistant')
 
@@ -18,6 +20,26 @@ function isValidResumeHtmlContent(html) {
     if (clean.length < 30) return false;
     if (/^[a-f0-9]{24}$/i.test(clean)) return false;
     return true;
+}
+
+function extractPlainTextFromResume(content) {
+    if (!content || typeof content !== 'string') return '';
+    if (/<[a-z][\s\S]*>/i.test(content)) {
+        return content
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<li[^>]*>/gi, '\n• ')
+            .replace(/<\/p>|<\/div>|<\/li>|<br\s*\/?>|<\/h[1-6]>/gi, '\n')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/[ \t]+/g, ' ')
+            .replace(/\n\s*\n+/g, '\n\n')
+            .trim();
+    }
+    return content.trim();
 }
 
 async function generateInterviewReportController(req, res, next) {
@@ -61,9 +83,32 @@ async function generateInterviewReportController(req, res, next) {
             });
         }
 
-        // 2. Parse PDF buffer in milliseconds (lean payload for Redis)
-        const resumeContent = await (new pdfParse.PDFParse(Uint8Array.from(req.file.buffer))).getText()
-        const { jobDescription } = req.body
+        // 2. Extract visible text and recover hidden hyperlinks & anchor associations
+        let rawResumeText = '';
+        try {
+            const resumeContent = await (new pdfParse.PDFParse(Uint8Array.from(req.file.buffer))).getText();
+            rawResumeText = resumeContent?.text || '';
+        } catch (pdfErr) {
+            console.warn('[Interview Controller] pdf-parse fallback notice:', pdfErr.message);
+        }
+
+        // Recover all hidden links, anchor text associations, and social/portfolio profiles
+        let formattedLinksText = '';
+        let extractedLinks = null;
+        let rawLinks = [];
+        try {
+            const parsedLinksResult = await parseResumeLinks(req.file.buffer, req.file.mimetype || req.file.originalname);
+            extractedLinks = parsedLinksResult?.links || null;
+            rawLinks = parsedLinksResult?.rawLinks || [];
+            formattedLinksText = formatExtractedLinksForPrompt(parsedLinksResult);
+        } catch (linkErr) {
+            console.warn('[Interview Controller] parseResumeLinks notice:', linkErr.message);
+        }
+
+        // Combine raw text with explicit link indicators for the LLM
+        const effectiveResumeText = [rawResumeText, formattedLinksText].filter(Boolean).join('\n\n');
+
+        const { jobDescription } = req.body;
         const userPlan = (req.user?.plan || "free").toLowerCase();
 
         // 3. Create Job document in MongoDB
@@ -74,7 +119,10 @@ async function generateInterviewReportController(req, res, next) {
             resourceModel: 'InterviewReport',
             status: 'pending',
             input: {
-                resumeText: resumeContent.text,
+                resumeText: effectiveResumeText,
+                rawResumeText,
+                extractedLinks,
+                rawLinks,
                 selfDescription: effectiveSelfDescription,
                 jobDescription,
                 userPlan
@@ -159,6 +207,69 @@ async function getInterviewReportByIdController(req, res, next) {
                 { _id: interviewReport._id },
                 { generatedResumeHtml: interviewReport.generatedResumeHtml, resume: interviewReport.resume }
             );
+        }
+
+        // Auto-heal / populate resumeSkills if missing
+        if ((!interviewReport.resumeSkills || interviewReport.resumeSkills.length === 0) && interviewReport.generatedResumeHtml) {
+            const extracted = extractSkillsFromResumeHtml(interviewReport.generatedResumeHtml);
+            if (extracted.length > 0) {
+                interviewReport.resumeSkills = extracted;
+                await interviewReportModel.updateOne(
+                    { _id: interviewReport._id },
+                    { resumeSkills: extracted }
+                );
+            } else if (Array.isArray(interviewReport.detectedSkills) && interviewReport.detectedSkills.length > 0) {
+                const detectedNames = interviewReport.detectedSkills.map(s => s.name);
+                interviewReport.resumeSkills = detectedNames;
+                await interviewReportModel.updateOne(
+                    { _id: interviewReport._id },
+                    { resumeSkills: detectedNames }
+                );
+            }
+        }
+
+        // Auto-heal / populate older and current skills in DB if missing
+        if ((!interviewReport.currentSkills || !interviewReport.currentSkills.all || interviewReport.currentSkills.all.length === 0) && interviewReport.generatedResumeHtml) {
+            const comparison = compareResumeSkillsDiff({
+                originalResumeText: interviewReport.resume || '',
+                currentResumeHtml: interviewReport.generatedResumeHtml || '',
+                currentResumeSkills: interviewReport.resumeSkills || [],
+                detectedSkills: interviewReport.detectedSkills || []
+            });
+            interviewReport.older = comparison.originalSkills;
+            interviewReport.olderSkills = comparison.originalSkills;
+            interviewReport.originalSkills = comparison.originalSkills;
+            interviewReport.current = comparison.currentSkills;
+            interviewReport.currentSkills = comparison.currentSkills;
+            await interviewReportModel.updateOne(
+                { _id: interviewReport._id },
+                {
+                    older: comparison.originalSkills,
+                    olderSkills: comparison.originalSkills,
+                    originalSkills: comparison.originalSkills,
+                    current: comparison.currentSkills,
+                    currentSkills: comparison.currentSkills
+                }
+            );
+        }
+
+        // Dynamically calculate and update ATS matchScore if resume & JD are present
+        const effectiveResumeText = extractPlainTextFromResume(interviewReport.generatedResumeHtml || interviewReport.resume || '');
+        const targetJdText = interviewReport.jobDescription || '';
+        if (effectiveResumeText && targetJdText) {
+            try {
+                const atsResult = await calculateATSScore(effectiveResumeText, targetJdText);
+                if (typeof atsResult?.overallScore === 'number') {
+                    interviewReport.matchScore = atsResult.overallScore;
+                    interviewReport.atsScoreBreakdown = atsResult.breakdown;
+                    await interviewReportModel.updateOne(
+                        { _id: interviewReport._id },
+                        { matchScore: atsResult.overallScore, atsScoreBreakdown: atsResult.breakdown }
+                    );
+                }
+            } catch (atsErr) {
+                console.warn("[getInterviewReportByIdController] Dynamic ATS scoring notice:", atsErr.message);
+            }
         }
 
         await setCache(cacheKey, interviewReport, 3600)
@@ -416,21 +527,67 @@ async function updateResumeHtmlController(req, res, next) {
         const userIdStr = req.user.id || req.user._id?.toString();
         const userObjectId = mongoose.Types.ObjectId.isValid(userIdStr) ? new mongoose.Types.ObjectId(userIdStr) : userIdStr;
 
-        const report = await interviewReportModel.findOneAndUpdate(
-            {
-                _id: interviewReportId,
-                $or: [
-                    { user: userObjectId },
-                    { user: userIdStr }
-                ]
-            },
-            { generatedResumeHtml },
-            { returnDocument: 'after' }
-        );
+        const resumeSkills = Array.isArray(req.body?.resumeSkills)
+            ? req.body.resumeSkills
+            : (Array.isArray(req.body?.skills) ? req.body.skills : null);
 
-        if (!report) {
+        const query = { _id: interviewReportId };
+        if (req.user?.role !== 'admin') {
+            query.$or = [{ user: userObjectId }, { user: userIdStr }];
+        }
+
+        const existingReport = await interviewReportModel.findOne(query);
+
+        if (!existingReport) {
             return res.status(404).json({ message: "Interview report not found" });
         }
+
+        const comparison = compareResumeSkillsDiff({
+            originalResumeText: existingReport.resume || '',
+            currentResumeHtml: generatedResumeHtml,
+            currentResumeSkills: Array.isArray(resumeSkills) && resumeSkills.length > 0 ? resumeSkills : (existingReport.resumeSkills || []),
+            detectedSkills: existingReport.detectedSkills || []
+        });
+
+        const effectiveSkills = resumeSkills && Array.isArray(resumeSkills) && resumeSkills.length > 0
+            ? resumeSkills
+            : (comparison.currentSkills?.all || []).map(s => s.name);
+
+        // Dynamically compute updated ATS match score on resume save
+        const savedResumeText = extractPlainTextFromResume(generatedResumeHtml);
+        const jdText = existingReport.jobDescription || '';
+        let dynamicScore = existingReport.matchScore;
+        let atsBreakdown = existingReport.atsScoreBreakdown || null;
+
+        if (savedResumeText && jdText) {
+            try {
+                const atsResult = await calculateATSScore(savedResumeText, jdText);
+                if (typeof atsResult?.overallScore === 'number') {
+                    dynamicScore = atsResult.overallScore;
+                    atsBreakdown = atsResult.breakdown;
+                }
+            } catch (atsErr) {
+                console.warn("[updateResumeHtmlController] Dynamic ATS scoring notice:", atsErr.message);
+            }
+        }
+
+        const updateData = {
+            generatedResumeHtml,
+            resumeSkills: effectiveSkills,
+            older: comparison.originalSkills,
+            olderSkills: comparison.originalSkills,
+            originalSkills: comparison.originalSkills,
+            current: comparison.currentSkills,
+            currentSkills: comparison.currentSkills,
+            matchScore: dynamicScore,
+            atsScoreBreakdown: atsBreakdown
+        };
+
+        const report = await interviewReportModel.findByIdAndUpdate(
+            interviewReportId,
+            updateData,
+            { returnDocument: 'after' }
+        );
 
         // Invalidate report detail cache & RAG vector chunk cache
         const cacheKey = `cache:report:${interviewReportId}:${userIdStr}`
@@ -439,7 +596,9 @@ async function updateResumeHtmlController(req, res, next) {
 
         res.status(200).json({
             message: "Resume updated successfully!",
-            interviewReport: report
+            interviewReport: report,
+            matchScore: dynamicScore,
+            atsScoreBreakdown: atsBreakdown
         });
     } catch (error) {
         next(error);
@@ -503,10 +662,17 @@ async function rewriteResumeSectionController(req, res, next) {
 
         // If currentResumeHtml wasn't passed directly from client, load from MongoDB
         let effectiveResumeHtml = typeof currentResumeHtml === 'string' ? currentResumeHtml : '';
-        if (!effectiveResumeHtml && resourceId && mongoose.isValidObjectId(resourceId)) {
-            const report = await interviewReportModel.findById(resourceId).select('generatedResumeHtml resume').lean();
+        let targetJobDescription = '';
+        let targetJobRole = '';
+
+        if (resourceId && mongoose.isValidObjectId(resourceId)) {
+            const report = await interviewReportModel.findById(resourceId).select('generatedResumeHtml resume jobDescription developerTitle').lean();
             if (report) {
-                effectiveResumeHtml = report.generatedResumeHtml || report.resume || '';
+                if (!effectiveResumeHtml) {
+                    effectiveResumeHtml = report.generatedResumeHtml || report.resume || '';
+                }
+                targetJobDescription = report.jobDescription || '';
+                targetJobRole = report.developerTitle || '';
             }
         }
 
@@ -540,6 +706,8 @@ async function rewriteResumeSectionController(req, res, next) {
                 message,
                 plan,
                 currentResumeHtml: effectiveResumeHtml,
+                jobDescription: targetJobDescription,
+                jobRole: targetJobRole,
                 interviewReportId: resourceId
             }
         });
@@ -570,6 +738,141 @@ async function getAiModelInfoController(req, res, next) {
     }
 }
 
+/**
+ * @description Compares skills from the original uploaded resume vs. current generated/edited resume.
+ * Returns an object containing all current skills categorized into two sub-arrays:
+ * - newSkills: newly added skills (green)
+ * - previousSkills: skills retained from original resume (blue)
+ * as well as the combined list tagged with version and color metadata.
+ * 
+ * @route GET /api/interview/resume/skills-comparison/:interviewReportId
+ * @access Private
+ */
+async function getResumeSkillsComparisonController(req, res, next) {
+    try {
+        const { interviewReportId } = req.params;
+
+        if (!mongoose.isValidObjectId(interviewReportId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid interview report id"
+            });
+        }
+
+        const userIdStr = req.user.id || req.user._id?.toString();
+        const userObjectId = mongoose.Types.ObjectId.isValid(userIdStr) ? new mongoose.Types.ObjectId(userIdStr) : userIdStr;
+
+        const report = await interviewReportModel.findOne({
+            _id: interviewReportId,
+            $or: [
+                { user: userObjectId },
+                { user: userIdStr }
+            ]
+        });
+
+        if (!report) {
+            return res.status(404).json({
+                success: false,
+                message: "Interview report not found"
+            });
+        }
+
+        // Compare original resume skills vs current resume skills using canonical service
+        const comparison = compareResumeSkillsDiff({
+            originalResumeText: report.resume || '',
+            currentResumeHtml: report.generatedResumeHtml || '',
+            currentResumeSkills: Array.isArray(report.resumeSkills) ? report.resumeSkills : [],
+            detectedSkills: Array.isArray(report.detectedSkills) ? report.detectedSkills : []
+        });
+
+        // Persist older and current skills to DB if missing
+        if (!report.currentSkills || !report.currentSkills.all || report.currentSkills.all.length === 0) {
+            await interviewReportModel.updateOne(
+                { _id: report._id },
+                {
+                    older: comparison.originalSkills,
+                    olderSkills: comparison.originalSkills,
+                    originalSkills: comparison.originalSkills,
+                    current: comparison.currentSkills,
+                    currentSkills: comparison.currentSkills
+                }
+            );
+        }
+
+        res.status(200).json({
+            success: true,
+            interviewReportId: report._id,
+            developerTitle: report.developerTitle || 'Resume',
+            skillsComparison: comparison
+        });
+    } catch (error) {
+        console.error("getResumeSkillsComparisonController error:", error.message);
+        next(error);
+    }
+}
+
+async function calculateResumeAtsScoreController(req, res, next) {
+    try {
+        const { interviewReportId } = req.params;
+        if (!mongoose.isValidObjectId(interviewReportId)) {
+            return res.status(400).json({ message: "Invalid report id" });
+        }
+
+        const userIdStr = req.user.id || req.user._id?.toString();
+        const userObjectId = mongoose.Types.ObjectId.isValid(userIdStr) ? new mongoose.Types.ObjectId(userIdStr) : userIdStr;
+
+        const query = { _id: interviewReportId };
+        if (req.user?.role !== 'admin') {
+            query.$or = [{ user: userObjectId }, { user: userIdStr }];
+        }
+
+        const report = await interviewReportModel.findOne(query);
+
+        if (!report) {
+            return res.status(404).json({ message: "Interview report not found" });
+        }
+
+        const rawInput = req.body?.resumeHtml || req.body?.resumeText || report.generatedResumeHtml || report.resume || '';
+        const resumeText = extractPlainTextFromResume(rawInput);
+        const jdText = report.jobDescription || '';
+
+        if (!resumeText) {
+            return res.status(400).json({ message: "Resume content is required to calculate ATS score" });
+        }
+
+        const atsResult = await calculateATSScore(resumeText, jdText);
+        const dynamicScore = atsResult.overallScore;
+
+        const updateDoc = {
+            matchScore: dynamicScore,
+            atsScoreBreakdown: atsResult.breakdown
+        };
+        if (isValidResumeHtmlContent(req.body?.resumeHtml)) {
+            updateDoc.generatedResumeHtml = req.body.resumeHtml;
+        }
+
+        // Persist dynamically calculated score to DB
+        await interviewReportModel.updateOne(
+            { _id: report._id },
+            updateDoc
+        );
+
+        // Invalidate cache
+        const cacheKey = `cache:report:${interviewReportId}:${userIdStr}`;
+        await deleteCache(cacheKey);
+
+        return res.status(200).json({
+            success: true,
+            matchScore: dynamicScore,
+            breakdown: atsResult.breakdown,
+            suggestions: atsResult.suggestions
+        });
+    } catch (error) {
+        console.error("calculateResumeAtsScoreController error:", error.message);
+        next(error);
+    }
+}
+
 module.exports = {
     generateInterviewReportController,
     getInterviewReportByIdController,
@@ -580,5 +883,7 @@ module.exports = {
     updateResumeHtmlController,
     updateInterviewProgressController,
     rewriteResumeSectionController,
-    getAiModelInfoController
-}
+    getAiModelInfoController,
+    getResumeSkillsComparisonController,
+    calculateResumeAtsScoreController
+}

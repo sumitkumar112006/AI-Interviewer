@@ -1,0 +1,246 @@
+/* ================================================================
+   KIVI-AI Public Layout & Navigation Styling
+   Supports full theme switching (Light: Editorial Paper, Dark: Obsidian)
+   ================================================================ */
+
+.landing-page-wrapper {
+  /* Default / Dark Theme Variables */
+  --pub-bg: #171b18;
+  --pub-surface: #222922;
+  --pub-surface-card: rgba(34, 41, 34, 0.75);
+  --pub-text: #f3f0e9;
+  --pub-muted: #bac1b8;
+  --pub-faint: #818a81;
+  --pub-border: rgba(243, 240, 233, 0.14);
+  --pub-border-strong: rgba(243, 240, 233, 0.25);
+  --pub-accent: #ef7b5d;
+  --pub-accent-hover: #df694d;
+  --pub-accent-pale: #3b2822;
+  --pub-sage: #29352d;
+  --pub-nav-bg: rgba(23, 27, 24, 0.88);
+  --pub-badge-bg: rgba(239, 123, 93, 0.12);
+  --pub-badge-border: rgba(239, 123, 93, 0.28);
+  --pub-btn-dark: #f3f0e9;
+  --pub-btn-dark-text: #171b18;
+
+  min-height: 100vh;
+  width: 100%;
+  background-color: var(--pub-bg);
+  color: var(--pub-text);
+  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif;
+  display: flex;
+  flex-direction: column;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  box-sizing: border-box;
+
+  /* Light / Editorial Paper Theme */
+  &.theme-light {
+    --pub-bg: #f4f1ea;
+    --pub-surface: #eae5db;
+    --pub-surface-card: rgba(255, 255, 255, 0.82);
+    --pub-text: #1b211c;
+    --pub-muted: #697068;
+    --pub-faint: #9b9e96;
+    --pub-border: rgba(27, 33, 28, 0.14);
+    --pub-border-strong: rgba(27, 33, 28, 0.25);
+    --pub-accent: #df694d;
+    --pub-accent-hover: #c4573d;
+    --pub-accent-pale: #f3d7ce;
+    --pub-sage: #ced7c8;
+    --pub-nav-bg: rgba(244, 241, 234, 0.92);
+    --pub-badge-bg: rgba(223, 105, 77, 0.1);
+    --pub-badge-border: rgba(223, 105, 77, 0.25);
+    --pub-btn-dark: #1b211c;
+    --pub-btn-dark-text: #f4f1ea;
+  }
+}
+
+/* ---------- Top Sticky Navbar ---------- */
+.landing-navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 72px;
+  background: var(--pub-nav-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--pub-border);
+  z-index: 1000;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+
+  .nav-container {
+    max-width: 1340px;
+    height: 100%;
+    margin: 0 auto;
+    padding: 0 clamp(16px, 3.5vw, 44px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-sizing: border-box;
+  }
+
+  /* Brand Logo & Wordmark */
+  .nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: var(--pub-text);
+
+    .brand-logo-img {
+      width: 32px;
+      height: 32px;
+      max-width: 32px;
+      max-height: 32px;
+      object-fit: contain;
+      flex-shrink: 0;
+      border-radius: 6px;
+    }
+
+    .brand-name {
+      font-size: 1.15rem;
+      font-weight: 800;
+      letter-spacing: -0.05em;
+      color: var(--pub-text);
+    }
+
+    .brand-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: var(--pub-badge-bg);
+      color: var(--pub-accent);
+      border: 1px solid var(--pub-badge-border);
+    }
+  }
+
+  /* Center Nav Links */
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: clamp(16px, 2vw, 32px);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+
+    li a {
+      color: var(--pub-muted);
+      font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      text-decoration: none;
+      transition: color 0.18s ease;
+
+      &:hover,
+      &.active {
+        color: var(--pub-text);
+      }
+    }
+  }
+
+  /* Actions (Theme Toggle, Sign In, CTA) */
+  .nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    .theme-toggle-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      border: 1px solid var(--pub-border);
+      background: var(--pub-surface);
+      color: var(--pub-text);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+
+      &:hover {
+        border-color: var(--pub-accent);
+        color: var(--pub-accent);
+        transform: scale(1.05);
+      }
+    }
+
+    .btn-nav-login {
+      padding: 0 16px;
+      height: 38px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--pub-text);
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-decoration: none;
+      border-radius: 6px;
+      transition: color 0.18s ease;
+
+      &:hover {
+        color: var(--pub-accent);
+      }
+    }
+
+    .btn-nav-cta {
+      padding: 0 18px;
+      height: 38px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--pub-btn-dark);
+      color: var(--pub-btn-dark-text) !important;
+      font-size: 0.78rem;
+      font-weight: 800;
+      text-decoration: none;
+      border-radius: 6px;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+
+      &:hover {
+        background: var(--pub-accent);
+        color: #ffffff !important;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 14px rgba(223, 105, 77, 0.3);
+      }
+    }
+  }
+}
+
+/* ---------- Responsive Navigation ---------- */
+@media (max-width: 900px) {
+  .landing-navbar {
+    .nav-links {
+      display: none;
+    }
+
+    .nav-brand .brand-badge {
+      display: none;
+    }
+  }
+}
+
+@media (max-width: 600px) {
+  .landing-navbar {
+    height: 64px;
+
+    .btn-nav-login {
+      display: none;
+    }
+
+    .btn-nav-cta span {
+      display: none;
+    }
+
+    .btn-nav-cta {
+      padding: 0 12px;
+    }
+  }
+}

@@ -3,20 +3,93 @@ import './ShimmerLoading.scss';
 
 const ShimmerLoading = ({ type = "resume", title = "Loading Resume Studio..." }) => {
     return (
-        <div className="shimmer-loading-container">
-            {/* Top Workspace Header Bar */}
-            <div className="shimmer-header-bar">
-                <div className="shimmer-header-left">
-                    <div className="shimmer-box shimmer-eyebrow" />
-                    <div className="shimmer-box shimmer-title" />
+        <div className={`shimmer-loading-container ${type === 'questions' || type === 'interview' || type === 'technical' ? 'shimmer-questions-view' : ''}`}>
+            {/* Top Workspace Header Bar (Only for Resume/Doc views) */}
+            {type === "resume" && (
+                <div className="shimmer-header-bar">
+                    <div className="shimmer-header-left">
+                        <div className="shimmer-box shimmer-eyebrow" />
+                        <div className="shimmer-box shimmer-title" />
+                    </div>
+                    <div className="shimmer-actions">
+                        <div className="shimmer-box shimmer-btn ghost" />
+                        <div className="shimmer-box shimmer-btn" />
+                        <div className="shimmer-box shimmer-btn" />
+                        <div className="shimmer-box shimmer-btn primary" />
+                    </div>
                 </div>
-                <div className="shimmer-actions">
-                    <div className="shimmer-box shimmer-btn ghost" />
-                    <div className="shimmer-box shimmer-btn" />
-                    <div className="shimmer-box shimmer-btn" />
-                    <div className="shimmer-box shimmer-btn primary" />
+            )}
+
+            {/* Technical Questions & Interview Tab Shimmer Layout */}
+            {(type === "questions" || type === "interview" || type === "technical") && (
+                <div className="shimmer-questions-layout">
+                    {/* Top Collapsible Context Panel Skeleton */}
+                    <div className="shimmer-context-panel">
+                        <div className="shimmer-context-left">
+                            <div className="shimmer-box shimmer-context-eyebrow" />
+                            <div className="shimmer-box shimmer-context-title" />
+                        </div>
+                        <div className="shimmer-context-right">
+                            <div className="shimmer-box shimmer-score-badge" />
+                            <div className="shimmer-box shimmer-chevron" />
+                        </div>
+                    </div>
+
+                    {/* Tab Navigation Pill Bar Skeleton */}
+                    <div className="shimmer-tabs-bar">
+                        <div className="shimmer-box shimmer-tab-btn active" />
+                        <div className="shimmer-box shimmer-tab-btn" />
+                        <div className="shimmer-box shimmer-tab-btn" />
+                    </div>
+
+                    {/* Premium Header Banner Skeleton */}
+                    <div className="shimmer-questions-banner">
+                        <div className="shimmer-banner-text">
+                            <div className="shimmer-box shimmer-back-link" />
+                            <div className="shimmer-box shimmer-banner-title" />
+                            <div className="shimmer-box shimmer-banner-desc" />
+                        </div>
+                        <div className="shimmer-banner-icon-box">
+                            <span className="code-icon-tag">&lt;/&gt;</span>
+                        </div>
+                    </div>
+
+                    {/* Filter & Search Bar Skeleton */}
+                    <div className="shimmer-filter-bar">
+                        <div className="shimmer-pills-row">
+                            <div className="shimmer-box shimmer-topic-pill active" style={{ width: '110px' }} />
+                            <div className="shimmer-box shimmer-topic-pill" style={{ width: '120px' }} />
+                            <div className="shimmer-box shimmer-topic-pill" style={{ width: '90px' }} />
+                            <div className="shimmer-box shimmer-topic-pill" style={{ width: '135px' }} />
+                        </div>
+                        <div className="shimmer-search-row">
+                            <div className="shimmer-box shimmer-search-input" />
+                            <div className="shimmer-box shimmer-filter-btn" />
+                        </div>
+                    </div>
+
+                    {/* Accordion Questions Rows Skeleton (5 Rows) */}
+                    <div className="shimmer-questions-list">
+                        {[
+                            { width: '84%', num: 1 },
+                            { width: '92%', num: 2 },
+                            { width: '78%', num: 3 },
+                            { width: '89%', num: 4 },
+                            { width: '74%', num: 5 }
+                        ].map((item, idx) => (
+                            <div key={idx} className="shimmer-question-row-card">
+                                <div className="shimmer-row-left">
+                                    <div className="shimmer-index-badge">{item.num}</div>
+                                    <div className="shimmer-box shimmer-question-title" style={{ width: item.width }} />
+                                </div>
+                                <div className="shimmer-row-right">
+                                    <span className="shimmer-expand-plus">+</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Single A4 Resume Sheet Preview Layout (Default & Document) */}
             {(type === "resume" || type === "workspace") && (

@@ -13,7 +13,7 @@ import Loading from '../Loading'
 import ShimmerLoading from '../../Shared/components/ShimmerLoading'
 import ResumeEditor from '../components/ResumeEditor'
 import { exportElementToPdf } from '../utils/exportToPdf'
-import { sanitizeResumeHtml, htmlToPlainText } from '../utils/sanitizeResumeHtml'
+import { sanitizeResumeHtml, htmlToPlainText, parseAndSanitizeSnippet } from '../utils/sanitizeResumeHtml'
 import '../style/coverletter.scss'
 
 const CoverLetter = () => {
@@ -167,8 +167,11 @@ const CoverLetter = () => {
         const onKiviReplace = (e) => {
             const { targetText, snippet } = e.detail || {}
             if (snippet && editorRef.current) {
+                const cleanSnippet = parseAndSanitizeSnippet(snippet)
+                if (!cleanSnippet) return
+
                 if (editorRef.current.replaceExactText) {
-                    const replaced = editorRef.current.replaceExactText(targetText, snippet)
+                    const replaced = editorRef.current.replaceExactText(targetText, cleanSnippet)
                     if (replaced) {
                         setIsDirty(true)
                         if (typeof e.preventDefault === 'function') e.preventDefault()
@@ -176,7 +179,7 @@ const CoverLetter = () => {
                     }
                 }
                 if (editorRef.current.isFocused && editorRef.current.isFocused()) {
-                    editorRef.current.insertContent(snippet)
+                    editorRef.current.insertContent(cleanSnippet)
                     setIsDirty(true)
                     if (typeof e.preventDefault === 'function') e.preventDefault()
                 }

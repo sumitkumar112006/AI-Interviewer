@@ -465,6 +465,49 @@
     }
 }
 
+/* ---------- Consent Checkbox ---------- */
+.auth-consent-checkbox-group {
+    display: flex;
+    align-items: flex-start;
+    margin: 4px 0 2px 0;
+
+    .auth-checkbox-label {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        cursor: pointer;
+        user-select: none;
+        font-size: 0.84rem;
+        color: #374151;
+        line-height: 1.45;
+    }
+
+    .auth-checkbox-input {
+        width: 17px;
+        height: 17px;
+        margin-top: 2px;
+        flex-shrink: 0;
+        cursor: pointer;
+        accent-color: var(--auth-primary-green, #16a34a);
+        border-radius: 4px;
+    }
+
+    .auth-checkbox-text {
+        font-size: 0.84rem;
+        color: #4b5563;
+
+        .auth-consent-link {
+            color: var(--auth-primary-green, #16a34a);
+            font-weight: 600;
+            text-decoration: underline;
+
+            &:hover {
+                color: var(--auth-primary-green-hover, #15803d);
+            }
+        }
+    }
+}
+
 /* ---------- Submit Button (Solid Green) ---------- */
 .auth-btn-primary {
     width: 100%;

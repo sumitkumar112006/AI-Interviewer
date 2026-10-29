@@ -5,7 +5,7 @@ const JobModel = require('../models/job.model');
 const interviewReportModel = require('../models/interviewReport.model');
 const coverLetterModel = require('../models/coverLetter.model');
 const { deleteCache } = require('../services/redis.service');
-const { processReportSkills } = require('../services/skills.service');
+const { processReportSkills, compareResumeSkillsDiff } = require('../services/skills.service');
 const {
     generateInterviewReport,
     generateResumeHtml,
@@ -43,14 +43,32 @@ function initAiWorker() {
             switch (jobDoc.type) {
                 // 1. MOCK INTERVIEW & REPORT GENERATION
                 case 'interview_report': {
-                    const { resumeText, selfDescription, jobDescription, userPlan } = jobDoc.input;
+                    const { resumeText, selfDescription, jobDescription, userPlan, extractedLinks } = jobDoc.input;
 
-                    const interviewReportByAI = await generateInterviewReport({
-                        resume: resumeText,
-                        selfDescription,
-                        jobDescription,
-                        plan: userPlan || 'free'
-                    });
+                    // Concurrently generate the interview report and the structured ATS resume HTML
+                    const [reportResult, resumeResult] = await Promise.allSettled([
+                        generateInterviewReport({
+                            resume: resumeText,
+                            selfDescription,
+                            jobDescription,
+                            plan: userPlan || 'free'
+                        }),
+                        generateResumeHtml({
+                            resume: resumeText || selfDescription || jobDescription,
+                            selfDescription,
+                            jobDescription,
+                            plan: userPlan || 'free'
+                        })
+                    ]);
+
+                    if (reportResult.status === 'rejected') {
+                        throw reportResult.reason;
+                    }
+
+                    const interviewReportByAI = reportResult.value;
+                    const resumeValue = resumeResult.status === 'fulfilled' ? resumeResult.value : null;
+                    const generatedResumeHtml = typeof resumeValue === 'object' && resumeValue?.html ? resumeValue.html : (resumeValue || '');
+                    const resumeSkills = typeof resumeValue === 'object' && Array.isArray(resumeValue?.skills) ? resumeValue.skills : [];
 
                     const detectedSkills = processReportSkills({
                         resume: resumeText,
@@ -64,24 +82,40 @@ function initAiWorker() {
                         ? new mongoose.Types.ObjectId(userIdStr)
                         : jobDoc.userId;
 
+                    const comparison = compareResumeSkillsDiff({
+                        originalResumeText: resumeText || '',
+                        currentResumeHtml: generatedResumeHtml || '',
+                        currentResumeSkills: resumeSkills,
+                        detectedSkills
+                    });
+
                     const interviewReport = await interviewReportModel.create({
                         user: userObjectId,
                         resume: resumeText,
                         selfDescription,
                         jobDescription,
                         detectedSkills,
+                        resumeSkills: resumeSkills.length > 0 ? resumeSkills : (comparison.currentSkills?.all || []).map(s => s.name),
+                        resumeLinks: extractedLinks || null,
+                        older: comparison.originalSkills,
+                        olderSkills: comparison.originalSkills,
+                        originalSkills: comparison.originalSkills,
+                        current: comparison.currentSkills,
+                        currentSkills: comparison.currentSkills,
+                        generatedResumeHtml,
                         ...interviewReportByAI
                     });
 
                     // Invalidate reports list cache
                     await deleteCache(`cache:reports:user:${userIdStr}`);
 
-                    // Non-blocking background chunk & embedding pre-warming for Roadmap & JD RAG
+                    // Non-blocking background chunk & embedding pre-warming for Roadmap, JD, and Resume RAG
                     setImmediate(async () => {
                         try {
-                            const { parseRoadmap, parseJobDescription } = require('../ai-assistant/Chunker');
-                            const { getOrEmbedRoadmapChunks, getOrEmbedJdChunks } = require('../ai-assistant/Embedder');
+                            const { parseRoadmap, parseJobDescription, parseResumeHtml } = require('../ai-assistant/Chunker');
+                            const { getOrEmbedRoadmapChunks, getOrEmbedJdChunks, getOrEmbedChunks } = require('../ai-assistant/Embedder');
                             const repIdStr = interviewReport._id.toString();
+
                             if (Array.isArray(interviewReport.preparationPlan) && interviewReport.preparationPlan.length > 0) {
                                 const rChunks = parseRoadmap(interviewReport.preparationPlan, interviewReport.completedTasks || []);
                                 await getOrEmbedRoadmapChunks(repIdStr, rChunks);
@@ -89,6 +123,10 @@ function initAiWorker() {
                             if (interviewReport.jobDescription) {
                                 const jdChunks = parseJobDescription(interviewReport.jobDescription, interviewReport.developerTitle || '');
                                 await getOrEmbedJdChunks(repIdStr, jdChunks);
+                            }
+                            if (generatedResumeHtml) {
+                                const resumeChunks = parseResumeHtml(generatedResumeHtml);
+                                await getOrEmbedChunks(repIdStr, resumeChunks);
                             }
                         } catch (ragErr) {
                             console.warn('[AI Worker] Non-critical RAG pre-warming notice:', ragErr.message);
@@ -143,14 +181,33 @@ function initAiWorker() {
                     }
 
                     const { selfDescription, jobDescription } = interviewReport;
-                    const generatedHtml = await generateResumeHtml({
+                    const resumeOutput = await generateResumeHtml({
                         resume: resumeText || selfDescription || jobDescription,
                         selfDescription,
                         jobDescription,
                         plan: userPlan || 'free'
                     });
 
+                    const generatedHtml = typeof resumeOutput === 'object' && resumeOutput?.html ? resumeOutput.html : (resumeOutput || '');
+                    const resumeSkills = typeof resumeOutput === 'object' && Array.isArray(resumeOutput?.skills) ? resumeOutput.skills : [];
+
                     interviewReport.generatedResumeHtml = generatedHtml;
+                    if (resumeSkills.length > 0) {
+                        interviewReport.resumeSkills = resumeSkills;
+                    }
+
+                    const comparison = compareResumeSkillsDiff({
+                        originalResumeText: interviewReport.resume || '',
+                        currentResumeHtml: generatedHtml,
+                        currentResumeSkills: resumeSkills,
+                        detectedSkills: interviewReport.detectedSkills || []
+                    });
+
+                    interviewReport.older = comparison.originalSkills;
+                    interviewReport.olderSkills = comparison.originalSkills;
+                    interviewReport.originalSkills = comparison.originalSkills;
+                    interviewReport.current = comparison.currentSkills;
+                    interviewReport.currentSkills = comparison.currentSkills;
                     await interviewReport.save();
 
                     // Invalidate report detail cache
@@ -265,7 +322,7 @@ function initAiWorker() {
 
                 // 5. REWRITE RESUME SECTION
                 case 'rewrite_section': {
-                    const { selectedText, instruction, action, message, plan, currentResumeHtml } = jobDoc.input;
+                    const { selectedText, instruction, action, message, plan, currentResumeHtml, jobDescription, jobRole } = jobDoc.input;
 
                     const aiResponse = await rewriteResumeSection({
                         selectedText,
@@ -273,7 +330,9 @@ function initAiWorker() {
                         action,
                         message,
                         plan: plan || 'free',
-                        currentResumeHtml: currentResumeHtml || ''
+                        currentResumeHtml: currentResumeHtml || '',
+                        jobDescription: jobDescription || '',
+                        jobRole: jobRole || ''
                     });
 
                     jobDoc.result = {

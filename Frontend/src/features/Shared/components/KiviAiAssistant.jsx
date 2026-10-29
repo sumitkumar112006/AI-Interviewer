@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -9,20 +9,66 @@ import {
     getAssistantHistoryApi,
     clearAssistantHistoryApi 
 } from '../../Interview/services/interview.api';
+import { parseAndSanitizeSnippet } from '../../Interview/utils/sanitizeResumeHtml';
+import { TrackUpdatePart } from '../../Interview/utils/trackUpdatePart';
+import { MultiToolStatusStrip, ToolResourceCard } from '../../../UI';
 import './KiviAiAssistant.scss';
 
-// Configure marked options
+// Configure marked options with custom link renderer for safe external links
+const renderer = new marked.Renderer();
+renderer.link = (href, title, text) => {
+    let targetHref = typeof href === 'object' ? href.href : href;
+    let targetTitle = typeof href === 'object' ? (href.title || '') : (title || '');
+    let targetText = typeof href === 'object' ? href.text : text;
+    if (!targetHref || typeof targetHref !== 'string' || !targetHref.startsWith('http')) {
+        return targetText || '';
+    }
+    return `<a href="${targetHref}" target="_blank" rel="noopener noreferrer"${targetTitle ? ` title="${targetTitle}"` : ''}>${targetText}</a>`;
+};
+
 marked.setOptions({
     breaks: true,
     gfm: true
 });
+marked.use({ renderer });
 
-const renderMarkdown = (content) => {
+/**
+ * Auto-closes incomplete markdown tags during live streaming.
+ * Prevents broken layout structure, unstyled code fences, or flickering text before closing tokens arrive.
+ */
+function autoCloseMarkdown(content = '') {
     if (!content) return '';
-    // Normalize any stray <br> tags
-    const normalized = content.replace(/<br\s*\/?>/gi, '\n');
-    const rawHtml = marked.parse(normalized);
-    return DOMPurify.sanitize(rawHtml);
+    let closed = content.replace(/<br\s*\/?>/gi, '\n');
+
+    // 1. Auto-close code blocks (```)
+    const codeBlockCount = (closed.match(/```/g) || []).length;
+    if (codeBlockCount % 2 !== 0) {
+        closed += '\n```';
+    }
+
+    // 2. Auto-close inline code (`)
+    const outsideCodeBlocks = closed.replace(/```[\s\S]*?```/g, '');
+    const inlineCodeCount = (outsideCodeBlocks.match(/`/g) || []).length;
+    if (inlineCodeCount % 2 !== 0) {
+        closed += '`';
+    }
+
+    // 3. Auto-close bold (** or __)
+    const boldCount = (outsideCodeBlocks.match(/\*\*/g) || []).length;
+    if (boldCount % 2 !== 0) {
+        closed += '**';
+    }
+
+    return closed;
+}
+
+const renderMarkdown = (content, isStreaming = false) => {
+    if (!content) return '';
+    const safeContent = isStreaming ? autoCloseMarkdown(content) : content.replace(/<br\s*\/?>/gi, '\n');
+    const rawHtml = marked.parse(safeContent);
+    return DOMPurify.sanitize(rawHtml, {
+        ADD_ATTR: ['target', 'rel']
+    });
 };
 
 const DEFAULT_WIDTH = 410;
@@ -31,11 +77,121 @@ const DEFAULT_HEIGHT = 580;
 const DEFAULT_WELCOME_MSG = {
     id: 1,
     sender: 'ai',
-    text: '👋 Hi! I am KIVI, your AI Assistant. Highlight any text in your Resume or Cover Letter editor, then send me instructions or click quick presets to improve it!',
+    text: '👋 Hello! I am KIVI, your AI Career Coach & ATS Copilot. Select any section in your document to refine it, or ask me any question regarding your resume, interview preparation, or target role.',
     isStreaming: false
 };
 
 const getChatStorageKey = (uid) => uid ? `kivi_chat_history_${uid}` : 'kivi_chat_history_guest';
+
+/**
+ * Memoized Chat Bubble Component
+ * Prevents re-rendering and re-parsing markdown for already finished messages during streaming.
+ * Displays only clean conversational assistant output (messageForUser) and verified learning resources.
+ */
+const ChatMessageBubble = React.memo(function ChatMessageBubble({ msg }) {
+    // Memoize rendered HTML so static messages parse markdown only once
+    const renderedHtml = useMemo(() => {
+        return renderMarkdown(msg.text, msg.isStreaming);
+    }, [msg.text, msg.isStreaming]);
+
+    return (
+        <div className={`chat-bubble-row ${msg.sender}`}>
+            {msg.sender === 'ai' && (
+                <img src="/Logo.png" alt="KIVI" className="chat-avatar-img" />
+            )}
+            <div className={`chat-bubble ${msg.sender}`}>
+                {msg.highlightedContext && (
+                    <div className="msg-context-quote">
+                        📌 <em>"{msg.highlightedContext}"</em>
+                    </div>
+                )}
+                {msg.sender === 'ai' ? (
+                    msg.isStreaming && !msg.text ? (
+                        msg.searchStatus ? (
+                            <div className="kivi-searching-card">
+                                <div className="searching-header">
+                                    <span className="searching-radar-icon">
+                                        <span className="radar-ping"></span>
+                                        <span className="radar-core">🔍</span>
+                                    </span>
+                                    <div className="searching-header-info">
+                                        <span className="searching-title">{msg.searchStatus.message || 'Searching web & developer resources...'}</span>
+                                        {msg.searchStatus.query && (
+                                            <span className="searching-query-tag">Query: {msg.searchStatus.query}</span>
+                                        )}
+                                    </div>
+                                </div>
+                                {Array.isArray(msg.searchStatus.sources) && msg.searchStatus.sources.length > 0 && (
+                                    <div className="searching-sources-pills">
+                                        {msg.searchStatus.sources.map((src, idx) => (
+                                            <span key={idx} className="searching-source-pill">
+                                                <span className="source-pill-icon">{src.icon || '🌐'}</span>
+                                                <span className="source-pill-name">{src.name || src}</span>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                                {Array.isArray(msg.searchStatus.scannedDomains) && msg.searchStatus.scannedDomains.length > 0 && (
+                                    <div className="searching-scanned-domains">
+                                        <span className="scanned-label">Scanning:</span>
+                                        {msg.searchStatus.scannedDomains.map((dom, dIdx) => (
+                                            <span key={dIdx} className="scanned-domain-tag">{dom}</span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="typing-dots-wrapper">
+                                <span className="dot"></span>
+                                <span className="dot"></span>
+                                <span className="dot"></span>
+                            </div>
+                        )
+                    ) : (
+                        <div className="msg-content-wrapper">
+                            {msg.isStreaming && msg.searchStatus && (
+                                <MultiToolStatusStrip
+                                    activeTools={msg.searchStatus.tools || []}
+                                    statusMessage={msg.searchStatus.message}
+                                />
+                            )}
+                            <div
+                                className="msg-markdown-content"
+                                dangerouslySetInnerHTML={{ __html: renderedHtml }}
+                            />
+                            {msg.isStreaming && <span className="streaming-cursor" />}
+
+                            {/* Verified Resources & Links Panel */}
+                            {Array.isArray(msg.resources) && msg.resources.length > 0 && (
+                                <div className="verified-resources-panel">
+                                    <div className="resources-title">
+                                        <span>🔗</span>
+                                        <span>Verified Resources & Learning Links</span>
+                                    </div>
+                                    <div className="resources-list-container">
+                                        {msg.resources.map((res, rIdx) => (
+                                            <ToolResourceCard
+                                                key={`${res.url}-${rIdx}`}
+                                                title={res.title}
+                                                url={res.url}
+                                                snippet={res.snippet}
+                                                type={res.type}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )
+                ) : (
+                    <p className="msg-text">
+                        {msg.text}
+                    </p>
+                )}
+            </div>
+        </div>
+    );
+});
 
 export function KiviAiAssistant() {
     const { user, fetchUsage } = useAuth();
@@ -58,6 +214,15 @@ export function KiviAiAssistant() {
     const idleTimerRef = useRef(null);
     const savedRangeRef = useRef(null);
     const abortControllerRef = useRef(null);
+    const messagesContainerRef = useRef(null);
+
+    // Smooth Word-by-Word Streaming Queue State Refs
+    const streamQueueRef = useRef('');
+    const displayedTextRef = useRef('');
+    const streamTimerRef = useRef(null);
+    const isStreamingDoneRef = useRef(false);
+    const activeStreamAiMsgIdRef = useRef(null);
+    const pendingDoneDataRef = useRef(null);
 
     // Resizable drawer dimensions & maximize state
     const [drawerSize, setDrawerSize] = useState(() => {
@@ -79,14 +244,65 @@ export function KiviAiAssistant() {
 
     const [selectedSnippet, setSelectedSnippet] = useState('');
     const [appliedMsgIds, setAppliedMsgIds] = useState(new Set());
+    const [rejectedMsgIds, setRejectedMsgIds] = useState(new Set());
     const [copiedMsgId, setCopiedMsgId] = useState(null);
 
-    const handleCopySnippet = (msgId, snippet) => {
+    // Listen for Accept/Reject events originating from TipTap's in-canvas floating pill
+    useEffect(() => {
+        const handleDiffStatusChange = (e) => {
+            const { status, msgId } = e.detail || {};
+            if (status === 'accepted') {
+                if (msgId) {
+                    setAppliedMsgIds(prev => new Set(prev).add(msgId));
+                } else {
+                    setChatMessages(prev => {
+                        const lastSnippetMsg = [...prev].reverse().find(m => m.suggestedSnippet && m.sender === 'ai');
+                        if (lastSnippetMsg) {
+                            setAppliedMsgIds(a => new Set(a).add(lastSnippetMsg.id));
+                        }
+                        return prev;
+                    });
+                }
+            } else if (status === 'rejected') {
+                if (msgId) {
+                    setRejectedMsgIds(prev => new Set(prev).add(msgId));
+                } else {
+                    setChatMessages(prev => {
+                        const lastSnippetMsg = [...prev].reverse().find(m => m.suggestedSnippet && m.sender === 'ai');
+                        if (lastSnippetMsg) {
+                            setRejectedMsgIds(r => new Set(r).add(lastSnippetMsg.id));
+                        }
+                        return prev;
+                    });
+                }
+            }
+        };
+
+        window.addEventListener('kivi-diff-status-change', handleDiffStatusChange);
+        return () => {
+            window.removeEventListener('kivi-diff-status-change', handleDiffStatusChange);
+        };
+    }, []);
+
+    const handleCopySnippet = useCallback((msgId, snippet) => {
         if (!snippet) return;
         navigator.clipboard.writeText(snippet);
         setCopiedMsgId(msgId);
         setTimeout(() => setCopiedMsgId(null), 2500);
-    };
+    }, []);
+
+    const handleOpenEditor = useCallback((reportId) => {
+        if (reportId) navigate(`/resume/${reportId}`);
+    }, [navigate]);
+
+    const handleRejectSnippet = useCallback((msgId) => {
+        if (msgId) {
+            setRejectedMsgIds(prev => new Set(prev).add(msgId));
+        }
+        window.dispatchEvent(new CustomEvent('kivi-reject-diff', {
+            detail: { msgId }
+        }));
+    }, []);
 
     // Chat messages initialized from persistent local storage
     const [chatMessages, setChatMessages] = useState(() => {
@@ -108,9 +324,24 @@ export function KiviAiAssistant() {
     const [chatLoading, setChatLoading] = useState(false);
     const chatEndRef = useRef(null);
 
-    const scrollToBottom = () => {
-        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    };
+    /**
+     * Smart Smooth Auto-Scroll
+     * Only auto-scrolls if the user is already near the bottom (within 120px)
+     */
+    const scrollToBottomIfNear = useCallback((force = false) => {
+        const container = messagesContainerRef.current;
+        if (!container) return;
+
+        if (force) {
+            container.scrollTop = container.scrollHeight;
+            return;
+        }
+
+        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 140;
+        if (isNearBottom) {
+            container.scrollTop = container.scrollHeight;
+        }
+    }, []);
 
     // Synchronize chat with user change or load remote history if local is empty
     useEffect(() => {
@@ -126,7 +357,6 @@ export function KiviAiAssistant() {
             }
         } catch (e) {}
 
-        // Fallback: If logged in and local storage is empty, check backend session cache
         if (user?._id) {
             getAssistantHistoryApi().then(res => {
                 if (res?.history && Array.isArray(res.history) && res.history.length > 0) {
@@ -174,6 +404,10 @@ export function KiviAiAssistant() {
             localStorage.removeItem(key);
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
+            }
+            if (streamTimerRef.current) {
+                cancelAnimationFrame(streamTimerRef.current);
+                streamTimerRef.current = null;
             }
             await clearAssistantHistoryApi();
         } catch (e) {
@@ -225,12 +459,11 @@ export function KiviAiAssistant() {
         }
     };
 
-
     useEffect(() => {
         if (isKiviOpen) {
-            scrollToBottom();
+            scrollToBottomIfNear(true);
         }
-    }, [chatMessages, chatLoading, isKiviOpen]);
+    }, [isKiviOpen, scrollToBottomIfNear]);
 
     // Handle drag resizing from top, left, and top-left corner
     const handleResizeStart = (direction, e) => {
@@ -247,8 +480,8 @@ export function KiviAiAssistant() {
         const onMouseMove = (moveEvent) => {
             if (!isResizingRef.current) return;
 
-            const deltaX = startX - moveEvent.clientX; // Dragging left increases width
-            const deltaY = startY - moveEvent.clientY; // Dragging top increases height
+            const deltaX = startX - moveEvent.clientX;
+            const deltaY = startY - moveEvent.clientY;
 
             let newWidth = startWidth;
             let newHeight = startHeight;
@@ -271,7 +504,6 @@ export function KiviAiAssistant() {
             window.removeEventListener('mousemove', onMouseMove);
             window.removeEventListener('mouseup', onMouseUp);
 
-            // Save user size preference
             setDrawerSize((current) => {
                 try {
                     localStorage.setItem('kivi_drawer_size', JSON.stringify(current));
@@ -311,7 +543,6 @@ export function KiviAiAssistant() {
     // Selection Tracking across main document and TipTap editor
     useEffect(() => {
         const handleSelectionChange = (e) => {
-            // Ignore if active element or event target is inside KIVI drawer or floating trigger
             const activeEl = document.activeElement;
             if (activeEl && typeof activeEl.closest === 'function' && 
                 (activeEl.closest('.ai-chat-copilot-floating-drawer') || activeEl.closest('.kivi-floating-trigger'))) {
@@ -327,7 +558,6 @@ export function KiviAiAssistant() {
             const sel = window.getSelection();
             const text = sel ? sel.toString().trim() : '';
 
-            // Check if selection is strictly inside an active TipTap editor or document contenteditable container
             const editorEl = document.querySelector('.tiptap-prose[contenteditable="true"]') || 
                              document.querySelector('.ProseMirror[contenteditable="true"]') ||
                              document.querySelector('.resume-editor-pane [contenteditable="true"]') ||
@@ -338,11 +568,9 @@ export function KiviAiAssistant() {
                 savedRangeRef.current = sel.getRangeAt(0).cloneRange();
                 setSelectedSnippet(text);
             } else if (isInsideEditor && (!text || text.length === 0)) {
-                // Realtime clear ONLY when user explicitly deselects inside the editor
                 setSelectedSnippet('');
                 savedRangeRef.current = null;
             }
-            // If selection is outside the editor (e.g. clicking anywhere else), keep saved context intact!
         };
 
         document.addEventListener('mouseup', handleSelectionChange);
@@ -356,14 +584,100 @@ export function KiviAiAssistant() {
         };
     }, []);
 
-    // Clean up ongoing SSE streaming on unmount or drawer close
+    // Clean up ongoing SSE streaming on unmount
     useEffect(() => {
         return () => {
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
             }
+            if (streamTimerRef.current) {
+                cancelAnimationFrame(streamTimerRef.current);
+                streamTimerRef.current = null;
+            }
         };
     }, []);
+
+    /**
+     * High-Performance Word-to-Word Smoothing Engine (60 FPS fluid rendering)
+     * Drains the incoming token buffer smoothly without freezing the UI or skipping frames.
+     */
+    const startSmoothStreamDrain = useCallback((aiMsgId) => {
+        let lastFrameTime = performance.now();
+
+        const tick = () => {
+            const now = performance.now();
+            const elapsed = now - lastFrameTime;
+
+            // Target smooth ~24ms cadence per step (adaptive for natural reading speed)
+            if (elapsed >= 22) {
+                lastFrameTime = now;
+                const queue = streamQueueRef.current;
+
+                if (queue.length > 0) {
+                    // Dynamically scale chunk slice based on queue backlog to eliminate network jitter
+                    let sliceLength = 1;
+                    if (queue.length > 120) {
+                        sliceLength = Math.min(28, queue.length);
+                    } else if (queue.length > 60) {
+                        sliceLength = Math.min(14, queue.length);
+                    } else if (queue.length > 20) {
+                        // Word boundary search
+                        const nextSpace = queue.indexOf(' ', 3);
+                        sliceLength = nextSpace > 0 ? nextSpace + 1 : Math.min(6, queue.length);
+                    } else {
+                        const nextSpace = queue.indexOf(' ');
+                        sliceLength = nextSpace > 0 ? nextSpace + 1 : Math.min(3, queue.length);
+                    }
+
+                    const nextPiece = queue.slice(0, sliceLength);
+                    streamQueueRef.current = queue.slice(sliceLength);
+                    displayedTextRef.current += nextPiece;
+
+                    const updatedText = displayedTextRef.current;
+                    setChatMessages(prev => prev.map(msg => {
+                        if (msg.id === aiMsgId) {
+                            return { ...msg, text: updatedText, isStreaming: true };
+                        }
+                        return msg;
+                    }));
+
+                    scrollToBottomIfNear();
+                } else if (isStreamingDoneRef.current) {
+                    // All tokens in queue have finished draining smoothly!
+                    const doneData = pendingDoneDataRef.current;
+                    setChatMessages(prev => prev.map(msg => {
+                        if (msg.id === aiMsgId) {
+                            return {
+                                ...msg,
+                                text: doneData?.replyText || doneData?.reply || displayedTextRef.current || msg.text || 'I could not find specific details for that query.',
+                                targetText: doneData?.targetText || msg.targetText || null,
+                                suggestedSnippet: doneData?.suggestedSnippet || null,
+                                resources: doneData?.resources || [],
+                                searchStatus: null,
+                                isStreaming: false
+                            };
+                        }
+                        return msg;
+                    }));
+
+                    setChatLoading(false);
+                    if (streamTimerRef.current) {
+                        cancelAnimationFrame(streamTimerRef.current);
+                        streamTimerRef.current = null;
+                    }
+                    scrollToBottomIfNear(true);
+                    return;
+                }
+            }
+
+            streamTimerRef.current = requestAnimationFrame(tick);
+        };
+
+        if (streamTimerRef.current) {
+            cancelAnimationFrame(streamTimerRef.current);
+        }
+        streamTimerRef.current = requestAnimationFrame(tick);
+    }, [scrollToBottomIfNear]);
 
     const handleSendChatMessage = async (e, customText = null, actionPreset = null) => {
         if (e) e.preventDefault();
@@ -374,12 +688,15 @@ export function KiviAiAssistant() {
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
         }
+        if (streamTimerRef.current) {
+            cancelAnimationFrame(streamTimerRef.current);
+            streamTimerRef.current = null;
+        }
         abortControllerRef.current = new AbortController();
 
         const userMsgText = messageToSend.trim() || (actionPreset ? `Apply preset: ${actionPreset}` : 'Refine selection');
         const activeSnippet = selectedSnippet;
 
-        // Clear active selection state from UI after capturing so subsequent queries don't reuse it
         setSelectedSnippet('');
         
         const userMsg = {
@@ -400,12 +717,27 @@ export function KiviAiAssistant() {
             resources: []
         };
 
+        // Reset streaming buffer refs
+        streamQueueRef.current = '';
+        displayedTextRef.current = '';
+        isStreamingDoneRef.current = false;
+        activeStreamAiMsgIdRef.current = aiMsgId;
+        pendingDoneDataRef.current = null;
+
         setChatMessages(prev => [...prev, userMsg, initialAiMsg]);
         if (!customText) setChatInput('');
         setChatLoading(true);
 
         const urlMatch = window.location.pathname.match(/\/(?:interview|resume|cover-letter)\/([a-f0-9]{24})/i);
         const currentReportId = urlMatch ? urlMatch[1] : null;
+
+        // Start smooth rendering loop
+        startSmoothStreamDrain(aiMsgId);
+
+        // Capture live HTML from the TipTap viewport so real-time modifications are preserved
+        const currentResumeHtml = typeof window.__KIVI_GET_CURRENT_RESUME_HTML__ === 'function' 
+            ? window.__KIVI_GET_CURRENT_RESUME_HTML__() 
+            : '';
 
         try {
             await streamAssistantChatApi({
@@ -414,6 +746,7 @@ export function KiviAiAssistant() {
                 selectedText: activeSnippet || '',
                 action: actionPreset || '',
                 instruction: messageToSend,
+                currentResumeHtml,
                 signal: abortControllerRef.current.signal,
                 onStatus: (statusData) => {
                     setChatMessages(prev => prev.map(msg => {
@@ -423,35 +756,52 @@ export function KiviAiAssistant() {
                         return msg;
                     }));
                 },
-                onToken: (token, accumulated) => {
-                    setChatMessages(prev => prev.map(msg => {
-                        if (msg.id === aiMsgId) {
-                            return { ...msg, text: accumulated, isStreaming: true };
-                        }
-                        return msg;
-                    }));
+                onToken: (token) => {
+                    // Push incoming token into smooth queue
+                    streamQueueRef.current += token;
                 },
                 onDone: (data) => {
-                    setChatMessages(prev => prev.map(msg => {
-                        if (msg.id === aiMsgId) {
-                            return {
-                                ...msg,
-                                text: data.replyText || data.reply || msg.text || 'I could not find specific details for that query in your active resume. Please verify your resume content.',
-                                targetText: data.targetText || activeSnippet || msg.targetText || null,
-                                suggestedSnippet: data.suggestedSnippet || null,
-                                resources: data.resources || [],
-                                searchStatus: null,
-                                isStreaming: false
-                            };
-                        }
-                        return msg;
-                    }));
-                    setChatLoading(false);
+                    pendingDoneDataRef.current = data;
+                    isStreamingDoneRef.current = true;
                     if (fetchUsage) fetchUsage();
+
+                    // Step 4: Visual Diff Preview & Tracking on TipTap Viewport (Strikethrough Old + Green New)
+                    if (data?.ResumeUpdations && data.ResumeUpdations !== false && typeof data.ResumeUpdations === 'string') {
+                        const currentLiveHtml = typeof window.__KIVI_GET_CURRENT_RESUME_HTML__ === 'function'
+                            ? window.__KIVI_GET_CURRENT_RESUME_HTML__()
+                            : (currentResumeHtml || '');
+
+                        const diffRes = TrackUpdatePart(currentLiveHtml, data.ResumeUpdations, data.targetText);
+
+                        if (diffRes) {
+                            window.dispatchEvent(new CustomEvent('kivi-show-diff', {
+                                detail: {
+                                    diffData: {
+                                        diffPreviewHtml: diffRes.diffPreviewHtml,
+                                        mergedFullResumeHtml: diffRes.mergedFullResumeHtml,
+                                        oldFullResumeHtml: diffRes.oldFullResumeHtml || currentLiveHtml,
+                                        targetText: diffRes.targetText || data.targetText || '',
+                                        replacementHtml: diffRes.replacementHtml || data.ResumeUpdations || '',
+                                        sectionName: diffRes.sectionName || null,
+                                        msgId: aiMsgId
+                                    },
+                                    updatedPart: diffRes,
+                                    msgId: aiMsgId,
+                                    newFullHtml: diffRes?.mergedFullResumeHtml || data.ResumeUpdations,
+                                    targetText: diffRes?.targetText || data.targetText || '',
+                                    messageForUser: data.messageForUser || data.reply || ''
+                                }
+                            }));
+                        }
+                    }
                 },
                 onError: (err) => {
                     if (err.name === 'AbortError') return;
                     console.error("KIVI Chat Streaming error:", err);
+                    if (streamTimerRef.current) {
+                        cancelAnimationFrame(streamTimerRef.current);
+                        streamTimerRef.current = null;
+                    }
                     setChatMessages(prev => prev.map(msg => {
                         if (msg.id === aiMsgId) {
                             return {
@@ -468,6 +818,10 @@ export function KiviAiAssistant() {
         } catch (err) {
             if (err.name !== 'AbortError') {
                 console.error("KIVI Chat error:", err);
+                if (streamTimerRef.current) {
+                    cancelAnimationFrame(streamTimerRef.current);
+                    streamTimerRef.current = null;
+                }
                 setChatMessages(prev => prev.map(msg => {
                     if (msg.id === aiMsgId) {
                         return {
@@ -484,47 +838,49 @@ export function KiviAiAssistant() {
     };
 
     // Apply suggested snippet directly to TipTap editor or active document
-    const handleApplySuggestedSnippet = (msgId, snippet, targetText = null) => {
+    const handleApplySuggestedSnippet = useCallback((msgId, snippet, targetText = null) => {
         if (!snippet) return;
+        const cleanSnippet = parseAndSanitizeSnippet(snippet);
+        if (!cleanSnippet) return;
         if (fetchUsage) fetchUsage();
 
-        // 1. Dispatch custom event for Resume.jsx or CoverLetter.jsx to handle in-place replacement via ref!
+        if (msgId) {
+            setAppliedMsgIds(prev => new Set(prev).add(msgId));
+        }
+
+        // Trigger TipTap live diff accept if active
+        window.dispatchEvent(new CustomEvent('kivi-accept-diff', {
+            detail: { msgId, snippet: cleanSnippet, targetText }
+        }));
+
         const evt = new CustomEvent('kivi-replace-text', {
-            detail: { targetText, snippet },
+            detail: { targetText, snippet: cleanSnippet },
             cancelable: true
         });
         window.dispatchEvent(evt);
 
-        // If handled by Resume or Cover Letter editor, mark applied and skip fallback!
         if (evt.defaultPrevented) {
-            if (msgId) {
-                setAppliedMsgIds(prev => new Set(prev).add(msgId));
-            }
             return;
         }
 
-        // 2. TipTap Prose Editor fallback (only if event was not handled)
         const editorEl = document.querySelector('.tiptap-prose[contenteditable="true"]') || document.querySelector('[contenteditable="true"]');
 
         if (editorEl) {
             editorEl.focus();
 
-            // If targetText was identified, search and replace in editor innerText
             if (targetText && targetText.trim()) {
                 const cleanTarget = targetText.trim();
                 const walker = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT, null, false);
                 let node;
                 while ((node = walker.nextNode())) {
                     if (node.nodeValue && node.nodeValue.includes(cleanTarget)) {
-                        node.nodeValue = node.nodeValue.replace(cleanTarget, snippet);
+                        node.nodeValue = node.nodeValue.replace(cleanTarget, cleanSnippet);
                         editorEl.dispatchEvent(new Event('input', { bubbles: true }));
-                        if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
                         return;
                     }
                 }
             }
 
-            // Try restoring saved selection range
             if (savedRangeRef.current) {
                 try {
                     const sel = window.getSelection();
@@ -536,16 +892,13 @@ export function KiviAiAssistant() {
                     const textNode = document.createTextNode(snippet);
                     range.insertNode(textNode);
                     
-                    // Dispatch input event for React state updates
                     editorEl.dispatchEvent(new Event('input', { bubbles: true }));
-                    if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
                     return;
                 } catch (err) {
                     console.warn("Could not restore saved selection range:", err);
                 }
             }
 
-            // Direct selection replacement
             const sel = window.getSelection();
             if (sel && sel.rangeCount > 0) {
                 const range = sel.getRangeAt(0);
@@ -554,19 +907,15 @@ export function KiviAiAssistant() {
                     const textNode = document.createTextNode(snippet);
                     range.insertNode(textNode);
                     editorEl.dispatchEvent(new Event('input', { bubbles: true }));
-                    if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
                     return;
                 }
             }
 
-            // Fallback execCommand insertion
             document.execCommand('insertText', false, snippet);
             editorEl.dispatchEvent(new Event('input', { bubbles: true }));
-            if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
             return;
         }
 
-        // 3. Legacy iframe fallback
         const iframe = document.querySelector('iframe.resume-frame') || document.querySelector('iframe');
         if (iframe) {
             const win = iframe.contentWindow;
@@ -583,7 +932,6 @@ export function KiviAiAssistant() {
                     if (doc.body) {
                         doc.body.dispatchEvent(new Event('input', { bubbles: true }));
                     }
-                    if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
                     return;
                 }
             }
@@ -592,10 +940,9 @@ export function KiviAiAssistant() {
                 if (doc.body) {
                     doc.body.dispatchEvent(new Event('input', { bubbles: true }));
                 }
-                if (msgId) setAppliedMsgIds(prev => new Set(prev).add(msgId));
             }
         }
-    };
+    }, [fetchUsage]);
 
     const isAiBlocked = Boolean(user?.blockedFeatures?.aiAssistant);
 
@@ -706,6 +1053,10 @@ export function KiviAiAssistant() {
                                     if (abortControllerRef.current) {
                                         abortControllerRef.current.abort();
                                     }
+                                    if (streamTimerRef.current) {
+                                        cancelAnimationFrame(streamTimerRef.current);
+                                        streamTimerRef.current = null;
+                                    }
                                     setIsKiviOpen(false);
                                 }}
                                 title="Close KIVI"
@@ -755,205 +1106,84 @@ export function KiviAiAssistant() {
                     )}
 
                     {/* Scrollable Messages Stream */}
-                    <div className="chat-messages-container">
+                    <div className="chat-messages-container" ref={messagesContainerRef}>
                         {chatMessages.map((msg) => (
-                            <div key={msg.id} className={`chat-bubble-row ${msg.sender}`}>
-                                {msg.sender === 'ai' && (
-                                    <img src="/Logo.png" alt="KIVI" className="chat-avatar-img" />
-                                )}
-                                <div className={`chat-bubble ${msg.sender}`}>
-                                    {msg.highlightedContext && (
-                                        <div className="msg-context-quote">
-                                            📌 <em>"{msg.highlightedContext}"</em>
-                                        </div>
-                                    )}
-                                    {msg.sender === 'ai' ? (
-                                        msg.isStreaming && !msg.text ? (
-                                            msg.searchStatus ? (
-                                                <div className="kivi-searching-card">
-                                                    <div className="searching-header">
-                                                        <span className="searching-radar-icon">
-                                                            <span className="radar-ping"></span>
-                                                            <span className="radar-core">🔍</span>
-                                                        </span>
-                                                        <div className="searching-header-info">
-                                                            <span className="searching-title">{msg.searchStatus.message || 'Searching web & developer resources...'}</span>
-                                                            {msg.searchStatus.query && (
-                                                                <span className="searching-query-tag">Query: {msg.searchStatus.query}</span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                    {Array.isArray(msg.searchStatus.sources) && msg.searchStatus.sources.length > 0 && (
-                                                        <div className="searching-sources-pills">
-                                                            {msg.searchStatus.sources.map((src, idx) => (
-                                                                <span key={idx} className="searching-source-pill">
-                                                                    <span className="source-pill-icon">{src.icon || '🌐'}</span>
-                                                                    <span className="source-pill-name">{src.name || src}</span>
-                                                                </span>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                    {Array.isArray(msg.searchStatus.scannedDomains) && msg.searchStatus.scannedDomains.length > 0 && (
-                                                        <div className="searching-scanned-domains">
-                                                            <span className="scanned-label">Scanning:</span>
-                                                            {msg.searchStatus.scannedDomains.map((dom, dIdx) => (
-                                                                <span key={dIdx} className="scanned-domain-tag">{dom}</span>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ) : (
-                                                <div className="typing-dots-wrapper">
-                                                    <span className="dot"></span>
-                                                    <span className="dot"></span>
-                                                    <span className="dot"></span>
-                                                </div>
-                                            )
-                                        ) : (
-                                            <div className="msg-content-wrapper">
-                                                {msg.isStreaming && msg.searchStatus && (
-                                                    <div className="kivi-searching-card mini">
-                                                        <div className="searching-header">
-                                                            <span className="searching-radar-icon mini">
-                                                                <span className="radar-ping"></span>
-                                                                <span className="radar-core">🔍</span>
-                                                            </span>
-                                                            <span className="searching-title">{msg.searchStatus.message || 'Grounded in verified search resources'}</span>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                                <div
-                                                    className="msg-markdown-content"
-                                                    dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.text) }}
-                                                />
-                                                {msg.isStreaming && <span className="streaming-cursor" />}
-                                            </div>
-                                        )
-                                    ) : (
-                                        <p className="msg-text">
-                                            {msg.text}
-                                        </p>
-                                    )}
-
-                                    {/* Suggested Snippet Apply Card / In-Place Diff View */}
-                                    {msg.suggestedSnippet && typeof msg.suggestedSnippet === 'string' && msg.suggestedSnippet.trim() !== '' && msg.suggestedSnippet !== 'null' && (
-                                        <div className="suggested-snippet-card">
-                                            {msg.targetText ? (
-                                                <div className="snippet-diff-container">
-                                                    <div className="snippet-diff-item diff-original">
-                                                        <span className="diff-tag original">Original Line</span>
-                                                        <p className="diff-text">{msg.targetText}</p>
-                                                    </div>
-                                                    <div className="snippet-diff-divider">⬇ Improved ATS Version</div>
-                                                    <div className="snippet-diff-item diff-replacement">
-                                                        <span className="diff-tag updated">Suggested Update</span>
-                                                        <p className="diff-text">{msg.suggestedSnippet}</p>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div className="snippet-body">"{msg.suggestedSnippet}"</div>
-                                            )}
-
-                                            <div className="snippet-actions-row">
-                                                {isEditorPage ? (
-                                                    <button
-                                                        type="button"
-                                                        className={`apply-snippet-btn ${appliedMsgIds.has(msg.id) ? 'btn-applied' : msg.targetText ? 'btn-replace-target' : 'btn-insert-target'}`}
-                                                        onClick={() => handleApplySuggestedSnippet(msg.id, msg.suggestedSnippet, msg.targetText || null)}
-                                                        disabled={isAiBlocked || appliedMsgIds.has(msg.id)}
-                                                    >
-                                                        {isAiBlocked
-                                                            ? '❌ Disabled by Admin'
-                                                            : appliedMsgIds.has(msg.id)
-                                                                ? `✅ Applied to ${docTypeLabel}`
-                                                                : msg.targetText
-                                                                    ? `⚡ Replace in ${docTypeLabel}`
-                                                                    : `➕ Insert into ${docTypeLabel}`
-                                                        }
-                                                    </button>
-                                                ) : (
-                                                    <>
-                                                        <button
-                                                            type="button"
-                                                            className={`copy-snippet-btn ${copiedMsgId === msg.id ? 'is-copied' : ''}`}
-                                                            onClick={() => handleCopySnippet(msg.id, msg.suggestedSnippet)}
-                                                            title="Copy to clipboard"
-                                                        >
-                                                            {copiedMsgId === msg.id ? '✅ Copied to Clipboard!' : '📋 Copy Snippet'}
-                                                        </button>
-                                                        {currentReportId && (
-                                                            <button
-                                                                type="button"
-                                                                className="open-editor-link-btn"
-                                                                onClick={() => navigate(`/resume/${currentReportId}`)}
-                                                                title="Open Resume Studio to edit and apply"
-                                                            >
-                                                                📄 Open Resume Studio ↗
-                                                            </button>
-                                                        )}
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                            <ChatMessageBubble
+                                key={msg.id}
+                                msg={msg}
+                            />
                         ))}
                         <div ref={chatEndRef} />
                     </div>
 
-                    {/* Suggestion Pills Bar */}
-                    <div className="suggestion-pills-bar">
-                        <button 
-                            type="button" 
-                            className="suggestion-pill"
-                            onClick={() => handleSendChatMessage(null, 'Make the text snippet high impact with action verbs', 'enhance')}
+                    {/* Fast AI Action Presets */}
+                    <div className="suggestion-pills-bar drawer-quick-actions">
+                        <button
+                            type="button"
+                            className="suggestion-pill quick-action-chip"
+                            onClick={(e) => handleSendChatMessage(e, 'Make this bullet point ATS-friendly and impactful', 'make_ats')}
                             disabled={chatLoading || isAiBlocked}
+                            title="Format bullet points with strong action verbs & impact"
                         >
-                            ✨ Enhance Impact
+                            🎯 Make ATS-Friendly
                         </button>
-                        <button 
-                            type="button" 
-                            className="suggestion-pill"
-                            onClick={() => handleSendChatMessage(null, 'Shorten the text to 1 concise bullet point', 'shorten')}
+                        <button
+                            type="button"
+                            className="suggestion-pill quick-action-chip"
+                            onClick={(e) => handleSendChatMessage(e, 'Quantify with metrics, percentages and engineering scale', 'enhance')}
                             disabled={chatLoading || isAiBlocked}
+                            title="Add numbers, scale & measurable outcomes"
                         >
-                            📝 Shorten
+                            📈 Add Metrics & Scale
                         </button>
-                        <button 
-                            type="button" 
-                            className="suggestion-pill"
-                            onClick={() => handleSendChatMessage(null, 'Fix grammar and spelling', 'fix_grammar')}
+                        <button
+                            type="button"
+                            className="suggestion-pill quick-action-chip"
+                            onClick={(e) => handleSendChatMessage(e, 'Shorten to a crisp, high-impact single line', 'shorten')}
                             disabled={chatLoading || isAiBlocked}
+                            title="Make concise without losing key achievements"
                         >
-                            🔧 Fix Grammar
+                            ✂️ Shorten
                         </button>
-                        <button 
-                            type="button" 
-                            className="suggestion-pill"
-                            onClick={() => handleSendChatMessage(null, 'What is KIVI-AI Platform and how does it work?')}
+                        <button
+                            type="button"
+                            className="suggestion-pill quick-action-chip"
+                            onClick={(e) => handleSendChatMessage(e, 'Fix grammar, active voice, and professional phrasing', 'fix_grammar')}
                             disabled={chatLoading || isAiBlocked}
+                            title="Grammar & executive tone polish"
                         >
-                            💡 About Platform
+                            ✨ Polish Voice
                         </button>
                     </div>
 
-                    {/* Chat Input Form */}
-                    <form onSubmit={(e) => handleSendChatMessage(e)} className="chat-input-form">
+                    {/* Interactive Input Form */}
+                    <form className="chat-input-form drawer-input-form" onSubmit={(e) => handleSendChatMessage(e)}>
                         <input
                             type="text"
-                            className="chat-input-field"
+                            className="chat-input-field drawer-text-input"
+                            placeholder={selectedSnippet 
+                                ? `Instruct KIVI on highlighted text...` 
+                                : "Ask KIVI anything or request edits..."
+                            }
                             value={chatInput}
                             onChange={(e) => setChatInput(e.target.value)}
-                            placeholder={isAiBlocked ? "❌ AI Assistant Disabled by Admin" : (selectedSnippet ? "Ask KIVI about selection..." : "Ask KIVI anything...")}
                             disabled={chatLoading || isAiBlocked}
+                            autoFocus
                         />
                         <button 
                             type="submit" 
-                            className="chat-send-btn"
-                            disabled={chatLoading || isAiBlocked || (!chatInput.trim() && !selectedSnippet)}
+                            className="chat-send-btn drawer-send-btn"
+                            disabled={(!chatInput.trim() && !selectedSnippet) || chatLoading || isAiBlocked}
+                            title="Send prompt"
                         >
-                            🚀
+                            {chatLoading ? (
+                                <span className="send-spinner"></span>
+                            ) : (
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                </svg>
+                            )}
                         </button>
                     </form>
                 </div>

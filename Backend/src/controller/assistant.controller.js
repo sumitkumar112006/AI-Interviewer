@@ -9,7 +9,7 @@ async function chatAssistantController(req, res, next) {
     try {
         const userId = req.user?._id || req.user?.id;
         const userPlan = req.user?.plan || 'free';
-        const { reportId, message, selectedText, action, instruction, stream = true, activeTab = '', currentRoute = '' } = req.body;
+        const { reportId, message, selectedText, action, instruction, stream = true, activeTab = '', currentRoute = '', currentResumeHtml = '' } = req.body;
 
         if (!message && !selectedText && !instruction) {
             return res.status(400).json({ message: 'A prompt message, instruction, or highlighted snippet is required.' });
@@ -46,6 +46,7 @@ async function chatAssistantController(req, res, next) {
                     activeTab,
                     currentRoute,
                     userPlan,
+                    currentResumeHtml,
                     onStatus: (status) => {
                         if (!clientAborted) {
                             res.write(`data: ${JSON.stringify({ type: 'status', ...status })}\n\n`);
@@ -61,9 +62,11 @@ async function chatAssistantController(req, res, next) {
                 if (!clientAborted) {
                     res.write(`data: ${JSON.stringify({
                         type: 'done',
-                        reply: result.reply,
+                        reply: result.messageForUser || result.reply,
+                        messageForUser: result.messageForUser || result.reply,
+                        ResumeUpdations: result.ResumeUpdations !== undefined ? result.ResumeUpdations : (result.suggestedSnippet || false),
                         targetText: result.targetText || null,
-                        suggestedSnippet: result.suggestedSnippet,
+                        suggestedSnippet: result.suggestedSnippet || (result.ResumeUpdations !== false ? result.ResumeUpdations : null),
                         resources: result.resources,
                         profile: result.candidateProfile
                     })}\n\n`);
@@ -91,7 +94,8 @@ async function chatAssistantController(req, res, next) {
                 instruction,
                 activeTab,
                 currentRoute,
-                userPlan
+                userPlan,
+                currentResumeHtml
             });
 
             return res.status(200).json(result);

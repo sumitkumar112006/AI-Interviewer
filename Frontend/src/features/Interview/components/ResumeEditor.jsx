@@ -1,6 +1,6 @@
 import React, { useEffect, useImperativeHandle, forwardRef, useCallback, useState, useRef } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
-import { Extension } from '@tiptap/core'
+import { Extension, Mark, mergeAttributes } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
@@ -18,7 +18,70 @@ import {
     ExternalLink, Trash2, X, Search, Volume2, VolumeX, Play, Pause, Square, Sparkles,
     PaintRoller
 } from 'lucide-react'
+import { parseAndSanitizeSnippet } from '../utils/sanitizeResumeHtml'
 import '../style/editor.scss'
+
+// ── Custom TipTap Marks for Google Docs-style Diff Preview ───────────────────
+export const DiffDel = Mark.create({
+    name: 'diffDel',
+    addOptions() {
+        return {
+            HTMLAttributes: {
+                class: 'kivi-diff-del',
+            },
+        }
+    },
+    parseHTML() {
+        return [
+            { tag: 'del' },
+            { tag: 's.kivi-diff-del' },
+            { tag: 'span.kivi-diff-del' },
+            {
+                tag: 'span',
+                getAttrs: (element) => element.classList?.contains('kivi-diff-del') && null,
+            },
+            {
+                tag: 's',
+                getAttrs: (element) => element.classList?.contains('kivi-diff-del') && null,
+            },
+            {
+                tag: 'del',
+                getAttrs: (element) => element.classList?.contains('kivi-diff-del') && null,
+            },
+        ]
+    },
+    renderHTML({ HTMLAttributes }) {
+        return ['del', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0]
+    },
+})
+
+export const DiffIns = Mark.create({
+    name: 'diffIns',
+    addOptions() {
+        return {
+            HTMLAttributes: {
+                class: 'kivi-diff-ins',
+            },
+        }
+    },
+    parseHTML() {
+        return [
+            { tag: 'ins' },
+            { tag: 'span.kivi-diff-ins' },
+            {
+                tag: 'span',
+                getAttrs: (element) => element.classList?.contains('kivi-diff-ins') && null,
+            },
+            {
+                tag: 'ins',
+                getAttrs: (element) => element.classList?.contains('kivi-diff-ins') && null,
+            },
+        ]
+    },
+    renderHTML({ HTMLAttributes }) {
+        return ['ins', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0]
+    },
+})
 
 // ── Custom FontSize Extension for Tiptap ───────────────────────────────────
 export const FontSize = Extension.create({
@@ -261,6 +324,9 @@ const ResumeEditor = forwardRef(function ResumeEditor(
     const [lastTextColor, setLastTextColor] = useState('#1e293b')
     const [lastHighlightColor, setLastHighlightColor] = useState('#fef08a')
 
+    // ── Active AI Diff State ──────────────────────────────────────────────────
+    const [activeDiff, setActiveDiff] = useState(null)
+
     const editor = useEditor({
         extensions: [
             StarterKit.configure({
@@ -269,6 +335,8 @@ const ResumeEditor = forwardRef(function ResumeEditor(
                 orderedList: { keepMarks: true, keepAttributes: false },
             }),
             Underline,
+            DiffDel,
+            DiffIns,
             TextStyle,
             FontFamily.configure({
                 types: ['textStyle'],
@@ -343,6 +411,110 @@ const ResumeEditor = forwardRef(function ResumeEditor(
         },
     })
 
+    const handleAcceptDiff = useCallback(() => {
+        if (!activeDiff || !editor) return
+        const { mergedFullResumeHtml, newFullResumeHtml, replacementHtml, targetText, msgId } = activeDiff
+
+        const cleanMerged = mergedFullResumeHtml || newFullResumeHtml
+        if (cleanMerged && cleanMerged.length > 50) {
+            // Strip any residual diff tags to ensure pristine clean resume HTML
+            const strippedHtml = cleanMerged
+                .replace(/<del\b[^>]*>[\s\S]*?<\/del>/gi, '')
+                .replace(/<\/?ins\b[^>]*>/gi, '')
+                .replace(/class="kivi-diff-[^"]*"/gi, '')
+            editor.commands.setContent(strippedHtml, false)
+        } else if (targetText && replacementHtml) {
+            const cleanTarget = (targetText || '').trim()
+            const cleanReplacement = parseAndSanitizeSnippet(replacementHtml) || replacementHtml.trim()
+            const doc = editor.state.doc
+            const { charToPos, plainText } = buildDocTextIndex(doc)
+            const range = findTextRange(charToPos, plainText, cleanTarget)
+            if (range) {
+                editor.chain().focus().setTextSelection(range).insertContent(cleanReplacement).run()
+            } else {
+                editor.commands.insertContent(cleanReplacement)
+            }
+        } else if (replacementHtml) {
+            editor.commands.insertContent(replacementHtml)
+        } else {
+            // Fallback: clean current editor HTML by removing del and unwrapping ins
+            const curHtml = editor.getHTML()
+            const strippedHtml = curHtml
+                .replace(/<del\b[^>]*>[\s\S]*?<\/del>/gi, '')
+                .replace(/<\/?ins\b[^>]*>/gi, '')
+                .replace(/class="kivi-diff-[^"]*"/gi, '')
+            editor.commands.setContent(strippedHtml, false)
+        }
+
+        setActiveDiff(null)
+        onChange?.(editor.getHTML())
+
+        window.dispatchEvent(new CustomEvent('kivi-diff-status-change', {
+            detail: { status: 'accepted', msgId }
+        }))
+    }, [activeDiff, editor, onChange])
+
+    const handleRejectDiff = useCallback(() => {
+        if (!activeDiff || !editor) return
+        const { oldFullResumeHtml, oldDocumentHtml, msgId } = activeDiff
+
+        const restoreHtml = oldFullResumeHtml || oldDocumentHtml
+        if (restoreHtml && restoreHtml.length > 20) {
+            editor.commands.setContent(restoreHtml, false)
+            onChange?.(editor.getHTML())
+        } else {
+            // Fallback: strip ins tags and unwrap del tags from current editor
+            const curHtml = editor.getHTML()
+            const revertedHtml = curHtml
+                .replace(/<ins\b[^>]*>[\s\S]*?<\/ins>/gi, '')
+                .replace(/<\/?del\b[^>]*>/gi, '')
+                .replace(/class="kivi-diff-[^"]*"/gi, '')
+            editor.commands.setContent(revertedHtml, false)
+            onChange?.(editor.getHTML())
+        }
+
+        setActiveDiff(null)
+        window.dispatchEvent(new CustomEvent('kivi-diff-status-change', {
+            detail: { status: 'rejected', msgId }
+        }))
+    }, [activeDiff, editor, onChange])
+
+    const showDiff = useCallback((diffData) => {
+        if (!diffData || !editor) return
+
+        const currentDocHtml = editor.getHTML()
+        const payload = {
+            ...diffData,
+            oldFullResumeHtml: diffData.oldFullResumeHtml || diffData.oldDocumentHtml || currentDocHtml
+        }
+        setActiveDiff(payload)
+
+        // 1. If diffPreviewHtml is provided (with <del class="kivi-diff-del"> and <ins class="kivi-diff-ins">), apply directly
+        if (diffData.diffPreviewHtml && diffData.diffPreviewHtml.length > 20) {
+            editor.commands.setContent(diffData.diffPreviewHtml, false)
+        } else if (diffData.targetText && diffData.replacementHtml) {
+            // 2. Fallback: locate target text and replace with inline del + ins
+            const cleanTarget = (diffData.targetText || '').trim()
+            const cleanReplacement = parseAndSanitizeSnippet(diffData.replacementHtml) || diffData.replacementHtml.trim()
+            const doc = editor.state.doc
+            const { charToPos, plainText } = buildDocTextIndex(doc)
+            const range = findTextRange(charToPos, plainText, cleanTarget)
+            if (range) {
+                const targetMatchedText = plainText.slice(plainText.indexOf(cleanTarget), plainText.indexOf(cleanTarget) + cleanTarget.length) || cleanTarget
+                const diffSnippet = `<del class="kivi-diff-del">${targetMatchedText}</del> <ins class="kivi-diff-ins">${cleanReplacement}</ins>`
+                editor.chain().focus().setTextSelection(range).insertContent(diffSnippet).run()
+            }
+        }
+
+        // 3. Smooth scroll to the diff element
+        setTimeout(() => {
+            const diffNode = document.querySelector('.kivi-diff-del, .kivi-diff-ins, .kivi-floating-diff-banner')
+            if (diffNode) {
+                diffNode.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            }
+        }, 60)
+    }, [editor])
+
     // When initialHtml changes externally, update editor content
     useEffect(() => {
         if (editor && initialHtml) {
@@ -357,59 +529,48 @@ const ResumeEditor = forwardRef(function ResumeEditor(
     useImperativeHandle(ref, () => ({
         getHtml: () => editor?.getHTML() ?? '',
         setContent: (html) => editor?.commands.setContent(html, false),
-        insertContent: (html) => editor?.commands.insertContent(html),
+        insertContent: (html) => {
+            const clean = parseAndSanitizeSnippet(html) || html
+            return editor?.commands.insertContent(clean)
+        },
         focus: () => editor?.commands.focus(),
         isEmpty: () => editor?.isEmpty ?? true,
         isFocused: () => editor?.isFocused ?? false,
         getLastSelection: () => lastSelectionRef.current,
+        showDiff,
+        acceptDiff: handleAcceptDiff,
+        rejectDiff: handleRejectDiff,
+        getActiveDiff: () => activeDiff,
         replaceExactText: (targetText, replacementText) => {
             if (!editor || !replacementText) return false
 
-            const cleanTarget = (targetText || '').trim()
-            const cleanReplacement = replacementText.trim()
+            let cleanTarget = (targetText || '').trim()
+            let cleanReplacement = parseAndSanitizeSnippet(replacementText) || replacementText.trim()
+
+            // Regex to detect standard resume section headers at start of replacement HTML/text
+            const LEADING_HEADING_REGEX = /^(?:<h[1-6][^>]*>|<p[^>]*>(?:<strong>|\*\*|###?\s*)?)\s*(Summary|Professional Summary|Executive Summary|Technical Skills|Skills|Core Competencies|Experience|Work Experience|Employment History|Education|Projects|Certifications|Achievements)\s*(?:<\/strong>|\*\*|:)?\s*(?:<\/p>|<\/h[1-6]>)\s*/i
+
+            // If replacement starts with a section heading (e.g. <h3>Summary</h3> or <p>Summary</p>)
+            // but cleanTarget does NOT contain that heading title, strip the leading heading so we don't insert a duplicate heading!
+            const leadingMatch = cleanReplacement.match(LEADING_HEADING_REGEX)
+            if (leadingMatch) {
+                const headingTitle = leadingMatch[1].toLowerCase()
+                const targetHasHeading = cleanTarget.toLowerCase().includes(headingTitle)
+                if (!targetHasHeading) {
+                    const withoutHeading = cleanReplacement.replace(LEADING_HEADING_REGEX, '').trim()
+                    if (withoutHeading.length > 5) {
+                        cleanReplacement = withoutHeading
+                    }
+                }
+            }
 
             // Prepare stripped versions (strip leading bullet markers or numbers)
             const strippedTarget = cleanTarget.replace(/^[•\-\*\d\.]+\s*/, '').trim()
             const strippedReplacement = cleanReplacement.replace(/^[•\-\*\d\.]+\s*/, '').trim()
 
-            // Candidate targets to search for, ordered from exact to stripped
-            const targetsToTry = [cleanTarget, strippedTarget].filter(Boolean)
+            const targetsToTry = [cleanTarget, strippedTarget].filter(t => t && t.length >= 2)
 
-            // 1. Check if user has an active/saved selection that matches targetText or non-empty
-            if (lastSelectionRef.current && lastSelectionRef.current.from < lastSelectionRef.current.to) {
-                const { from, to } = lastSelectionRef.current
-                const docSize = editor.state.doc.content.size
-                if (from <= docSize && to <= docSize) {
-                    const textAtSel = editor.state.doc.textBetween(from, to, ' ').trim()
-                    const textAtSelNorm = textAtSel.replace(/[\u00a0\s]+/g, ' ')
-                    const cleanTargetNorm = cleanTarget.replace(/[\u00a0\s]+/g, ' ')
-                    const strippedTargetNorm = strippedTarget.replace(/[\u00a0\s]+/g, ' ')
-
-                    const isMatch = !cleanTarget ||
-                        textAtSelNorm === cleanTargetNorm ||
-                        textAtSelNorm === strippedTargetNorm ||
-                        textAtSelNorm.includes(cleanTargetNorm) ||
-                        cleanTargetNorm.includes(textAtSelNorm) ||
-                        textAtSelNorm.includes(strippedTargetNorm)
-
-                    if (isMatch) {
-                        const $pos = editor.state.doc.resolve(from)
-                        const isInsideList = $pos.parent.type.name === 'listItem' ||
-                            $pos.node(-1)?.type.name === 'listItem' ||
-                            $pos.node(-2)?.type.name === 'listItem'
-                        const rep = (isInsideList || (strippedTarget && cleanReplacement.startsWith('•')))
-                            ? strippedReplacement
-                            : cleanReplacement
-
-                        editor.chain().focus().setTextSelection({ from, to }).insertContent(rep).run()
-                        lastSelectionRef.current = null
-                        onChange?.(editor.getHTML())
-                        return true
-                    }
-                }
-            }
-
-            // 2. Search across the ProseMirror doc by mapping character indices (immune to inline marks)
+            // 1. PRIMARY SEARCH: Search across the ProseMirror doc by character index (immune to marks)
             const doc = editor.state.doc
             const { charToPos, plainText } = buildDocTextIndex(doc)
 
@@ -434,16 +595,54 @@ const ResumeEditor = forwardRef(function ResumeEditor(
                 }
             }
 
-            // 3. Textblock fallback (matches whole paragraph / heading / list item content)
+            // 2. SECONDARY SEARCH: Match user's active/saved selection ONLY IF it genuinely matches targetText
+            if (lastSelectionRef.current && lastSelectionRef.current.from < lastSelectionRef.current.to) {
+                const { from, to } = lastSelectionRef.current
+                const docSize = editor.state.doc.content.size
+                if (from <= docSize && to <= docSize) {
+                    const textAtSel = editor.state.doc.textBetween(from, to, ' ').trim()
+                    const textAtSelNorm = textAtSel.replace(/[\u00a0\s]+/g, ' ').toLowerCase()
+                    const cleanTargetNorm = cleanTarget.replace(/[\u00a0\s]+/g, ' ').toLowerCase()
+                    const strippedTargetNorm = strippedTarget.replace(/[\u00a0\s]+/g, ' ').toLowerCase()
+
+                    const isGenuineMatch = (cleanTargetNorm && (
+                        textAtSelNorm === cleanTargetNorm ||
+                        textAtSelNorm === strippedTargetNorm ||
+                        (textAtSelNorm.length >= 10 && textAtSelNorm.includes(cleanTargetNorm)) ||
+                        (cleanTargetNorm.length >= 10 && cleanTargetNorm.includes(textAtSelNorm) && textAtSelNorm.length / cleanTargetNorm.length >= 0.75)
+                    ))
+
+                    if (isGenuineMatch) {
+                        const $pos = editor.state.doc.resolve(from)
+                        const isInsideList = $pos.parent.type.name === 'listItem' ||
+                            $pos.node(-1)?.type.name === 'listItem' ||
+                            $pos.node(-2)?.type.name === 'listItem'
+                        const rep = (isInsideList || (strippedTarget && cleanReplacement.startsWith('•')))
+                            ? strippedReplacement
+                            : cleanReplacement
+
+                        editor.chain().focus().setTextSelection({ from, to }).insertContent(rep).run()
+                        lastSelectionRef.current = null
+                        onChange?.(editor.getHTML())
+                        return true
+                    }
+                }
+            }
+
+            // 3. TERTIARY SEARCH: Textblock fallback (matches whole paragraph / heading / list item content)
             if (targetsToTry.length > 0) {
                 let textblockMatch = null
                 doc.descendants((node, pos) => {
                     if (textblockMatch) return false
                     if (node.isTextblock && node.textContent.trim()) {
-                        const blockText = node.textContent.trim().replace(/[\u00a0\s]+/g, ' ')
+                        const blockText = node.textContent.trim().replace(/[\u00a0\s]+/g, ' ').toLowerCase()
                         for (const t of targetsToTry) {
-                            const normT = t.replace(/[\u00a0\s]+/g, ' ')
-                            if (blockText === normT || blockText.includes(normT) || normT.includes(blockText)) {
+                            const normT = t.replace(/[\u00a0\s]+/g, ' ').toLowerCase()
+                            if (
+                                blockText === normT ||
+                                blockText.includes(normT) ||
+                                (normT.includes(blockText) && blockText.length >= 15 && blockText.length / normT.length >= 0.75)
+                            ) {
                                 textblockMatch = {
                                     from: pos + 1,
                                     to: pos + node.nodeSize - 1,
@@ -472,7 +671,7 @@ const ResumeEditor = forwardRef(function ResumeEditor(
                 }
             }
 
-            // 4. Safe HTML replacement fallback (for complex spans or entities)
+            // 4. QUATERNARY SEARCH: Safe HTML replacement fallback (for complex spans or entities)
             if (targetsToTry.length > 0) {
                 const currentHtml = editor.getHTML()
                 for (const t of targetsToTry) {
@@ -598,20 +797,31 @@ const ResumeEditor = forwardRef(function ResumeEditor(
         if (!editor) return
         const { from, to } = editor.state.selection
         const selectedText = editor.state.doc.textBetween(from, to, ' ')
-        const existingHref = editor.getAttributes('link').href || ''
+        const rawHref = editor.getAttributes('link').href || ''
+        const cleanHref = rawHref
+            .replace(/^[\s\\"']+|[\s\\"']+$/g, '')
+            .replace(/\\"/g, '')
+            .replace(/\\'/g, '')
+            .replace(/\\\\/g, '')
+            .trim()
 
         setLinkPopover({
             isOpen: true,
             text: selectedText || '',
-            url: existingHref || '',
-            isExisting: Boolean(existingHref),
+            url: cleanHref || '',
+            isExisting: Boolean(rawHref),
         })
     }, [editor])
 
     const handleApplyLink = useCallback((e) => {
         e?.preventDefault()
         if (!editor) return
-        let targetUrl = linkPopover.url.trim()
+        let targetUrl = (linkPopover.url || '')
+            .replace(/^[\s\\"']+|[\s\\"']+$/g, '')
+            .replace(/\\"/g, '')
+            .replace(/\\'/g, '')
+            .replace(/\\\\/g, '')
+            .trim()
         
         if (!targetUrl) {
             editor.chain().focus().extendMarkRange('link').unsetLink().run()
@@ -1286,19 +1496,28 @@ const ResumeEditor = forwardRef(function ResumeEditor(
                                     </div>
                                 </div>
 
-                                {linkPopover.url && (
-                                    <div className="link-preview-row">
-                                        <a
-                                            href={/^https?:\/\//i.test(linkPopover.url) ? linkPopover.url : `https://${linkPopover.url}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="preview-anchor"
-                                        >
-                                            <ExternalLink size={12} />
-                                            <span>{linkPopover.url}</span>
-                                        </a>
-                                    </div>
-                                )}
+                                {linkPopover.url && (() => {
+                                    const cleanUrl = linkPopover.url
+                                        .replace(/^[\s\\"']+|[\s\\"']+$/g, '')
+                                        .replace(/\\"/g, '')
+                                        .replace(/\\'/g, '')
+                                        .replace(/\\\\/g, '')
+                                        .trim()
+                                    const hrefUrl = /^https?:\/\//i.test(cleanUrl) ? cleanUrl : `https://${cleanUrl}`
+                                    return (
+                                        <div className="link-preview-row">
+                                            <a
+                                                href={hrefUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="preview-anchor"
+                                            >
+                                                <ExternalLink size={12} />
+                                                <span>{cleanUrl}</span>
+                                            </a>
+                                        </div>
+                                    )
+                                })()}
 
                                 <div className="link-popover-actions">
                                     {linkPopover.isExisting && (
@@ -1490,6 +1709,38 @@ const ResumeEditor = forwardRef(function ResumeEditor(
                             title="Close player panel (audio continues in background)"
                         >
                             <X size={13} />
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Floating AI Diff Accept / Reject Banner ── */}
+            {activeDiff && (
+                <div className="kivi-floating-diff-banner">
+                    <div className="diff-banner-left">
+                        <Sparkles size={14} className="diff-sparkle-icon" />
+                        <span className="diff-banner-title">
+                            {activeDiff.sectionName ? `AI Suggested: ${activeDiff.sectionName}` : 'AI Suggested Resume Update'}
+                        </span>
+                    </div>
+                    <div className="diff-banner-actions">
+                        <button
+                            type="button"
+                            className="diff-reject-btn"
+                            onClick={handleRejectDiff}
+                            title="Reject and keep current content"
+                        >
+                            <X size={14} />
+                            <span>Reject</span>
+                        </button>
+                        <button
+                            type="button"
+                            className="diff-accept-btn"
+                            onClick={handleAcceptDiff}
+                            title="Accept and apply change to resume"
+                        >
+                            <Check size={14} />
+                            <span>Accept</span>
                         </button>
                     </div>
                 </div>

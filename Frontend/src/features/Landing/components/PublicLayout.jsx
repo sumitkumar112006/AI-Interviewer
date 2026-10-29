@@ -3,6 +3,7 @@ import { Link, Outlet } from 'react-router-dom';
 import { ArrowRight, Sun, Moon, Sparkles } from 'lucide-react';
 import Footer from '../../Footer/components/Footer';
 import '../landing.scss';
+import '../publicLayout.scss';
 
 const PublicLayout = ({ children }) => {
   const [theme, setTheme] = useState(() => {
@@ -32,7 +33,6 @@ const PublicLayout = ({ children }) => {
             <ul className="nav-links">
               <li><Link to="/#features">Features</Link></li>
               <li><Link to="/#workflow">How It Works</Link></li>
-              <li><Link to="/pricing">Pricing</Link></li>
               <li><Link to="/about-us">About Us</Link></li>
               <li><Link to="/contact-us">Contact</Link></li>
             </ul>

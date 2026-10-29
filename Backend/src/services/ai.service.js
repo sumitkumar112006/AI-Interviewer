@@ -412,12 +412,24 @@ function extractResumeHtmlContent(value) {
     return ""
 }
 
+function cleanHtmlLinks(html) {
+    if (!html || typeof html !== "string") return ""
+    return html
+        // Clean corrupted hrefs like href="\"https://...\"" or href='\"https://...\'
+        .replace(/href\s*=\s*(["'])[\\]*["']?([^"'>\\]+)[\\]*["']?\1/gi, 'href="$2"')
+        .replace(/href\s*=\s*"\\+"([^"]+)\\+""/gi, 'href="$1"')
+        .replace(/href\s*=\s*"\\+([^"]+)"/gi, 'href="$1"')
+        .replace(/href\s*=\s*"([^"]+)\\+"/gi, 'href="$1"')
+}
+
 function normalizeResumeHtmlDocument(htmlContent) {
-    const normalizedHtml = String(htmlContent ?? "").trim()
+    let normalizedHtml = String(htmlContent ?? "").trim()
 
     if (!normalizedHtml) {
         throw new Error("Resume PDF generation returned empty HTML content.")
     }
+
+    normalizedHtml = cleanHtmlLinks(normalizedHtml)
 
     if (/<html[\s>]/i.test(normalizedHtml)) {
         return normalizedHtml
@@ -440,10 +452,45 @@ function normalizeResumeHtmlDocument(htmlContent) {
             padding: 12mm 16mm;
             box-sizing: border-box;
             font-family: 'Calibri', 'Arial', sans-serif;
-            color: #111827;
+            color: #1a1a1a;
             background: #ffffff;
-            line-height: 1.4;
+            line-height: 1.05;
             -webkit-print-color-adjust: exact;
+        }
+        h1 {
+            font-size: 18pt;
+            font-weight: 700;
+            line-height: 1.1;
+            margin: 0 0 0.1em;
+            text-align: center;
+            color: #0f172a;
+        }
+        h2 {
+            font-size: 11pt;
+            font-weight: 700;
+            line-height: 1.15;
+            margin: 0.42em 0 0.14em;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #0f3d68;
+            border-bottom: 2px solid #0f3d68;
+            padding-bottom: 0.08em;
+        }
+        h3 {
+            font-size: 10pt;
+            font-weight: 700;
+            line-height: 1.15;
+            margin: 0.28em 0 0.05em;
+            color: #1a1a1a;
+        }
+        p {
+            margin: 0 0 0.1em;
+            line-height: 1.05;
+            color: #1a1a1a;
+        }
+        a {
+            color: #0f3d68;
+            text-decoration: underline;
         }
         li, ul, ol, p, h1, h2, h3, h4, section, .section, .experience-item, .project-item {
             page-break-inside: avoid !important;
@@ -455,11 +502,13 @@ function normalizeResumeHtmlDocument(htmlContent) {
         }
         ul, ol {
             padding-left: 1.25rem;
-            margin-top: 0.25rem;
-            margin-bottom: 0.5rem;
+            margin-top: 0.05rem;
+            margin-bottom: 0.15rem;
         }
         li {
-            margin-bottom: 0.35rem;
+            margin-bottom: 0.04rem;
+            line-height: 1.05;
+            color: #1a1a1a;
         }
     </style>
 </head>
@@ -468,6 +517,9 @@ ${normalizedHtml}
 </body>
 </html>`
 }
+
+const { extractSkillsFromResumeHtml } = require('./skills.service');
+
 
 function normalizeInterviewReport(rawReport) {
     const rawPlan = normalizeObjectArray(rawReport?.preparationPlan ?? rawReport?.plan);
@@ -879,7 +931,7 @@ async function generateInterviewReport({
     const candidateSummary = selfDescription ?? selfDescribe
     const roleDescription = jobDescription ?? jobDescribe
 
-    const systemPrompt = `You are an expert AI interview coach, You have 10+ years of experience as HR Manager in IT industry.You MUST respond ONLY with valid JSON — no markdown, no explanation, no commentary. Never wrap the JSON in code fences.`
+    const systemPrompt = `You are an expert AI interview coach, You have 10+ years of experience as HR Manager in IT/Management/Medical industry.You MUST respond ONLY with valid JSON — no markdown, no explanation, no commentary. Never wrap the JSON in code fences.`
 
     const userPrompt = `
 Generate an interview report in valid JSON only.
@@ -991,75 +1043,116 @@ Job Description: ${roleDescription}
 
 
 async function generateResumeHtml({ resume, selfDescription, jobDescription, plan = "free" }) {
-    const systemPrompt = `You are an expert resume writer. You MUST respond ONLY with valid JSON — no markdown, no explanation. The JSON must have exactly one key: "html", whose value is a complete HTML string for a professional resume. Never wrap the JSON in code fences.`
+    const systemPrompt = `You are an expert resume writer and ATS optimization specialist. You MUST respond ONLY with valid JSON — no markdown code fences, no commentary. The JSON must have exactly two top-level keys:
+1. "html": a complete HTML string for a professional, single-column A4 resume. Always use your strong reasoning and capabilities to generate ATS-optimized resume content matching key points from the Job Description with proof of work in project bullets and experience sections.
+2. "skills": a clean array of strings containing all key technical skills, programming languages, frameworks, databases, cloud platforms, and developer tools derived for the candidate's resume (e.g. ["JavaScript", "TypeScript", "React", "Node.js", "Docker", "AWS", "PostgreSQL", "REST APIs", "Git"]).`
 
     const userPrompt = `
-Generate a professional one-two page resume in valid JSON only.
+Generate a professional, modern, ATS-optimized resume in valid JSON only.
 
-Rules:
-- ATS Keyword & Skill Optimization: Deeply analyze the provided Job Description for target skills, technologies, frameworks, and domain keywords. Match and emphasize the candidate's verified skills, technologies, and achievements that align with the target role. Highlight transferable technical competencies and relevant project/experience evidence provided by the candidate. Do NOT fabricate unverified degrees, companies, certifications, or false work experience that the candidate did not provide.
-- Use exactly one top-level key: "html".
-- The "html" value must be a string.
-- The string must contain complete printable HTML for an A4 resume.
-- Do not return markdown fences.
-- Do not return undefined or null.
-- Do not feel like AI generated content. Write like a human creating a resume.
-- Focus on clarity, professionalism, and relevance to the job description.
-- Use the candidate details to create a tailored resume that highlights strengths and fits the target role.
-- Resume should be ATS friendly it should rank in ATS systems and also visually appealing for human recruiters.
-- Resume should be concise and ideally fit in one-two page when converted to PDF.
-- If any link assosiated with any Word in resume that make use extract link and add them carfully with new resume with same name. (eg:-Portfolio, Linkedin, Github, Preview, etc.) 
-Generate a complete, self-contained HTML document for a 1 to 2 page A4 resume, single-column, ATS-friendly, styled clean and professional.
+JSON STRUCTURE:
+{
+  "html": "<!DOCTYPE html><html lang=\\"en\\"><head><meta charset=\\"utf-8\\"/><style>...</style></head><body>...</body></html>",
+  "skills": ["JavaScript", "TypeScript", "React", "Node.js", "Docker", "AWS", "PostgreSQL", "REST APIs", "Git"]
+}
 
-SETUP
-- Full doc: <!DOCTYPE html> to </html>. One <style> block in <head>. No external CSS/fonts/images/JS.
-- Font: 'Calibri', 'Arial', sans-serif. Body #1a1a1a on white, 11 to 12pt, line-height 1.35.
-- @page { size: A4; margin: 12mm 16mm; } body { margin:0; width:210mm; }
+SEQUENCE & SECTION ARCHITECTURE:
+Follow this exact standard hierarchy for all sections present in the source data.
+If any optional section (e.g. Projects, Certifications, Achievements, Profile) is NOT present or cannot be legitimately derived from candidate input, COMPLETELY OMIT that section heading.
 
-HEADER
-- Name (h1, 20 to 22pt bold) → title line (11pt, gray) → contact line (location | phone | email, 9pt) → links line (GitHub | LinkedIn | Portfolio as real <a> tags, one accent color e.g. navy #1a3a6b) → thin gray rule.
+1. HEADER (Centered):
+   - Candidate Full Name in <h1>
+   - Contact bar in <p> with phone, email, portfolio, github, linkedin links:
+     <h1 style="text-align: center;">CANDIDATE FULL NAME</h1>
+     <p style="text-align: center;">+1 (555) 000-0000 | <a href="mailto:email@example.com">email@example.com</a> | <a href="...">portfolio</a> | <a href="...">github</a> | <a href="...">linkedin</a></p>
 
-SECTIONS (in order)
-Summary → Technical Skills → Soft Skills → Experience → Projects → Achievements → Education.
-- h2 for section titles: uppercase, 11 to 12pt bold, bottom border, accent or near-black.
-- Every section and entry block MUST have style="page-break-inside: avoid; break-inside: avoid;".
+2. <h2>PROFILE</h2> (Optional, Max 2 lines):
+   - Concise, high-impact summary tailored to target role. Omit if no profile or summary is inferrable.
 
-CONTENT RULES
-- Summary: one dense <p>, 3 to 4 lines.
-- Skills: "<strong>Category:</strong> items" per line, tight spacing.
-- Soft Skills: one comma-separated line.
-- Experience/Projects: h3 title + dates/stack right-aligned or inline; 2 to 4 real <ul><li> bullets, action-verb-led; links (Live/GitHub) below in small text.
-- BULLET LENGTH & ORPHAN RULE: Each <li> bullet must fit within 1 or 2 complete text lines (approx 12-14 words per line). Never leave a single orphaned word wrapping onto a new line or across pages.
-- Achievements: flat bullet list.
-- Education: degree + institution one line, graduation date aligned right.
-- Never invent facts, metrics, dates, or employers not in source data.
+3. <h2>EDUCATION</h2>:
+   - University/Institution with location floated right:
+     <p><strong>University Name</strong> <span style="float: right;">City, Country</span></p>
+     <p><em>Bachelor of Technology / Degree in Major</em> <span style="float: right;">2020 – 2024</span></p>
+   - Optional <ul><li> relevant coursework / honors bullets if applicable.
 
-LAYOUT / ATS SAFETY & PAGINATION
-- Strict single column, no floats/multi-column/tables-for-layout, no fixed/absolute positioning, no animations/gradients/icon fonts.
-- Real semantic h1/h2/h3/ul/li only — never typed "•" in a <p>.
-- One accent color max; everything else near-black/gray.
-- STRICT PAGE BOUNDARY RULE: All <li>, <p>, <h2>, <h3>, and section block wrappers MUST specify page-break-inside: avoid !important; break-inside: avoid !important;. Never split or cut a bullet point across a page line.
-- If content extends onto Page 2, insert an explicit clean section page break (<div style="page-break-before: always; break-before: page; margin-top: 1.5rem;"></div>) before a major section (e.g. before PROJECTS or EDUCATION) so Page 2 starts cleanly at the top with a fresh header instead of splitting a bullet list mid-way.
-- If content overflows 2 pages: tighten spacing first, then trim oldest/least relevant bullets — never cut contact info or most recent role.
+4. <h2>SKILLS</h2>:
+   - Categorized compact bullet points or lines:
+     <ul>
+       <li><strong>Technical:</strong> SQL, Python, JavaScript, TypeScript, React, Node.js, REST APIs</li>
+       <li><strong>Tools & Platforms:</strong> AWS (S3, EC2), Docker, Git, CI/CD, MongoDB, PostgreSQL, Redis</li>
+     </ul>
+
+5. <h2>CERTIFICATIONS</h2> (Optional):
+   - Only include if present in candidate input (can also be merged into Skills). Omit if none provided.
+   - Format: <ul><li>Certification Name – Issuing Body (Date) (<a href="...">link</a>)</li></ul>
+
+6. <h2>EXPERIENCE</h2>:
+   - Company Name with location on right:
+     <p><strong>Company Name</strong> <span style="float: right;">City, Country</span></p>
+     <h3><strong>Job Title / Role</strong> <span style="float: right;">Start Date – Present / End Date</span></h3>
+   - 3 to 5 high-impact bullet points (<ul><li>...</li></ul>) starting with strong action verbs & quantifiable metrics (%, $, latency, scale, volume).
+
+7. <h2>PROJECTS</h2> (Optional & Prioritized):
+   - Format:
+     <h3><strong>Project Name</strong> <span style="float: right;">Date Range | <a href="...">Live Demo / GitHub</a></span></h3>
+     <ul>
+       <li>What and how solved: Core problem statement & architecture.</li>
+       <li>Tools & frameworks: Technical stack used in development.</li>
+       <li>Result & Impact: Measurable performance improvement, scale, or metrics.</li>
+     </ul>
+   - PROJECT SELECTION & PRIORITIZATION RULES:
+     * If candidate provided multiple projects, prioritize the 2 to 3 strongest projects.
+     * Prioritize based on: (a) relevance to target job description & skills, (b) presence of live links/GitHub repositories, (c) technical depth & measurable impact.
+     * DO NOT dump low-value or irrelevant projects.
+   - NEGATIVE CONSTRAINT: If given resume and self-description contain NO projects, DO NOT hallucinate or invent fake projects. Completely OMIT the <h2>PROJECTS</h2> section.
+
+8. <h2>ACHIEVEMENTS</h2> (Optional, Max 2-3 points):
+   - Competitions, hackathons, open source contributions, coding ranks. Omit if none provided.
+
+CRITICAL FORMATTING & ATS RULES:
+1. SEMANTIC HTML & TIPTAP COMPATIBILITY:
+   - Use clean semantic HTML tags: <h1>, <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>, <a>, <hr>.
+   - Bullet Points: ALWAYS use <ul><li>...</li></ul> with strong action verbs (Architected, Engineered, Spearheaded, Optimized, Streamlined). NEVER type raw bullet symbols like "•", "*", or "-" inside <p> tags.
+   - Line height: 1.05 with compact margins.
+   - Every <li>, <p>, <h2>, <h3> MUST have break-inside: avoid !important;.
+
+2. STRICT NEGATIVE CONSTRAINTS (MANDATORY):
+   - NEVER output coaching notes, critique questions, or template placeholders (e.g. NEVER write "[Question: ...]", "[Insert metric]", "[Action Required]", "[Explain X]", "[How much did this...]", or any bracketed text like "[...]").
+   - Every single bullet point must be a finalized, polished, quantifiable accomplishment ready for an executive recruiter.
+   - Do NOT fabricate fake degrees or unverified companies.
+   - Do NOT invent fake URLs. If a valid link is not provided in source data, use plain text to say "Not Available".
+   - Never wrap URLs in escaped quotes like href="\"https://...\"" or backslashes. Output standard URLs: <a href="https://github.com/...">GitHub</a>.
+
+3. ATS KEYWORD & JOB ALIGNMENT:
+   - Deeply analyze the provided Job Description for target skills, technologies, frameworks, and domain keywords, Role based keywords skills and try to add them with proper proof you can show them in their projects if possible.
+   - Match and highlight transferable technical competencies and relevant project/experience evidence provided by the candidate.
+
+4. VERIFIED HYPERLINKS & ANCHOR ASSOCIATION (MANDATORY):
+   - When the resume contains a "VERIFIED RESUME HYPERLINKS" section, you MUST embed those EXACT URLs into the resume HTML:
+     * Header contact bar: <a href="[GitHub URL]">GitHub</a> | <a href="[LinkedIn URL]">LinkedIn</a> | <a href="[Portfolio URL]">Portfolio</a> | <a href="mailto:[Email]">[Email]</a>
+     * Project headers: Embed the live demo or code repository link associated with that specific project:
+       <h3><strong>[Project Name]</strong> <span style="float: right;">[Date Range] | <a href="[Verified Project URL]">Live Demo</a></span></h3>
+   - Strictly associate each URL with the entity/anchor indicated in the verified links.
 
 Candidate details:
-Resume: ${resume}
-Self Description: ${selfDescription}
-Job Description: ${jobDescription}
-- Return only valid JSON.
-- Do not add fake or unreal information, Knowledge, or data which is not present in the resume, self description or job description.
-- If the Resume Data is less or incomplete and the Job description requires more information then the Job description should guide the resume html to be generated, it should align with the job description.
-- Do not use fake hyper links for email address, github, linkedin.
-- Every link should be varified and real in you are not able to verify then leave it blank.
+Resume: ${resume || 'None provided'}
+Self Description: ${selfDescription || 'None provided'}
+Job Description: ${jobDescription || 'None provided'}
 `
 
     const rawText = await callGroq(systemPrompt, userPrompt, plan)
     const jsonText = extractJsonFromText(rawText)
 
     let htmlContent = ""
+    let extractedSkills = []
     try {
         const jsonContent = JSON.parse(jsonText)
         htmlContent = extractResumeHtmlContent(jsonContent)
+        if (Array.isArray(jsonContent.skills)) {
+            extractedSkills = jsonContent.skills
+                .map(s => typeof s === 'string' ? s.trim() : (s?.name ? String(s.name).trim() : ''))
+                .filter(Boolean)
+        }
     } catch (parseError) {
         console.warn("[AI] JSON parsing failed in generateResumeHtml. Falling back to direct HTML extraction. Error:", parseError.message)
         const htmlMatch = rawText.match(/<!DOCTYPE html>[\s\S]*<\/html>/i) ||
@@ -1074,13 +1167,36 @@ Job Description: ${jobDescription}
         }
     }
 
-    console.log(htmlContent);
-    return normalizeResumeHtmlDocument(htmlContent)
+    const normalizedHtml = normalizeResumeHtmlDocument(htmlContent)
+
+    // Fallback: If LLM did not return skills array, extract them directly from the normalized HTML
+    if (!extractedSkills || extractedSkills.length === 0) {
+        extractedSkills = extractSkillsFromResumeHtml(normalizedHtml)
+    }
+
+    // Deduplicate case-insensitively
+    const uniqueSkills = []
+    const seenLower = new Set()
+    for (const sk of extractedSkills) {
+        const lower = sk.toLowerCase().trim()
+        if (lower && !seenLower.has(lower)) {
+            seenLower.add(lower)
+            uniqueSkills.push(sk.trim())
+        }
+    }
+
+    const result = {
+        html: normalizedHtml,
+        skills: uniqueSkills,
+        toString() { return this.html; }
+    }
+
+    return result
 }
 
 async function generateResumePfd({ resume, selfDescription, jobDescription }) {
-    const normalizedHtmlDocument = await generateResumeHtml({ resume, selfDescription, jobDescription })
-    return normalizedHtmlDocument
+    const res = await generateResumeHtml({ resume, selfDescription, jobDescription })
+    return typeof res === 'object' && res?.html ? res.html : res
 }
 
 
@@ -1189,90 +1305,55 @@ function stripHtmlToCleanText(html = '') {
 /**
  * AI Resume Chat Copilot & Section Rewriter
  */
-async function rewriteResumeSection({ selectedText = "", instruction = "", action = "enhance", message = "", plan = "free", currentResumeHtml = "" }) {
+async function rewriteResumeSection({ selectedText = "", instruction = "", action = "enhance", message = "", plan = "free", currentResumeHtml = "", jobDescription = "", jobRole = "" }) {
     const promptText = message.trim() || instruction.trim();
-    const lowerPrompt = promptText.toLowerCase();
 
-    // Detect if user is asking about the project, platform, jobs, or general info
-    const isAskingAboutProject = (
-        lowerPrompt.includes("about project") ||
-        lowerPrompt.includes("about app") ||
-        lowerPrompt.includes("about application") ||
-        lowerPrompt.includes("what is this") ||
-        lowerPrompt.includes("how this project works") ||
-        lowerPrompt.includes("how to use") ||
-        lowerPrompt.includes("what can you do") ||
-        lowerPrompt.includes("features of this app") ||
-        lowerPrompt.includes("kivi-ai") ||
-        lowerPrompt.includes("who created") ||
-        lowerPrompt.includes("what is kivi") ||
-        lowerPrompt.includes("tell me about") ||
-        lowerPrompt.includes("how does this work")
-    );
+    const systemPrompt = `You are an elite, executive-level AI Resume Copilot & Career Coach (KIVI AI). You help candidates refine their resume content, align with Job Descriptions (JD), and answer career questions with high precision and corporate professionalism.
 
-    const isGeneralInfoOrJobQuery = isAskingAboutProject || (
-        !selectedText.trim() && (
-            lowerPrompt.includes("job") ||
-            lowerPrompt.includes("career") ||
-            lowerPrompt.includes("hiring") ||
-            lowerPrompt.includes("interview") ||
-            lowerPrompt.includes("salary") ||
-            lowerPrompt.includes("recommend") ||
-            lowerPrompt.includes("help") ||
-            lowerPrompt.includes("hi") ||
-            lowerPrompt.includes("hello") ||
-            lowerPrompt.includes("hey") ||
-            lowerPrompt.includes("who are you") ||
-            lowerPrompt.includes("what is") ||
-            lowerPrompt.includes("how to")
-        ) && !lowerPrompt.includes("rewrite") && !lowerPrompt.includes("enhance") && !lowerPrompt.includes("shorten") && !lowerPrompt.includes("summary") && !lowerPrompt.includes("update") && !lowerPrompt.includes("bullet") && !lowerPrompt.includes("line")
-    );
+CRITICAL PROFESSIONAL TONE & STRICT LANGUAGE POLICY:
+1. EXECUTIVE PROFESSIONAL TONE:
+   - Always maintain an executive, highly professional, polite, polished, objective, and authoritative tone.
+   - Strictly avoid casual slang, colloquialisms, conversational filler, informal banter, or buddy-talk.
+2. STRICT ENGLISH DEFAULT (NO UNPROMPTED HINDI OR OTHER LANGUAGES):
+   - ALWAYS formulate all explanations in "replyText" and resume updates in "suggestedSnippet" in fluent, grammatically flawless English by default.
+   - Strictly DO NOT use Hindi text (neither Devanagari script nor Romanized Hinglish such as "aapko", "karna hoga", "theek hai", "bhai", etc.) or any other non-English language under normal circumstances.
+   - Candidate names, regional references, or colloquial user phrasing must NEVER cause you to switch languages.
+3. EXPLICIT LANGUAGE OVERRIDE EXCEPTION:
+   - ONLY if the user explicitly forces, insists, demands, or requests communicating in another specific language (e.g., "reply in Hindi", "respond in Spanish", "explain in French"), you may comply and communicate in that requested language.
+   - In all other situations, you MUST strictly communicate in English to maintain corporate professionalism.
 
-    let systemPrompt = `You are an expert AI Resume Copilot & Career Coach (KIVI AI). You help candidates refine their resume content and answer resume/career questions with high precision.
+You have access to the candidate's FULL RESUME and TARGET JOB DESCRIPTION (JD) provided in the prompt.
 
-You have access to the candidate's FULL RESUME content provided in the prompt.
-When the user asks to rewrite, enhance, shorten, update, or replace any line, bullet point, or section (e.g. "update second line of devchat", "make my summary more impactful", "enhance bullet 1 of my current job"):
-1. Locate the EXACT original text in the candidate's resume that the user is referring to. Set this in "targetText".
-2. Generate the improved, high-impact replacement text. Set this in "suggestedSnippet".
-3. Provide a friendly, concise explanation of your improvement in "replyText" (1-2 sentences).
+### Rewriting & Optimization Rules:
+When the user asks to rewrite, enhance, shorten, update, or replace any line, bullet point, or section (e.g. "update second line of my project", "make my summary more impactful", "enhance bullet 1 of my current job"):
+1. **Analyze Specific Target & JD Alignment:**
+   - Map skills and gaps between the candidate's resume and the Job Description.
+   - Integrate relevant keywords, role-specific technologies, and industry-standard terminology.
+   - Use the Google X-Y-Z formula: "Accomplished [X], as measured by [Y], by doing [Z]".
+2. **Locate Target:** Set the EXACT original text in the candidate's resume in "targetText".
+3. **Generate "suggestedSnippet" (Valid Semantic HTML for TipTap):**
+   - **Summary:** "<p>Results-oriented Software Engineer with 2+ years experience building scalable full-stack applications...</p>"
+   - **Bullet Points:** "<li>Engineered high-performance REST APIs with Node.js and Redis, reducing p99 latency by 35%...</li>"
+   - **Experience / Role Titles:** "<h3><strong>Job Title</strong> — <em>Company Name</em> <span style=\"float: right;\">2024 – Present</span></h3>"
+   - **Skills:** "<p><strong>Languages:</strong> JavaScript, TypeScript, Python, <strong>Go (NEW)</strong></p>"
+   - **Links:** "<a href=\"https://github.com/...\">GitHub</a>"
+   - **A4 Constraint:** Keep bullets concise (1–2 lines) and preserve clean A4 layout.
+4. **New Skills Handling:** When introducing missing skills required by the JD that the candidate may need to learn, append "(NEW)" (e.g. "<strong>Docker (NEW)</strong>").
+5. **Concise User Explanation:** Provide a 1–2 sentence executive explanation in "replyText" in clean markdown highlighting why the change strengthens their application.
 
 If the user highlighted text manually, "targetText" should be that highlighted text.
 If the user didn't highlight text, identify the exact corresponding line or sentence from the provided resume as "targetText".
 If the user is asking a general question, career advice, or info about the platform, set "targetText" to null and "suggestedSnippet" to null!
 
 Respond in valid JSON ONLY with three keys:
-1. "replyText": string
-2. "targetText": string or null
-3. "suggestedSnippet": string or null
+1. "replyText": string (Conversational markdown reply in professional English)
+2. "targetText": string or null (Exact original text to replace)
+3. "suggestedSnippet": string or null (Rich semantic HTML replacement snippet ready for TipTap injection)
 
 Rules:
 - Return ONLY valid JSON with keys "replyText", "targetText", and "suggestedSnippet".
-- Never wrap JSON in code fences.`;
-
-    if (isAskingAboutProject) {
-        systemPrompt = `You are KIVI AI, the intelligent assistant embedded inside KIVI-AI Platform (AI Technical Interviewer & ATS Resume Studio).
-
-About KIVI-AI Platform:
-- Purpose: KIVI-AI is an end-to-end AI-powered career platform designed to help software engineers prepare for technical interviews and generate ATS-friendly resumes and also provide detailed reports on their performance, And Based in thier resume provide them real Jobs and Applications.
-- Key Features:
-  1. AI Technical Mock Interviews: Conducts real-time, interactive technical interview assessments covering frontend, backend, system design, and coding.
-  2. Detailed Interview Reports: Provides granular performance analytics, technical scoring, strengths, and targeted improvement plans.
-  3. AI ATS Resume Studio: Automatically transforms candidate interview performance and self-descriptions into professional, ATS-optimized A4 resumes matching job requirements.
-  4. Live Sheet Editor & PDF Export: Allows candidates to edit resume content directly on the simulated A4 page in the browser and export clean 1:1 PDFs.
-  5. KIVI AI Assistant: Floating AI copilot (you!) that assists with live text selection re-writing, bullet point enhancement, grammar fixes, and platform support.
-
-Your Task:
-When the user asks about the project, jobs, or application, provide a friendly, helpful, and concise overview explaining what the application does and how its features help candidates succeed.
-
-Respond in valid JSON only with keys:
-1. "replyText": Clear, enthusiastic, and informative answer about KIVI-AI Platform and career tools (2-4 sentences max).
-2. "targetText": null
-3. "suggestedSnippet": null
-
-Rules:
-- Return ONLY valid JSON with keys "replyText", "targetText", and "suggestedSnippet".
-- Never wrap JSON in code fences.`;
-    }
+- Never wrap JSON in code fences.
+- PROFESSIONAL TONE & STRICT LANGUAGE ENFORCEMENT: Maintain an executive, highly professional, polite, and objective corporate tone. Always communicate in clean, professional English by default. Strictly do NOT use Hindi, Hinglish, regional text, or informal slang. ONLY respond in another language if the user explicitly forces, demands, or insists on communicating in that specific language; otherwise, always stick to English to maintain maximum professionalism.`;
 
     let actionGuide = "Make the text snippet more impactful, professional, and results-oriented with strong action verbs.";
     if (action === "shorten") {
@@ -1286,6 +1367,8 @@ Rules:
     const cleanResume = stripHtmlToCleanText(currentResumeHtml);
 
     const userPrompt = `
+${jobRole ? `TARGET ROLE: ${jobRole}\n` : ''}
+${jobDescription ? `TARGET JOB DESCRIPTION:\n"""\n${jobDescription.trim()}\n"""\n` : ''}
 ${cleanResume ? `CURRENT RESUME CONTENT:\n"""\n${cleanResume}\n"""\n` : ''}
 ${selectedText ? `HIGHLIGHTED TEXT:\n"${selectedText.trim()}"\n` : ''}
 USER QUERY / INSTRUCTION:
@@ -1315,7 +1398,7 @@ Generate response JSON with "replyText", "targetText", and "suggestedSnippet":
             ? parsed.targetText.trim()
             : (selectedText ? selectedText.trim() : null);
 
-        const snippetResult = (isGeneralInfoOrJobQuery || !parsed.suggestedSnippet || parsed.suggestedSnippet === "null")
+        const snippetResult = (!parsed.suggestedSnippet || parsed.suggestedSnippet === "null")
             ? null
             : parsed.suggestedSnippet.trim();
 
@@ -1326,11 +1409,9 @@ Generate response JSON with "replyText", "targetText", and "suggestedSnippet":
         };
     } catch (err) {
         return {
-            replyText: isAskingAboutProject
-                ? "KIVI-AI is an end-to-end AI platform featuring AI Mock Interviews, detailed technical reports, and an automated ATS Resume Studio with live 1:1 A4 PDF export!"
-                : "Here is information to assist you.",
+            replyText: "Here is information to assist you.",
             targetText: selectedText ? selectedText.trim() : null,
-            suggestedSnippet: (isGeneralInfoOrJobQuery || !selectedText) ? null : selectedText.trim()
+            suggestedSnippet: selectedText ? selectedText.trim() : null
         };
     }
 }
@@ -1386,6 +1467,7 @@ module.exports = {
     generateCoverLetter,
     generateResumeHtml,
     rewriteResumeSection,
+    extractSkillsFromResumeHtml,
     getAIStatus,
     callLlmWithFallback,
     streamLlmWithFallback

@@ -200,6 +200,90 @@
      - The AI Assistant will **ONLY** generate replacement code blocks (` ```suggestion...``` `) and "Apply to Document" chips when the user has explicitly highlighted a text snippet or explicitly issued a rewrite/replace command.
      - For all informational queries, advice, roadmaps, reviews, interview prep, or general chat, the AI will provide clean conversational markdown bullets and **NEVER attempt to rewrite or replace the active document**.
 
+### 🔹 Session: 2026-09-27
+- **Topic**: Architectural Overhaul: Tiered Semantic Context & Intent Router (Replacing Brittle Regex Rules)
+- **Problem & Root Cause**:
+  - The AI Assistant previously relied on over 500 lines of hardcoded regular expressions (`hasResumeKeywords`, `hasJdKeywords`, `explicitNoJd`, `allThreeRegex`, etc.) to guess which contextual documents (Resume, Job Description, Preparation Roadmap, User Profile, Web Search) to attach to user queries.
+  - This rule-based approach broke on conversational English, Hinglish (*"is role ke liye mera project kaisa hai"*, *"bina JD ke check karo"*), multi-hop questions, and cross-domain reasoning, either dropping critical context or injecting unneeded text blobs and blowing token budgets.
+- **Industry-Grade Solution Implemented ([Backend/src/ai-assistant/intentClassifier.js](file:///Backend/src/ai-assistant/intentClassifier.js))**:
+  1. **Tier 1: Fast Deterministic Guardrails & Action Presets (0ms)**:
+     - Security & prompt injection shield (blocking jailbreaks, DB dumps, and env leaks).
+     - Instant passthrough for direct 1-click UI button actions (`enhance`, `shorten`, `fix_grammar`, `make_ats`).
+     - Zero-DB routing for standard conversational greetings and platform help questions.
+  2. **Tier 2: Micro-LLM Semantic Context & Intent Dispatcher (~150ms)**:
+     - Leverages fast micro-LLM reasoning (`llama-3.1-8b-instant` / `gemini-1.5-flash`) with strict JSON schema to evaluate user intent, active tab context, highlighted text, and natural language nuances.
+     - Selects granular context flags: `{ resume: boolean, jd: boolean, roadmap: boolean }`, `web_search: boolean`, `is_rewrite: boolean`, and formats `output_format` accordingly.
+     - Handles Hinglish, typos, cross-entity comparisons, and explicit negative constraints (*"bina JD ke"* -> `jd: false`).
+  3. **Screen-Aware Safe Fallback**:
+     - If network timeouts or API limits occur, automatically falls back to safe screen-aware defaults based on the active UI tab (`activeTab: resume` -> loads resume, `activeTab: interview` -> loads resume + JD).
+  4. **In-Memory LRU/TTL Cache (15 min)**:
+     - Delivers 0ms responses for repeated queries.
+  5. **Live Verification**:
+     - Tested across Hinglish match queries, negative constraint prompts, roadmap practice discovery, and general software engineering questions with 100% accuracy.
+
+  6. **Smooth 60 FPS Word-by-Word SSE Streaming Pipeline ([KiviAiAssistant.jsx](file:///Frontend/src/features/Shared/components/KiviAiAssistant.jsx))**:
+     - Built an adaptive `requestAnimationFrame` token buffer queue that eliminates network chunk stuttering and renders smooth word-to-word text.
+     - Memoized message bubbles (`ChatMessageBubble`) so past chat history is not re-parsed on every streaming frame.
+     - Added glowing cursor animation and smart scroll tracking.
+
+---
+
+### 🔹 Session: 2026-09-27 (Part 2)
+- **Topic**: AI Resume HTML Generation, TipTap Compatibility, and Report Creation Pipeline Overhaul
+- **Problem & Root Cause**:
+  - When candidates generated an interview report, `generatedResumeHtml` was not created concurrently in the `interview_report` background worker job.
+  - As a result, when users navigated to the Resume Studio tab, `Resume.jsx` encountered an empty `generatedResumeHtml` and fell back to wrapping the candidate's raw unformatted uploaded resume text into `<p>` paragraphs.
+  - This caused unstyled raw text dumps on the TipTap A4 canvas and in some cases displayed bracketed coaching questions (e.g. `[Question: ...]`) extracted from the candidate's raw notes.
+- **Comprehensive Solution Implemented**:
+  1. **Parallel Report & Resume Generation ([aiWorker.js](file:///Backend/src/jobs/aiWorker.js))**:
+     - Updated the `interview_report` job handler to execute both `generateInterviewReport` and `generateResumeHtml` concurrently in `Promise.allSettled`.
+     - Stored the structured `generatedResumeHtml` directly on the `InterviewReport` document upon report creation.
+     - Pre-warmed background RAG vector embeddings for Roadmap, Job Description, and Resume simultaneously.
+  2. **Strict Prompt Refinement & Semantic HTML ([ai.service.js](file:///Backend/src/services/ai.service.js))**:
+     - Refined the `generateResumeHtml` prompt with strict negative constraints: strictly forbidden from generating critique questions, bracketed notes (`[Question: ...]`, `[Insert Metric]`), or pseudo-bullet characters in `<p>`.
+     - Enforced semantic HTML tags (`<h1>`, `<h2>`, `<h3>`, `<p>`, `<ul>`, `<li>`, `<strong>`, `<em>`, `<a>`) that map 1:1 into TipTap prose nodes.
+  3. **Sanitization & List Normalization ([sanitizeResumeHtml.js](file:///Frontend/src/features/Interview/utils/sanitizeResumeHtml.js))**:
+     - Added regex sanitizers to strip any stray bracketed coaching notes (`[Question: ...]`, `[Note: ...]`).
+     - Automatically converts any pseudo-bullet paragraphs (`<p>• ...</p>`, `<p>- ...</p>`) into semantic `<ul><li>` list structures for clean rendering in TipTap.
+     - Strips unwanted outer wrappers, scripts, styles, and inline layout styles to ensure seamless A4 sheet formatting.
+  4. **Eliminated Raw Paragraph Fallback ([Resume.jsx](file:///Frontend/src/features/Interview/pages/Resume.jsx))**:
+     - Removed the legacy raw text `<p>` fallback. If `generatedResumeHtml` is missing or corrupted, the client automatically triggers clean AI resume generation (`generateResumePdf(interviewId, { force: true })`).
+  5. **Executive Layout & Compact Typography Styling ([editor.scss](file:///Frontend/src/features/Interview/style/editor.scss) & [ai.service.js](file:///Backend/src/services/ai.service.js))**:
+     - Reduced line height from `1.55` to `1.35` and tightened paragraph margins (`0.22em`) and bullet margins (`0.12em`) to eliminate wide spacing.
+     - Added Deep Navy Blue accent section headings (`<h2>`) with crisp `2px solid #0f3d68` divider bars.
+     - Styled centered candidate header blocks (`<h1>`, italic tagline, contact info, and links).
+     - Formatted Technical Skills as compact bullet lists and Experience/Projects rows with right-aligned dates.
+  6. **AI Assistant Snippet & Replacement Parsing Pipeline ([sanitizeResumeHtml.js](file:///Frontend/src/features/Interview/utils/sanitizeResumeHtml.js), [Resume.jsx](file:///Frontend/src/features/Interview/pages/Resume.jsx), [ResumeEditor.jsx](file:///Frontend/src/features/Interview/components/ResumeEditor.jsx), [KiviAiAssistant.jsx](file:///Frontend/src/features/Shared/components/KiviAiAssistant.jsx))**:
+     - Built `parseAndSanitizeSnippet(snippet)` to parse markdown code fences (` ```suggestion...``` `, ` ```html...``` `), convert inline markdown (`**bold**`, `*italic*`, `[link](url)`) to semantic HTML, and sanitize HTML tags before applying updates to TipTap.
+     - Ensured replacement text seamlessly blends into the A4 document structure without breaking list items or leaking raw markdown syntax.
+
+---
+
+### 🔹 Session: 2026-09-30
+- **Topic**: Live ATS (Applicant Tracking System) Calculator Architecture & Implementation Design for Resume Builder
+- **Requirement & Goal**:
+  - Implement a real-time, live ATS scoring calculator in the Resume Studio (`Resume.jsx` & `ResumeEditor.jsx`) that delivers 0ms instant feedback as candidates type/edit their resume.
+  - Dynamically evaluate match quality against the candidate's target Job Description (`report.jobDescription`) and detected technical skills.
+- **Architectural Design & Core Pillars**:
+  1. **ATS Scoring Formula (Weighted 0-100 Score)**:
+     - **Keywords & Hard Skills (35%)**: Match rate against target JD skills, technical stacks, and role title alignment.
+     - **Impact & Action Verbs (25%)**: Ratio of bullet points starting with strong action verbs (`built`, `architected`, `engineered`, `scaled`, `optimized`) and quantifiable metrics (`%`, `$`, multiplier `2x`, volume `100k+`, latency numbers).
+     - **Section Completeness (20%)**: Standard ATS section detection (Contact Info with valid email/phone/links, Summary, Work Experience, Technical Skills, Education, Projects).
+     - **Formatting & Readability (20%)**: Word count density (optimal 400-800 words), bullet point length, valid contact syntax, absence of ATS parsing blockers.
+  2. **Client-Side Live Calculation Engine (`Frontend/src/features/Interview/utils/atsCalculator.js`)**:
+     - Fast zero-latency parsing on TipTap editor `onChange` with a 200-300ms debounce.
+     - Extracts sections, tokenizes JD keywords (filtering stop words), detects strong action verbs, and identifies quantifiable achievements via regex.
+     - Returns `{ overallScore, breakdown: { keywords, impact, sections, formatting } }`.
+  3. **Live ATS Score Panel UI (`Frontend/src/features/Interview/components/AtsScorePanel.jsx`)**:
+     - SVG Circular/Radial score gauge (color-coded: Green 80+, Amber 60-79, Red <60).
+     - Category breakdown progress bars (Keywords, Impact, Structure, Formatting).
+     - Interactive **Recommended Missing Keywords** chips (click-to-insert into active editor selection).
+     - Live **ATS Audit Checklist** with real-time pass/fail indicators (Email, Phone, Metrics count, Experience headers).
+  4. **Integration with TipTap Resume Studio (`Resume.jsx`)**:
+     - Embeds `AtsScorePanel` directly into the Resume Studio workspace layout.
+     - Feeds `report.jobDescription` and `report.detectedSkills` automatically into the evaluation pipeline.
+     - Connects with KIVI AI Copilot / `rewriteResumeSection` for 1-click ATS bullet point improvements.
+
 ---
 
 ## 🚀 Proposed High-Impact Features & Platform Enhancements
@@ -211,9 +295,9 @@
 2. **🌊 Real-Time SSE Token Streaming for KIVI AI Assistant** *(COMPLETED)*:
    - Upgraded `/api/assistant/chat` to stream tokens via Server-Sent Events (SSE) for instant sub-200ms initial response times.
 
-3. **🔴 Live ATS Compatibility Meter & AI Diff Highlighter (In Resume Editor)**:
-   - Live ATS score gauge (0-100%) dynamically updating during edits in `ResumeEditor.jsx`.
-   - Before-vs-After green/red diff highlights when AI rewrites/enhances bullet points with action verbs and metrics.
+3. **🔴 Live ATS Compatibility Meter & AI Diff Highlighter (In Resume Editor)** *(IN PROGRESS)*:
+   - Live ATS score gauge (0-100%) dynamically updating during edits in `ResumeEditor.jsx` based on JD keywords, action verbs, metrics, and section structure.
+   - Interactive missing keyword chips and live ATS checklist.
 
 4. **🎙️ Interactive Mock Interview Practice Mode (STAR Method Grader)**:
    - Interactive answering box under generated behavioral & technical questions.
@@ -224,6 +308,75 @@
 
 ---
 
+### 🔹 Session: 2026-10-22
+- **Topic**: Production ATS Match Engine Implementation & Resume Studio ATS Display
+- **Completed Actions**:
+  1. **Production-Quality ATS Scoring Engine (`Backend/src/services/atsScorer.js`)**:
+     - Engineered modular `calculateATSScore(resumeText, jobDescriptionText, options)` function with ES Modules and CommonJS dual compatibility.
+     - **Keyword Match (30%)**: TF-IDF extraction with logarithmic repetition scaling (`1 + ln(tf)`), exact, stemmed (`PorterStemmer`), and synonym/alias matching (`JS` $\rightarrow$ `JavaScript`, `Mongo` $\rightarrow$ `MongoDB`, `Node` $\rightarrow$ `Node.js`, `K8s` $\rightarrow$ `Kubernetes`, `AWS` $\rightarrow$ `Amazon Web Services`).
+     - **Skills Match (25%)**: Categorized hard skills (languages, frameworks, databases, cloud, devops) vs. soft skills (communication, agile, leadership). Weighted hard skills at 75% and soft skills at 25%, with extensive canonical alias dictionary.
+     - **Experience Match (20%)**: Regex-based required years extraction (`5+ years`, `3-5 years`), candidate date range extraction (`Jan 2019 - Present`, `03/2018 - 11/2021`, etc.), and overlapping interval merging algorithm to prevent double-counting tenure. Proportional scoring capped at 100.
+     - **Education Match (10%)**: Hierarchy comparison (Doctorate $\rightarrow$ Master's $\rightarrow$ Bachelor's $\rightarrow$ Associate's) with STEM/Tech field detection.
+     - **Job Title Match (10%)**: Fuzzy string similarity combining Jaro-Winkler distance and token set overlap with substring bonuses.
+     - **Formatting & Parsability (5%)**: Standard ATS section detection (Summary, Skills, Experience, Education, Projects), contact info (valid email, phone), bullet points presence, table structure detection, and word count validation.
+     - **Actionable Suggestions Generator**: Dynamic generation of prioritized fixes for missing skills, core keywords, experience gaps, and formatting flaws.
+     - **Optional Signals**: Cosine similarity blending on semantic vector embeddings (`options.useEmbeddings`) and LLM suggestion hook (`options.useLLM`).
+     - **Jest Unit Test Suite (`Backend/src/tests/atsScorer.test.js`)**: 6 comprehensive unit tests covering empty inputs, perfect match, zero matching skills, experience cap, tech aliases, and embeddings/LLM calls. All 32 backend tests pass (100%).
+  2. **Dual-Engine Link Extraction Module (`Backend/src/services/linkExtractor.js`, `urlUtils.js`)**:
+     - Recovers hidden hyperlinks from PDF annotation dictionaries (`/Annots`) with coordinate matching to visible text layer.
+     - Extracts relationships from DOCX `word/_rels/document.xml.rels`.
+     - Deduplicates, validates, and classifies candidate links (GitHub, LinkedIn, Portfolio, Demos).
+     - Connected to interview & cover letter AI prompt injection pipeline.
+  3. **Resume Studio Minimalist ATS View (`Frontend/src/features/Interview/pages/Resume.jsx`, `ResumeSkillsWindow.jsx`)**:
+     - Streamlined the Resume Studio view to show **ONLY the ATS Score** without visual clutter or extra text.
+     - Docked side trigger: `• ATS SCORE: {score}%`.
+     - Clean SVG radial gauge displaying the exact match score (0-100%).
+     - Top navigation bar integration: `ATS Score: {score}%` badge.
+
+### 🔹 Session: 2026-10-22 (Part 2)
+- **Topic**: 1-Click Missing Keyword Inserter, Live ATS Recalculation with Shimmer, Full Skills Window & AI Section Insertion
+- **Completed Actions**:
+  1. **1-Click Missing Keyword Inserter (`Frontend/src/features/Interview/pages/Resume.jsx`, `ResumeSkillsWindow.jsx`, `resume.scss`, `skillsWindow.scss`)**:
+     - Extracted missing technical skills and keywords from ATS breakdown (`breakdown.skillsMatch.missing` & `breakdown.keywordMatch.missing`).
+     - Added quick-access horizontal chip strip (`.rp-missing-keywords-bar`) directly above `<ResumeEditor>` displaying interactive pills with `+` action badges.
+     - Added dedicated Sub-Window 3 (`missing-window`) inside `ResumeSkillsWindow` with amber indicator dots (`.capsule-missing.is-clickable-inserter`) and filter integration.
+     - Implemented smart `handleInsertKeyword`:
+       - If TipTap is focused: injects formatted keyword directly at cursor position.
+       - If not focused: executes regex section discovery to append the keyword into the Technical Skills block without duplicate headings or syntax breakage.
+       - Immediately updates `resumeSkills` state, synchronizes `localStorage`, removes keyword from missing list, and triggers real-time ATS recalculation.
+  2. **Debounced Live ATS Score Recalculator & Header Shimmer Sweep (`Resume.jsx`, `resume.scss`)**:
+     - Configured responsive 750ms debounced `triggerAtsRecalculation` calling `calculateResumeAtsScore(interviewId, html)`.
+     - Added dynamic CSS shimmer sweep (`.rp-ats-badge.is-calculating`) with `@keyframes ats-shimmer-sweep` and `@keyframes ats-badge-shimmer` giving fluid visual feedback during active computation.
+     - Automatically recalculates on keystrokes, 1-click keyword insertions, AI snippet applications, diff acceptances, and manual/auto saves.
+  3. **Restored Full Two-Window Skills Evolution Panel (`ResumeSkillsWindow.jsx`, `skillsWindow.scss`)**:
+     - Restored the dual sub-window skills interface (Current Resume Skills vs. Original Baseline Skills) alongside the new Missing JD Keywords window.
+     - Independent collapse chevrons (`>`), metric filter strip (New `+N`, Retained, Not in Resume, Missing JD), live search, and resizable draggable slider edge (`skills-window-slider-edge`).
+  4. **Intelligent Section Insertion Engine (`Frontend/src/features/Interview/utils/trackUpdatePart.js`)**:
+     - Upgraded `TrackUpdatePart` diff engine to support pure additions (e.g. adding a new project to `PROJECTS` or adding a new role to `EXPERIENCE`).
+     - When no target leaf node matches, it dynamically discovers the section boundary, inserts the new item into both `mergedDoc` and `diffDoc` (with `<ins class="kivi-diff-ins">`), preventing changes from being lost when diffs are accepted.
+  5. **End-to-End Live Browser Automated Testing (`browser_subagent`)**:
+     - Logged in and tested live on `http://localhost:5173/resume/6ada414e5618c3a6fd644ba6` against Microsoft Research India JD.
+     - Verified 1-Click Keywords: clicked missing keyword pills which instantly injected into the resume.
+     - Added 2 new projects via KIVI AI Assistant: *Distributed Real-Time AI Inference Pipeline* and *Self-Evolving Agentic RL Framework with LLM Reward Modeling*.
+     - Added targeted professional experience: *AI Research Engineer – Microsoft Research India (2026 – Present)*.
+     - Verified ATS Match Score progression: **25%** $\rightarrow$ **57%** $\rightarrow$ **79%** (Skills Match: **100%**, Keyword Match: **88%**, Experience Match: **80%**).
+     - Saved and verified in MongoDB. Recorded WebP session video in artifacts.
+
+---
+
+## 🔮 Capabilities Preserved for Future Frontend Implementation
+
+The following advanced capabilities are fully built and verified in the backend engine, preserved in history for future implementation in the UI:
+
+1. **Interactive ATS Category Breakdown Drawer**:
+   - Tabbed or accordion view expanding the overall ATS score into its 6 constituent categories: Keyword Match (30%), Skills Match (25%), Experience (20%), Education (10%), Title Alignment (10%), and Document Formatting (5%).
+2. **AI-Powered ATS Actionable Improvement Suggestions Drawer**:
+   - Dedicated drawer or modal displaying LLM-generated recommendations to tailor bullet points and close experience/title gaps.
+3. **Direct File Upload ATS Scoring API**:
+   - `POST /api/ats/score` endpoint to upload and evaluate PDF / DOCX resumes directly with `pdf-parse` and `multer`.
+
+---
+
 ## 📌 Active Tasks & Backlog for Next Sessions
 - [x] Connect KIVI AI assistant orchestrator to `/api/assistant/chat` endpoint and frontend drawer.
 - [x] Add SSE Token Streaming to KIVI AI Assistant.
@@ -231,6 +384,20 @@
 - [x] Implement Smart Intent Classification & Dynamic Context Engine with Zero-DB Optimization.
 - [x] Pass 30/30 Intent Benchmark Test Suite.
 - [x] Link MongoDB `preparationPlan` into Assistant Dynamic Context Loader.
-- [ ] Add Live ATS Score Gauge & Diff Highlighter in Resume Editor.
+- [x] Overhaul Intent Classifier into Tiered Semantic Context & Intent Router (Replacing Brittle Regex Rules).
+- [x] Implement 60 FPS Word-to-Word Smooth Streaming Buffer & Layout Auto-Closer.
+- [x] Fix AI Resume Structured HTML Generation, TipTap Sanitization, & Auto Report Worker Pipeline.
+- [x] Build Production ATS Match Scoring Engine with 6 modular categories (`Backend/src/services/atsScorer.js`).
+- [x] Integrate PDF/DOCX hyperlink extraction into AI prompt pipelines (`Backend/src/services/linkExtractor.js`).
+- [x] Streamline Resume Studio page to show ONLY the ATS score.
+- [x] Enable real-time, responsive ATS score recalculation upon updating resume in editor or saving.
+- [x] Implement 1-Click Missing Keyword & Skills Injector above editor and in Skills Window.
+- [x] Implement Shimmer Sweep Animation on ATS Badge during recalculation.
+- [x] Implement Intelligent Section Insertion in TrackUpdatePart for AI-generated projects & experience.
+- [ ] Implement Future Capability 1: Interactive ATS Category Breakdown Drawer.
+- [ ] Implement Future Capability 2: Actionable AI ATS Improvement Suggestions Drawer.
 - [ ] Test Google Supabase login & OTP flow end-to-end.
 - [ ] Finalize deployment pipelines (Vercel Frontend + Railway/Render Backend).
+
+
+

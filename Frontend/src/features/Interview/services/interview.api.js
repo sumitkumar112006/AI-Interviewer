@@ -184,12 +184,33 @@ export async function updateResumeHtml(interviewReportId, payload) {
         throw new Error('Invalid resume content: cannot save empty text or system IDs.');
     }
 
-    const response = await api.put(`/api/interview/resume/${interviewReportId}`, { generatedResumeHtml })
+    const resumeSkills = Array.isArray(payload?.resumeSkills)
+        ? payload.resumeSkills
+        : (Array.isArray(payload?.skills) ? payload.skills : undefined);
+
+    const body = { generatedResumeHtml };
+    if (resumeSkills) {
+        body.resumeSkills = resumeSkills;
+    }
+
+    const response = await api.put(`/api/interview/resume/${interviewReportId}`, body)
     return response.data
 }
 
 export async function updateInterviewProgress(interviewId, { technicalQuestions, behavioralQuestion, completedTasks }) {
     const response = await api.put(`/api/interview/progress/${interviewId}`, { technicalQuestions, behavioralQuestion, completedTasks })
+    return response.data
+}
+
+/**
+ * Fetches the skills comparison diff between original uploaded resume and current resume.
+ * Categorizes current skills into newSkills (green) and previousSkills (blue).
+ * 
+ * @param {string} interviewReportId
+ * @returns {Promise<Object>}
+ */
+export async function getResumeSkillsComparison(interviewReportId) {
+    const response = await api.get(`/api/interview/resume/skills-comparison/${interviewReportId}`)
     return response.data
 }
 
@@ -225,6 +246,7 @@ export async function streamAssistantChatApi({
     instruction = '',
     activeTab = '',
     currentRoute = '',
+    currentResumeHtml = '',
     onStatus = () => {},
     onToken = () => {},
     onDone = () => {},
@@ -250,6 +272,7 @@ export async function streamAssistantChatApi({
                 instruction,
                 activeTab,
                 currentRoute,
+                currentResumeHtml,
                 stream: true
             }),
             signal
@@ -312,9 +335,11 @@ export async function streamAssistantChatApi({
         }
 
         const finalResult = {
-            replyText: doneData?.reply || accumulatedText,
+            replyText: doneData?.messageForUser || doneData?.reply || accumulatedText,
+            messageForUser: doneData?.messageForUser || doneData?.reply || accumulatedText,
+            ResumeUpdations: doneData?.ResumeUpdations !== undefined ? doneData?.ResumeUpdations : (doneData?.suggestedSnippet || false),
             targetText: doneData?.targetText || selectedText || null,
-            suggestedSnippet: doneData?.suggestedSnippet || null,
+            suggestedSnippet: doneData?.suggestedSnippet || (doneData?.ResumeUpdations !== false ? doneData?.ResumeUpdations : null),
             resources: doneData?.resources || [],
             profile: doneData?.profile || null
         };
@@ -364,14 +389,17 @@ export async function clearAssistantHistoryApi() {
         console.warn('Failed to clear assistant history:', err);
         return { message: 'Failed to clear history' };
     }
-}
-
-export async function calculateAtsScoreApi({ interviewId, resumeHtml, resume, jobDescription }) {
-    const url = interviewId ? `/api/interview/ats-score/${interviewId}` : `/api/interview/ats-score`;
-    const response = await api.post(url, {
-        interviewId,
-        resumeHtml: resumeHtml || resume,
-        jobDescription
-    });
-    return response.data;
 }
+
+export async function calculateResumeAtsScore(interviewReportId, resumeHtml = null) {
+    try {
+        const response = await api.post(`/api/interview/resume/ats-score/${interviewReportId}`, {
+            resumeHtml
+        });
+        return response.data;
+    } catch (err) {
+        console.warn('Failed to calculate dynamic ATS score:', err);
+        return null;
+    }
+}
+

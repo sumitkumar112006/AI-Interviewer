@@ -10,7 +10,7 @@ const interviewRouter = express.Router();
 const aiAssistantTieredLimiter = createTieredRateLimiter({
     prefix: 'ratelimit:ai-assistant',
     windowSeconds: 86400, // 24-hour daily limit
-    limits: { free: 10, pro: 100, premium: 500 },
+    limits: { free: 500, pro: 500, premium: 500 },
     bonusMultiplier: 3,
     message: 'AI Assistant daily limit reached for your plan.'
 });
@@ -97,12 +97,26 @@ interviewRouter.delete('/:interviewReportId', authMidleware.authUser, interviewC
 // Update resume HTML content
 interviewRouter.put('/resume/:interviewReportId', authMidleware.authUser, checkResumeGenerationAccess, interviewController.updateResumeHtmlController)
 
+/**
+ * @route POST /api/interview/resume/ats-score/:interviewReportId
+ * @description Dynamically calculates and saves ATS match score comparing resume against target JD
+ * @access private
+ */
+interviewRouter.post('/resume/ats-score/:interviewReportId', authMidleware.authUser, interviewController.calculateResumeAtsScoreController)
+
 // Update interview progress (questions responses, roadmap tasks)
 interviewRouter.put('/progress/:interviewId', authMidleware.authUser, interviewController.updateInterviewProgressController)
 
 // Grounded ATS Match Score Calculator
 interviewRouter.post('/ats-score', authMidleware.authUser, atsController.calculateAtsScoreController)
 interviewRouter.post('/ats-score/:interviewId', authMidleware.authUser, atsController.calculateAtsScoreController)
+
+/**
+ * @route GET /api/interview/resume/skills-comparison/:interviewReportId
+ * @description Compares original uploaded resume skills vs. current resume skills with color tagging (green for new, blue for previous)
+ * @access private
+ */
+interviewRouter.get('/resume/skills-comparison/:interviewReportId', authMidleware.authUser, interviewController.getResumeSkillsComparisonController)
 
 /**
  * @route GET /api/interview/:interviewId

@@ -1,13 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { generateResumePdf, getInterviewReportById, updateResumeHtml, rewriteResumeSection, getActiveJob, calculateAtsScoreApi } from '../services/interview.api'
+import { generateResumePdf, getInterviewReportById, updateResumeHtml, rewriteResumeSection, getActiveJob, getResumeSkillsComparison, calculateResumeAtsScore } from '../services/interview.api'
 import { useInterview } from '../hooks/useInterview'
 import { useAuth } from '../../Auth/hooks/useAuth'
 import ShimmerLoading from '../../Shared/components/ShimmerLoading'
 import Loading from '../Loading'
 import ResumeEditor from '../components/ResumeEditor'
+import ResumeSkillsWindow from '../components/ResumeSkillsWindow'
 import { exportElementToPdf } from '../utils/exportToPdf'
-import { sanitizeResumeHtml } from '../utils/sanitizeResumeHtml'
+import { sanitizeResumeHtml, parseAndSanitizeSnippet } from '../utils/sanitizeResumeHtml'
+import { 
+    parseSkillsFromHtml, 
+    mergeSkills,
+    compareResumeSkills 
+} from '../utils/resumeSkillsManager'
 import '../style/resume.scss'
 
 // ── helper: normalise MongoDB ObjectId ────────────────────────────────────
@@ -38,12 +44,27 @@ const Resume = () => {
 
     const [error, setError]           = useState('')
     const [htmlContent, setHtmlContent] = useState('')
+    const [resumeSkills, setResumeSkills] = useState([])
     const [dbLoading, setDbLoading]     = useState(true)
     const [aiGenerating, setAiGenerating] = useState(false)
     const [isDirty, setIsDirty]       = useState(false)
     const [saveLoading, setSaveLoading] = useState(false)
     const [printLoading, setPrintLoading] = useState(false)
     const [saveNotification, setSaveNotification] = useState(null) // { message: string, type: 'manual' | 'auto' }
+
+    // ATS Score & Side Window state
+    const [matchScore, setMatchScore] = useState(() => report?.matchScore ?? 85)
+    const [atsBreakdown, setAtsBreakdown] = useState(() => report?.atsScoreBreakdown || null)
+    const [atsLoading, setAtsLoading] = useState(false)
+    const [isSkillsWindowOpen, setIsSkillsWindowOpen] = useState(() => {
+        try {
+            return localStorage.getItem('resume_skills_window_open') === 'true'
+        } catch {
+            return false
+        }
+    })
+    const [olderSkills, setOlderSkills] = useState([])
+    const [skillsLoading, setSkillsLoading] = useState(false)
 
     // AI Copilot state
     const [isAiOpen, setIsAiOpen]     = useState(false)
@@ -56,72 +77,7 @@ const Resume = () => {
 
     const editorRef  = useRef(null)
     const chatEndRef = useRef(null)
-    const atsRef     = useRef(null)
-
-    // Grounded ATS Score Calculator State
-    const [atsData, setAtsData] = useState({
-        score: null,
-        confidence: null,
-        breakdown: null,
-        loading: false
-    })
-    const [showAtsBreakdown, setShowAtsBreakdown] = useState(false)
-    const hasInitialCalculatedRef = useRef(false)
-
-    // Grounded ATS calculation handler
-    const handleCalculateAtsScore = useCallback(async () => {
-        if (!interviewId) return
-        setAtsData(prev => ({ ...prev, loading: true }))
-        try {
-            const currentHtml = editorRef.current?.getHtml() || htmlContent
-            const res = await calculateAtsScoreApi({
-                interviewId,
-                resumeHtml: currentHtml,
-                jobDescription: report?.jobDescription
-            })
-            if (res && typeof res.ats_score === 'number') {
-                setAtsData({
-                    score: res.ats_score,
-                    confidence: res.confidence,
-                    breakdown: res.breakdown,
-                    loading: false
-                })
-                if (setReport) {
-                    setReport(prev => prev ? ({ ...prev, matchScore: res.ats_score }) : prev)
-                }
-            }
-        } catch (err) {
-            console.warn('ATS calculation notice:', err.message)
-        } finally {
-            setAtsData(prev => ({ ...prev, loading: false }))
-        }
-    }, [interviewId, htmlContent, report?.jobDescription, setReport])
-
-    // Auto-calculate ATS score when resume and JD are loaded
-    useEffect(() => {
-        if (!hasInitialCalculatedRef.current && interviewId && (htmlContent || report?.generatedResumeHtml) && report?.jobDescription) {
-            hasInitialCalculatedRef.current = true
-            handleCalculateAtsScore()
-        }
-    }, [interviewId, htmlContent, report?.jobDescription, report?.generatedResumeHtml, handleCalculateAtsScore])
-
-    // Sync matchScore from DB report
-    useEffect(() => {
-        if (report?.matchScore && atsData.score === null) {
-            setAtsData(prev => ({ ...prev, score: report.matchScore }))
-        }
-    }, [report?.matchScore, atsData.score])
-
-    // Close popover on outside click
-    useEffect(() => {
-        const handleClickOutside = (e) => {
-            if (atsRef.current && !atsRef.current.contains(e.target)) {
-                setShowAtsBreakdown(false)
-            }
-        }
-        document.addEventListener('mousedown', handleClickOutside)
-        return () => document.removeEventListener('mousedown', handleClickOutside)
-    }, [])
+    const atsDebounceTimerRef = useRef(null)
 
     // ── Load resume HTML with health validation & DB fallback ─────────────
     useEffect(() => {
@@ -143,10 +99,88 @@ const Resume = () => {
                 console.warn('[Resume] Local draft read notice:', e)
             }
 
+            // Load stored skills from local cache
+            let cachedSkills = []
+            try {
+                const storedSkills = localStorage.getItem(`resume_skills_${interviewId}`)
+                if (storedSkills) {
+                    const parsed = JSON.parse(storedSkills)
+                    if (Array.isArray(parsed) && parsed.length > 0) cachedSkills = parsed
+                }
+            } catch {}
+
             try {
                 // 2. Fetch current report from database
                 const fetched = await getReoprtById(interviewId)
                 if (!mounted) return
+
+                if (typeof fetched?.matchScore === 'number') {
+                    setMatchScore(fetched.matchScore)
+                }
+                if (fetched?.atsScoreBreakdown) {
+                    setAtsBreakdown(fetched.atsScoreBreakdown)
+                }
+
+                // Determine initial skills array from DB report, local cache, or parsed HTML
+                let currentSkills = cachedSkills
+                if (Array.isArray(fetched?.resumeSkills) && fetched.resumeSkills.length > 0) {
+                    currentSkills = mergeSkills(currentSkills, fetched.resumeSkills)
+                } else {
+                    const rawDoc = fetched?.generatedResumeHtml || cachedDraft || ''
+                    const extracted = parseSkillsFromHtml(rawDoc)
+                    if (extracted.length > 0) {
+                        currentSkills = mergeSkills(currentSkills, extracted)
+                    } else if (Array.isArray(fetched?.detectedSkills) && fetched.detectedSkills.length > 0) {
+                        currentSkills = mergeSkills(currentSkills, fetched.detectedSkills.map(s => s.name))
+                    }
+                }
+
+                if (mounted && currentSkills.length > 0) {
+                    setResumeSkills(currentSkills)
+                    try {
+                        localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(currentSkills))
+                    } catch {}
+                }
+
+                // Extract older / original resume skills from report
+                const rawOlder = Array.isArray(fetched?.older) && fetched.older.length > 0
+                    ? fetched.older
+                    : (Array.isArray(fetched?.olderSkills) && fetched.olderSkills.length > 0
+                        ? fetched.olderSkills
+                        : (Array.isArray(fetched?.originalSkills) ? fetched.originalSkills : []))
+                if (mounted && rawOlder.length > 0) {
+                    setOlderSkills(rawOlder)
+                }
+
+                // Asynchronously fetch canonical skills comparison from server
+                getResumeSkillsComparison(interviewId).then(compRes => {
+                    if (mounted && compRes?.skillsComparison) {
+                        const sComp = compRes.skillsComparison
+                        if (Array.isArray(sComp.originalSkills) && sComp.originalSkills.length > 0) {
+                            setOlderSkills(sComp.originalSkills)
+                        }
+                    }
+                }).catch(err => {
+                    console.warn('[Resume] Initial skills comparison fetch notice:', err.message)
+                })
+
+                // Dynamically calculate and fetch the exact ATS score in background
+                setAtsLoading(true)
+                calculateResumeAtsScore(interviewId, fetched?.generatedResumeHtml || cachedDraft)
+                    .then(atsRes => {
+                        if (mounted && typeof atsRes?.matchScore === 'number') {
+                            setMatchScore(atsRes.matchScore)
+                        }
+                        if (mounted && atsRes?.breakdown) {
+                            setAtsBreakdown(atsRes.breakdown)
+                        }
+                    })
+                    .catch(atsErr => {
+                        console.warn('[Resume] Dynamic ATS score calculation notice:', atsErr.message)
+                    })
+                    .finally(() => {
+                        if (mounted) setAtsLoading(false)
+                    })
 
                 // 3. Health check: Does DB already have a healthy generatedResumeHtml?
                 if (isHealthyResumeHtml(fetched?.generatedResumeHtml)) {
@@ -164,7 +198,7 @@ const Resume = () => {
                     setHtmlContent(sanitizeResumeHtml(cachedDraft))
                     setDbLoading(false)
                     // Sync this draft to the database
-                    updateResumeHtml(interviewId, { generatedResumeHtml: cachedDraft }).catch(err => {
+                    updateResumeHtml(interviewId, { generatedResumeHtml: cachedDraft, resumeSkills: currentSkills }).catch(err => {
                         console.warn('[Resume] Background draft recovery sync notice:', err.message)
                     })
                     return
@@ -181,6 +215,15 @@ const Resume = () => {
                         if (mounted && isHealthyResumeHtml(reportWithHtml?.generatedResumeHtml)) {
                             const sanitized = sanitizeResumeHtml(reportWithHtml.generatedResumeHtml)
                             setHtmlContent(sanitized)
+                            const polledSkills = Array.isArray(reportWithHtml?.resumeSkills) && reportWithHtml.resumeSkills.length > 0
+                                ? reportWithHtml.resumeSkills
+                                : parseSkillsFromHtml(reportWithHtml.generatedResumeHtml)
+                            if (polledSkills.length > 0) {
+                                setResumeSkills(polledSkills)
+                                try {
+                                    localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(polledSkills))
+                                } catch {}
+                            }
                             try {
                                 localStorage.setItem(`resume_draft_${interviewId}`, sanitized)
                             } catch {}
@@ -193,23 +236,7 @@ const Resume = () => {
                     console.warn('[Resume] Active job check notice:', jobErr.message)
                 }
 
-                // 6. Fallback: If generatedResumeHtml is missing, use original DB resume text (if healthy)
-                if (isHealthyResumeHtml(fetched?.resume)) {
-                    const paragraphs = fetched.resume
-                        .split(/\n{2,}/)
-                        .map(p => `<p>${p.replace(/\n/g, '<br/>')}</p>`)
-                        .join('')
-                    const fallbackHtml = `<h2>${fetched.developerTitle || 'Resume'}</h2>${paragraphs}`
-                    const sanitized = sanitizeResumeHtml(fallbackHtml)
-                    setHtmlContent(sanitized)
-                    try {
-                        localStorage.setItem(`resume_draft_${interviewId}`, sanitized)
-                    } catch {}
-                    setDbLoading(false)
-                    return
-                }
-
-                // 7. If neither exists, trigger AI generation with force to guarantee clean generation
+                // 6. If generatedResumeHtml is missing or unhealthy, trigger AI generation with force
                 setDbLoading(false)
                 setAiGenerating(true)
                 const genRes = await generateResumePdf(interviewId, { force: true })
@@ -217,6 +244,15 @@ const Resume = () => {
                 if (mounted && isHealthyResumeHtml(freshReport?.generatedResumeHtml)) {
                     const sanitized = sanitizeResumeHtml(freshReport.generatedResumeHtml)
                     setHtmlContent(sanitized)
+                    const freshSkills = Array.isArray(freshReport?.resumeSkills) && freshReport.resumeSkills.length > 0
+                        ? freshReport.resumeSkills
+                        : parseSkillsFromHtml(freshReport.generatedResumeHtml)
+                    if (freshSkills.length > 0) {
+                        setResumeSkills(freshSkills)
+                        try {
+                            localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(freshSkills))
+                        } catch {}
+                    }
                     try {
                         localStorage.setItem(`resume_draft_${interviewId}`, sanitized)
                     } catch {}
@@ -258,11 +294,158 @@ const Resume = () => {
         return report.developerTitle || report?.Title || report?.title || 'Generated Resume'
     }, [report])
 
+    // ── Toggle Skills Window ───────────────────────────────────────────────
+    const toggleSkillsWindow = useCallback(() => {
+        setIsSkillsWindowOpen(prev => {
+            const next = !prev
+            try {
+                localStorage.setItem('resume_skills_window_open', String(next))
+            } catch {}
+            return next
+        })
+    }, [])
+
+    // ── Live Reactive Skills Comparison Diff ───────────────────────────────
+    const skillsDiff = useMemo(() => {
+        return compareResumeSkills(olderSkills, resumeSkills)
+    }, [olderSkills, resumeSkills])
+
+    // ── Cleanup Debounce Timer on Unmount ─────────────────────────────────
+    useEffect(() => {
+        return () => {
+            if (atsDebounceTimerRef.current) {
+                clearTimeout(atsDebounceTimerRef.current)
+            }
+        }
+    }, [])
+
+    // ── Live ATS Score Recalculator (Debounced on keystroke / edit) ────────
+    const triggerAtsRecalculation = useCallback((rawHtml) => {
+        if (!interviewId) return
+        const html = rawHtml || editorRef.current?.getHtml()
+        if (!isHealthyResumeHtml(html)) return
+
+        if (atsDebounceTimerRef.current) {
+            clearTimeout(atsDebounceTimerRef.current)
+        }
+
+        setAtsLoading(true)
+        atsDebounceTimerRef.current = setTimeout(async () => {
+            try {
+                const atsRes = await calculateResumeAtsScore(interviewId, html)
+                if (typeof atsRes?.matchScore === 'number') {
+                    setMatchScore(atsRes.matchScore)
+                }
+                if (atsRes?.breakdown) {
+                    setAtsBreakdown(atsRes.breakdown)
+                }
+            } catch (err) {
+                console.warn('[Resume] Live ATS recalculation error:', err.message)
+            } finally {
+                setAtsLoading(false)
+            }
+        }, 750) // Responsive 750ms debounce
+    }, [interviewId])
+
+    // ── Missing ATS Keywords from JD Breakdown ─────────────────────────────
+    const missingKeywords = useMemo(() => {
+        if (!atsBreakdown) return []
+        const skillsMissing = Array.isArray(atsBreakdown?.skillsMatch?.missing) ? atsBreakdown.skillsMatch.missing : []
+        const kwMissing = Array.isArray(atsBreakdown?.keywordMatch?.missing) ? atsBreakdown.keywordMatch.missing : []
+
+        const seen = new Set()
+        const combined = []
+
+        const addKw = (raw) => {
+            if (!raw || typeof raw !== 'string') return
+            const clean = raw.trim()
+            const lower = clean.toLowerCase()
+            if (clean.length < 2 || seen.has(lower)) return
+            seen.add(lower)
+            combined.push(clean)
+        }
+
+        // Add skills first, then general keywords
+        skillsMissing.forEach(addKw)
+        kwMissing.forEach(addKw)
+
+        const liveHtml = editorRef.current?.getHtml() || htmlContent || ''
+        const liveLower = liveHtml.toLowerCase()
+        return combined.filter(kw => !liveLower.includes(kw.toLowerCase()))
+    }, [atsBreakdown, htmlContent])
+
+    // ── 1-Click Missing Keyword Inserter ───────────────────────────────────
+    const handleInsertKeyword = useCallback((kw) => {
+        if (!kw || !editorRef.current) return
+        const cleanKw = kw.trim()
+        if (!cleanKw) return
+
+        let inserted = false
+
+        // 1. If editor is currently focused, insert directly at user cursor/selection
+        if (editorRef.current.isFocused && editorRef.current.isFocused()) {
+            editorRef.current.insertContent(` <strong>${cleanKw}</strong>, `)
+            inserted = true
+        } else {
+            // 2. Intelligent section injection into Skills section
+            const currentHtml = editorRef.current.getHtml() || htmlContent || ''
+
+            const skillsHeadingRegex = /(<(?:h[1-6]|p|strong)[^>]*>(?:technical\s+|core\s+)?skills(?:[^<]*)<\/(?:h[1-6]|p|strong)>\s*<p[^>]*>)([\s\S]*?)(<\/p>)/i
+            const match = currentHtml.match(skillsHeadingRegex)
+            if (match) {
+                const [fullMatch, startTag, innerContent, endTag] = match
+                const needsComma = innerContent.trim().length > 0 && !innerContent.trim().endsWith(',') && !innerContent.trim().endsWith(':')
+                const updatedSkillsSection = `${startTag}${innerContent.trimEnd()}${needsComma ? ', ' : ' '}<strong>${cleanKw}</strong>${endTag}`
+                const newFullHtml = currentHtml.replace(fullMatch, updatedSkillsSection)
+                editorRef.current.setContent(newFullHtml)
+                inserted = true
+            } else {
+                const anySkillsRegex = /(<strong>\s*(?:Languages|Frameworks|Tools|Technologies|Skills|Technical Skills)\s*:?\s*<\/strong>\s*)([^<]*)(<\/p>)/i
+                const match2 = currentHtml.match(anySkillsRegex)
+                if (match2) {
+                    const [fullMatch2, prefix, text, end] = match2
+                    const needsComma = text.trim().length > 0 && !text.trim().endsWith(',')
+                    const updated = `${prefix}${text.trimEnd()}${needsComma ? ', ' : ' '}<strong>${cleanKw}</strong>${end}`
+                    const newFullHtml = currentHtml.replace(fullMatch2, updated)
+                    editorRef.current.setContent(newFullHtml)
+                    inserted = true
+                } else {
+                    editorRef.current.insertContent(` <strong>${cleanKw}</strong>, `)
+                    inserted = true
+                }
+            }
+        }
+
+        if (inserted) {
+            setIsDirty(true)
+            setResumeSkills(prev => {
+                const next = mergeSkills(prev, [cleanKw])
+                try {
+                    localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(next))
+                } catch {}
+                return next
+            })
+
+            const updatedHtml = editorRef.current.getHtml()
+            triggerAtsRecalculation(updatedHtml)
+
+            setSaveNotification({
+                message: `✨ Injected "${cleanKw}" into resume! ATS score recalculating…`,
+                type: 'auto'
+            })
+            setTimeout(() => setSaveNotification(null), 3500)
+        }
+    }, [htmlContent, interviewId, triggerAtsRecalculation])
+
     // ── Unified Save & Auto-Save Function ──────────────────────────────────
     const saveResumeChanges = useCallback(async (isAuto = false) => {
         if (!editorRef.current) return
         const html = editorRef.current.getHtml()
         if (!isHealthyResumeHtml(html)) return
+
+        if (atsDebounceTimerRef.current) {
+            clearTimeout(atsDebounceTimerRef.current)
+        }
 
         if (!isAuto) {
             setSaveLoading(true)
@@ -272,14 +455,28 @@ const Resume = () => {
         // Immediately persist to localStorage
         try {
             localStorage.setItem(`resume_draft_${interviewId}`, html)
+            localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(resumeSkills))
         } catch (e) {
             console.warn('[Resume] LocalStorage draft save warning:', e)
         }
 
         try {
-            const res = await updateResumeHtml(interviewId, { generatedResumeHtml: html })
+            const res = await updateResumeHtml(interviewId, { 
+                generatedResumeHtml: html,
+                resumeSkills
+            })
             if (res?.interviewReport && setReport) {
                 setReport(res.interviewReport)
+            }
+            if (typeof res?.matchScore === 'number') {
+                setMatchScore(res.matchScore)
+            } else if (typeof res?.interviewReport?.matchScore === 'number') {
+                setMatchScore(res.interviewReport.matchScore)
+            }
+            if (res?.breakdown) {
+                setAtsBreakdown(res.breakdown)
+            } else if (res?.interviewReport?.atsScoreBreakdown) {
+                setAtsBreakdown(res.interviewReport.atsScoreBreakdown)
             }
             setHtmlContent(sanitizeResumeHtml(html))
             setIsDirty(false)
@@ -287,8 +484,8 @@ const Resume = () => {
 
             setSaveNotification({
                 message: isAuto
-                    ? 'Auto-saved: Your latest resume changes have been saved to the database.'
-                    : 'Saved: Your resume changes have been saved to the database successfully!',
+                    ? 'Auto-saved: Your latest resume changes and skills have been saved to the database.'
+                    : 'Saved: Your resume changes and skills have been saved to the database successfully!',
                 type: isAuto ? 'auto' : 'manual'
             })
 
@@ -309,9 +506,9 @@ const Resume = () => {
                 setSaveLoading(false)
             }
         }
-    }, [interviewId, setReport, fetchUsage])
+    }, [interviewId, resumeSkills, setReport, fetchUsage])
 
-    // ── Editor OnChange: Persist Draft Instantly ──────────────────────────
+    // ── Editor OnChange: Persist Draft Instantly & Update Skills & ATS Score at Runtime ──
     const handleEditorChange = useCallback((updatedHtml) => {
         setIsDirty(true)
         const html = updatedHtml || editorRef.current?.getHtml()
@@ -319,12 +516,30 @@ const Resume = () => {
             try {
                 localStorage.setItem(`resume_draft_${interviewId}`, html)
             } catch {}
-        }
-    }, [interviewId])
 
-    // ── 5-Minute Auto-Save Timer ──────────────────────────────────────────
+            // Detect any new skills added/typed in the editor at runtime
+            const detected = parseSkillsFromHtml(html)
+            if (detected && detected.length > 0) {
+                setResumeSkills(prev => {
+                    const next = mergeSkills(prev, detected)
+                    if (JSON.stringify(next) !== JSON.stringify(prev)) {
+                        try {
+                            localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(next))
+                        } catch {}
+                        return next
+                    }
+                    return prev
+                })
+            }
+
+            // Immediately schedule debounced ATS recalculation as candidate updates resume
+            triggerAtsRecalculation(html)
+        }
+    }, [interviewId, triggerAtsRecalculation])
+
+    // ── 1-Minute Auto-Save Timer ──────────────────────────────────────────
     useEffect(() => {
-        const AUTO_SAVE_INTERVAL = 5 * 60 * 1000 // 5 minutes
+        const AUTO_SAVE_INTERVAL = 60 * 1000 // 1 minute
         const timer = setInterval(() => {
             if (isDirty) {
                 saveResumeChanges(true)
@@ -438,42 +653,158 @@ const Resume = () => {
     // ── Apply Snippet In-Place or to Selection ──────────────────────────────
     const handleApplySnippet = useCallback((snippet, targetText = null) => {
         if (!snippet || !editorRef.current) return
+        const cleanSnippet = parseAndSanitizeSnippet(snippet)
+        if (!cleanSnippet) return
+
+        let changed = false
         if (editorRef.current.replaceExactText) {
-            const replaced = editorRef.current.replaceExactText(targetText, snippet)
+            const replaced = editorRef.current.replaceExactText(targetText, cleanSnippet)
             if (replaced) {
-                setIsDirty(true)
-                return
+                changed = true
             }
         }
-        if (editorRef.current.isFocused && editorRef.current.isFocused()) {
-            editorRef.current.insertContent(snippet)
-            setIsDirty(true)
+        if (!changed && editorRef.current.isFocused && editorRef.current.isFocused()) {
+            editorRef.current.insertContent(cleanSnippet)
+            changed = true
         }
-    }, [])
+        if (changed) {
+            setIsDirty(true)
+            triggerAtsRecalculation(editorRef.current?.getHtml())
+        }
+    }, [triggerAtsRecalculation])
 
-    // ── Listen for in-place replacement events from KIVI AI Assistant ───────
+    // ── Listen for in-place replacement & diff preview events from KIVI AI Assistant ───────
     useEffect(() => {
+        window.__KIVI_GET_CURRENT_RESUME_HTML__ = () => editorRef.current?.getHtml() || htmlContent || ''
+
+        const syncSkillsFromLiveDom = () => {
+            setTimeout(() => {
+                const liveHtml = editorRef.current?.getHtml()
+                if (liveHtml) {
+                    const detected = parseSkillsFromHtml(liveHtml)
+                    if (detected && detected.length > 0) {
+                        setResumeSkills(prev => {
+                            const next = mergeSkills(prev, detected)
+                            try {
+                                localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(next))
+                            } catch {}
+                            return next
+                        })
+                    }
+                    triggerAtsRecalculation(liveHtml)
+                }
+            }, 120)
+        }
+
         const onKiviReplace = (e) => {
             const { targetText, snippet } = e.detail || {}
             if (snippet && editorRef.current) {
+                const cleanSnippet = parseAndSanitizeSnippet(snippet)
+                if (!cleanSnippet) return
+
                 if (editorRef.current.replaceExactText) {
-                    const replaced = editorRef.current.replaceExactText(targetText, snippet)
+                    const replaced = editorRef.current.replaceExactText(targetText, cleanSnippet)
                     if (replaced) {
                         setIsDirty(true)
+                        syncSkillsFromLiveDom()
                         if (typeof e.preventDefault === 'function') e.preventDefault()
                         return
                     }
                 }
                 if (editorRef.current.isFocused && editorRef.current.isFocused()) {
-                    editorRef.current.insertContent(snippet)
+                    editorRef.current.insertContent(cleanSnippet)
                     setIsDirty(true)
+                    syncSkillsFromLiveDom()
                     if (typeof e.preventDefault === 'function') e.preventDefault()
                 }
             }
         }
+
+        const onKiviApplyResumeUpdate = (e) => {
+            const { isFullDocument, targetText, replacementHtml, mergedFullResumeHtml, newFullHtml } = e.detail || {}
+            if (!editorRef.current) return
+
+            // Case 1: If it is an explicit full document regeneration
+            if (isFullDocument && (mergedFullResumeHtml || newFullHtml)) {
+                const fullContent = mergedFullResumeHtml || newFullHtml
+                if (fullContent && fullContent.trim().length > 50) {
+                    editorRef.current.setContent(fullContent)
+                    setIsDirty(true)
+                    syncSkillsFromLiveDom()
+                    return
+                }
+            }
+
+            // Case 2: Targeted section / line / snippet replacement
+            let applied = false
+
+            if (targetText && replacementHtml && editorRef.current.replaceExactText) {
+                const cleanReplacement = parseAndSanitizeSnippet(replacementHtml) || replacementHtml
+                applied = editorRef.current.replaceExactText(targetText, cleanReplacement)
+            }
+
+            // If exact substring replacement didn't find the range, use mergedFullResumeHtml
+            // which has ONLY the targeted section swapped in the tree and preserves all other sections
+            if (!applied && mergedFullResumeHtml && mergedFullResumeHtml.trim().length > 50) {
+                editorRef.current.setContent(mergedFullResumeHtml)
+                applied = true
+            } else if (!applied && replacementHtml && editorRef.current.isFocused && editorRef.current.isFocused()) {
+                const cleanReplacement = parseAndSanitizeSnippet(replacementHtml) || replacementHtml
+                editorRef.current.insertContent(cleanReplacement)
+                applied = true
+            }
+
+            if (applied) {
+                setIsDirty(true)
+                syncSkillsFromLiveDom()
+            }
+        }
+
+        const onKiviShowDiff = (e) => {
+            const { diffData, updatedPart, newFullHtml, targetText, msgId } = e.detail || {}
+            const payload = diffData || {
+                targetText: targetText || updatedPart?.target,
+                replacementHtml: updatedPart?.replacement || '',
+                newFullResumeHtml: newFullHtml || updatedPart?.newFullHtml || '',
+                msgId
+            }
+            if (editorRef.current?.showDiff) {
+                editorRef.current.showDiff(payload)
+            }
+        }
+
+        const onKiviAcceptDiff = () => {
+            if (editorRef.current?.acceptDiff) {
+                editorRef.current.acceptDiff()
+                setIsDirty(true)
+                syncSkillsFromLiveDom()
+            }
+        }
+
+        const onKiviRejectDiff = () => {
+            if (editorRef.current?.rejectDiff) {
+                editorRef.current.rejectDiff()
+            }
+        }
+
+        window.__KIVI_GET_CURRENT_RESUME_SKILLS__ = () => resumeSkills
+
         window.addEventListener('kivi-replace-text', onKiviReplace)
-        return () => window.removeEventListener('kivi-replace-text', onKiviReplace)
-    }, [])
+        window.addEventListener('kivi-apply-resume-update', onKiviApplyResumeUpdate)
+        window.addEventListener('kivi-show-diff', onKiviShowDiff)
+        window.addEventListener('kivi-accept-diff', onKiviAcceptDiff)
+        window.addEventListener('kivi-reject-diff', onKiviRejectDiff)
+
+        return () => {
+            window.removeEventListener('kivi-replace-text', onKiviReplace)
+            window.removeEventListener('kivi-apply-resume-update', onKiviApplyResumeUpdate)
+            window.removeEventListener('kivi-show-diff', onKiviShowDiff)
+            window.removeEventListener('kivi-accept-diff', onKiviAcceptDiff)
+            window.removeEventListener('kivi-reject-diff', onKiviRejectDiff)
+            delete window.__KIVI_GET_CURRENT_RESUME_HTML__
+            delete window.__KIVI_GET_CURRENT_RESUME_SKILLS__
+        }
+    }, [htmlContent, resumeSkills, interviewId])
 
     const RESUME_STEPS = [
         { id: 1, label: "Analyzing profile & technical skills" },
@@ -501,6 +832,13 @@ const Resume = () => {
                 <div className="rp-header-left">
                     <span className="rp-eyebrow">Resume Studio</span>
                     <h1 className="rp-title">{displayTitle}</h1>
+                    <span 
+                        className={`rp-ats-badge ${atsLoading ? 'is-calculating' : ''}`} 
+                        title={atsLoading ? "Recalculating ATS Score…" : `ATS Match Score: ${matchScore}%`}
+                    >
+                        <span className="rp-ats-dot" style={{ color: matchScore >= 80 ? '#10b981' : matchScore >= 60 ? '#f59e0b' : '#ef4444' }}>●</span>
+                        ATS Score: {matchScore}%
+                    </span>
                     {isDirty && <span className="rp-unsaved-badge">● Unsaved</span>}
 
                     {/* ── Grounded ATS Match Score Badge & Dropdown ── */}
@@ -630,8 +968,44 @@ const Resume = () => {
 
             {/* ── Main workspace ─────────────────────────────────────── */}
             <div className="rp-workspace">
-                {/* Center: TipTap editor */}
+                {/* Left Side: Skills Difference & Evolution Window */}
+                <ResumeSkillsWindow
+                    isOpen={isSkillsWindowOpen}
+                    onToggle={toggleSkillsWindow}
+                    olderSkills={olderSkills}
+                    currentSkills={skillsDiff?.currentSkills}
+                    stats={skillsDiff?.stats}
+                    loading={skillsLoading}
+                    missingKeywords={missingKeywords}
+                    onInsertKeyword={handleInsertKeyword}
+                />
+
+                {/* Right Side: TipTap editor (Part 2: Resume Preview) */}
                 <main className="rp-editor-col">
+                    {/* 1-Click Missing Keywords Inserter Bar */}
+                    {missingKeywords && missingKeywords.length > 0 && (
+                        <div className="rp-missing-keywords-bar" aria-label="1-Click Missing Keywords Inserter">
+                            <div className="mkw-bar-header">
+                                <span className="mkw-sparkle">✨</span>
+                                <span className="mkw-title">1-Click ATS Keywords ({missingKeywords.length} missing):</span>
+                            </div>
+                            <div className="mkw-chips-scroll">
+                                {missingKeywords.slice(0, 15).map((kw, idx) => (
+                                    <button
+                                        key={`${kw}-${idx}`}
+                                        type="button"
+                                        className="mkw-chip-btn"
+                                        onClick={() => handleInsertKeyword(kw)}
+                                        title={`Click to insert "${kw}" into resume and boost ATS score`}
+                                    >
+                                        <span className="mkw-plus">+</span>
+                                        <span className="mkw-name">{kw}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {htmlContent ? (
                         <ResumeEditor
                             ref={editorRef}

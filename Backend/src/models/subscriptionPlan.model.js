@@ -10,8 +10,8 @@ const subscriptionPlanSchema = new Schema({
   priceYearly: { type: Number, required: true, min: 0, default: 0 },
   currency: { type: String, required: true, default: 'INR' },
   billingCycle: { type: String, enum: ['MONTHLY', 'YEARLY'], default: 'MONTHLY' },
-  generationLimit: { type: Number, required: true, default: 3 },
-  aiCreditsLimit: { type: Number, required: true, default: 20 },
+  generationLimit: { type: Number, required: true, default: 100 },
+  aiCreditsLimit: { type: Number, required: true, default: 500 },
   features: [{ type: String }],
   isActive: { type: Boolean, default: true },
   isPopular: { type: Boolean, default: false }

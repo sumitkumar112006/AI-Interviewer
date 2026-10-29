@@ -57,8 +57,12 @@ const AuthCallback = () => {
                 const backendRes = await handleGoogleAuth({ accessToken });
 
                 if (backendRes?.user) {
-                    // Clean navigation to dashboard
-                    navigate('/', { replace: true });
+                    // Route admins directly to portal, regular users to dashboard
+                    if (backendRes.user.isAdmin || ['admin', 'super_admin'].includes(backendRes.user.role)) {
+                        navigate('/admin-portal-dashboard-root', { replace: true });
+                    } else {
+                        navigate('/', { replace: true });
+                    }
                 } else {
                     throw new Error("Failed to complete server authentication.");
                 }

@@ -112,6 +112,15 @@ export async function updateCareerProfile(payload) {
     }
 }
 
+export async function updateProfile(payload) {
+    try {
+        const response = await api.put('profile', payload);
+        return response.data;
+    } catch (err) {
+        throw err;
+    }
+}
+
 export async function googleSupabaseAuth(supabaseAccessToken) {
     try {
         const response = await api.post('google-supabase', {

@@ -230,7 +230,13 @@ const Interview = () => {
     const normalizedReport = useMemo(() => normalizeReport(report), [report]);
 
     if (loading && !report) {
-        return <main><ShimmerLoading type="workspace" title="Loading Interview Prep..." /></main>;
+        return (
+            <div className="interview-page">
+                <div className="interview-shell">
+                    <ShimmerLoading type="questions" title="Loading Technical Questions & Interview Workspace..." />
+                </div>
+            </div>
+        );
     }
 
     if (error && !report) {

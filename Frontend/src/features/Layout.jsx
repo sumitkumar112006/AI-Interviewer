@@ -5,7 +5,9 @@ import { getAiModelInfo } from "./Interview/services/interview.api";
 import { KiviAiAssistant } from "./Shared/components/KiviAiAssistant";
 import NotificationBell from "./Shared/components/NotificationBell";
 import { Outlet, useNavigate, Link, useLocation } from "react-router-dom";
+import { Zap, Bot } from "lucide-react";
 import Footer from "./Footer/components/Footer";
+import UserCreditsPopup from "../components/userCreditsPopup";
 import "./layout.scss";
 
 const Layout = ({ children }) => {
@@ -220,13 +222,6 @@ const Layout = ({ children }) => {
         <div className="sidebar-section">
           <p className="sidebar-section-title">SETTINGS</p>
           <nav className="sidebar-nav">
-            <Link to="/pricing" className={`sidebar-link ${activeMenu === "pricing" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
-              <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-              </svg>
-              <span>Pricing & Plans</span>
-            </Link>
-
             <Link to="/profile" className={`sidebar-link ${activeMenu === "profile" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
               <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
@@ -261,17 +256,6 @@ const Layout = ({ children }) => {
               <span>Logout</span>
             </button>
           </nav>
-        </div>
-
-        <div className="upgrade-card">
-          <div className="upgrade-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
-            </svg>
-          </div>
-          <h3>Upgrade to Pro</h3>
-          <p>Unlock advanced features and boost your interview prep.</p>
-          <Link to="/pricing" className="upgrade-btn" onClick={() => setIsSidebarOpen(false)}>Upgrade Now</Link>
         </div>
       </aside>
 
@@ -314,15 +298,19 @@ const Layout = ({ children }) => {
               {/* Remaining Attempts Pills */}
               <div
                 className="usage-attempts-pill"
-                title={`Plan: ${user?.plan?.toUpperCase() || 'FREE'} | Full Generations (Monthly): ${usage?.fullGenerations?.remaining ?? 2}/${usage?.fullGenerations?.limit ?? 2} left | AI Assistant (Daily): ${usage?.aiAssistant?.remaining ?? 10}/${usage?.aiAssistant?.limit ?? 10} left`}
+                onClick={() => window.dispatchEvent(new CustomEvent('kivi:open-credits-popup'))}
+                style={{ cursor: 'pointer' }}
+                title={`Plan: ${user?.plan?.toUpperCase() || 'FREE'} | Full Generations (Monthly): ${usage?.fullGenerations?.remaining ?? 100}/${usage?.fullGenerations?.limit ?? 100} left | AI Assistant (Daily): ${usage?.aiAssistant?.remaining ?? 500}/${usage?.aiAssistant?.limit ?? 500} left (Click to view credit balance)`}
               >
                 <span className="attempts-badge plan-badge">{user?.plan?.toUpperCase() || 'FREE'}</span>
                 <span className="attempts-item" title="Full Resume & Cover Letter Generations (Monthly Reset)">
-                  ⚡ {usage?.fullGenerations?.remaining ?? 2}/{usage?.fullGenerations?.limit ?? 2}<span className="attempts-unit"> Gens/mo</span>
+                  <Zap size={12} style={{ verticalAlign: '-1px', marginRight: '3px' }} />
+                  {usage?.fullGenerations?.remaining ?? 100}/{usage?.fullGenerations?.limit ?? 100}<span className="attempts-unit"> Gens/mo</span>
                 </span>
                 <span className="attempts-divider">|</span>
                 <span className="attempts-item" title="AI Assistant & Writer Rewrites (Daily 24h Reset)">
-                  🤖 {usage?.aiAssistant?.remaining ?? 10}/{usage?.aiAssistant?.limit ?? 10}<span className="attempts-unit"> AI/day</span>
+                  <Bot size={12} style={{ verticalAlign: '-1px', marginRight: '3px' }} />
+                  {usage?.aiAssistant?.remaining ?? 500}/{usage?.aiAssistant?.limit ?? 500}<span className="attempts-unit"> AI/day</span>
                 </span>
               </div>
 
@@ -378,40 +366,52 @@ const Layout = ({ children }) => {
 
           {/* Sub-tabs — visible only when in interview/resume/cover-letter context */}
           {showSubTabs && (
-            <div className="layout-sub-tabs">
+            <div className="layout-sub-tabs" role="tablist" aria-label="Interview Navigation">
               <Link
                 to={activeReportId ? `/interview/${activeReportId}` : "/"}
-                className={`sub-tab-link ${path.startsWith("/interview/") ? "active" : ""}`}
+                className={`sub-tab-link sub-tab-plan ${path.startsWith("/interview/") ? "active" : ""}`}
+                role="tab"
+                aria-selected={path.startsWith("/interview/")}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 11l3 3L22 4"/>
-                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-                </svg>
-                Preparation Plan
+                <span className="sub-tab-icon-wrap">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 11l3 3L22 4"/>
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                  </svg>
+                </span>
+                <span className="sub-tab-label">Preparation Plan</span>
               </Link>
 
               <Link
                 to={activeReportId ? `/resume/${activeReportId}` : "/"}
-                className={`sub-tab-link ${path.startsWith("/resume/") ? "active" : ""}`}
+                className={`sub-tab-link sub-tab-resume ${path.startsWith("/resume/") ? "active" : ""}`}
+                role="tab"
+                aria-selected={path.startsWith("/resume/")}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                  <polyline points="14 2 14 8 20 8"/>
-                  <line x1="16" y1="13" x2="8" y2="13"/>
-                  <line x1="16" y1="17" x2="8" y2="17"/>
-                </svg>
-                Generate Resume
+                <span className="sub-tab-icon-wrap">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                  </svg>
+                </span>
+                <span className="sub-tab-label">Generate Resume</span>
               </Link>
 
               <Link
                 to={activeReportId ? `/cover-letter/${activeReportId}` : "/"}
-                className={`sub-tab-link ${path.startsWith("/cover-letter/") ? "active" : ""}`}
+                className={`sub-tab-link sub-tab-cover ${path.startsWith("/cover-letter/") ? "active" : ""}`}
+                role="tab"
+                aria-selected={path.startsWith("/cover-letter/")}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                  <polyline points="22,6 12,13 2,6"/>
-                </svg>
-                Cover Letter Builder
+                <span className="sub-tab-icon-wrap">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                    <polyline points="22,6 12,13 2,6"/>
+                  </svg>
+                </span>
+                <span className="sub-tab-label">Cover Letter Builder</span>
               </Link>
             </div>
           )}
@@ -420,6 +420,9 @@ const Layout = ({ children }) => {
         <main className="app-main-content">
           {children || <Outlet />}
         </main>
+
+        {/* User Credits & Welcome Popup */}
+        <UserCreditsPopup />
 
         {/* KIVI AI Assistant (Protected Route Only) */}
         <KiviAiAssistant />

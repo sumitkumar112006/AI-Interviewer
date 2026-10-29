@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../Auth/hooks/useAuth';
 import { useInterview } from '../../Interview/hooks/useInterview';
-import { updateCareerProfile } from '../../Auth/services/auth.api';
+import { updateCareerProfile, updateProfile } from '../../Auth/services/auth.api';
 import PageLoading from '../../Shared/components/PageLoading';
 import { Link, useNavigate } from 'react-router-dom';
-import { LogOut, User, Briefcase, Sparkles, Check, Trash2, Plus, AlertCircle } from 'lucide-react';
+import { LogOut, User, Briefcase, Sparkles, Check, Trash2, Plus, AlertCircle, Edit3, X } from 'lucide-react';
 import { InvoicesTable } from '../../Subscription/components/InvoicesTable';
 import '../style/profile.scss';
 
@@ -76,6 +76,48 @@ const Profile = () => {
     const [newPresetTitle, setNewPresetTitle] = useState('');
     const [newPresetContent, setNewPresetContent] = useState('');
     const [savingPreset, setSavingPreset] = useState(false);
+
+    // Edit general profile modal state
+    const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+    const [editUsername, setEditUsername] = useState('');
+    const [updatingProfile, setUpdatingProfile] = useState(false);
+    const [editError, setEditError] = useState(null);
+
+    const handleOpenEditModal = () => {
+        setEditUsername(user?.username || '');
+        setEditError(null);
+        setShowEditProfileModal(true);
+    };
+
+    const handleUpdateProfile = async (e) => {
+        if (e) e.preventDefault();
+        const trimmed = editUsername.trim();
+        if (!trimmed) {
+            setEditError('Username cannot be empty.');
+            return;
+        }
+        if (trimmed.length < 2 || trimmed.length > 30) {
+            setEditError('Username must be between 2 and 30 characters.');
+            return;
+        }
+
+        setUpdatingProfile(true);
+        setEditError(null);
+        try {
+            const res = await updateProfile({ username: trimmed });
+            if (setUser && res?.user) {
+                setUser(prev => prev ? ({ ...prev, username: res.user.username }) : res.user);
+            }
+            setShowEditProfileModal(false);
+            setProfileFeedback({ type: 'success', text: 'Profile updated successfully!' });
+            setTimeout(() => setProfileFeedback(null), 4000);
+        } catch (err) {
+            console.error('Error updating profile:', err);
+            setEditError(err?.response?.data?.message || 'Failed to update profile.');
+        } finally {
+            setUpdatingProfile(false);
+        }
+    };
 
     useEffect(() => {
         if (user?.careerProfile) {
@@ -256,16 +298,29 @@ const Profile = () => {
                         </div>
                     </div>
 
-                    <button 
-                        type="button" 
-                        onClick={onProfileLogout} 
-                        className="profile-logout-btn" 
-                        id="profile-signout-btn"
-                        title="Sign out of your account"
-                    >
-                        <LogOut size={15} />
-                        <span>Sign Out</span>
-                    </button>
+                    <div className="user-action-buttons">
+                        <button 
+                            type="button" 
+                            onClick={handleOpenEditModal} 
+                            className="profile-edit-btn" 
+                            id="profile-edit-btn"
+                            title="Edit your profile details"
+                        >
+                            <Edit3 size={14} />
+                            <span>Edit Profile</span>
+                        </button>
+
+                        <button 
+                            type="button" 
+                            onClick={onProfileLogout} 
+                            className="profile-logout-btn" 
+                            id="profile-signout-btn"
+                            title="Sign out of your account"
+                        >
+                            <LogOut size={14} />
+                            <span>Sign Out</span>
+                        </button>
+                    </div>
                 </div>
 
                 {/* Key Statistics Dashboard */}
@@ -523,6 +578,102 @@ const Profile = () => {
 
             {/* Invoices & Billing History Section */}
             <InvoicesTable />
+
+            {/* Edit Profile Modal */}
+            {showEditProfileModal && (
+                <div className="profile-modal-overlay" onClick={() => !updatingProfile && setShowEditProfileModal(false)}>
+                    <div className="profile-modal-card" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <div className="modal-title-wrap">
+                                <div className="modal-icon-badge">
+                                    <User size={18} />
+                                </div>
+                                <div>
+                                    <h3>Edit Profile</h3>
+                                    <p className="modal-subtitle">Update your account information</p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                className="modal-close-btn"
+                                onClick={() => !updatingProfile && setShowEditProfileModal(false)}
+                                disabled={updatingProfile}
+                                title="Close dialog"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {editError && (
+                            <div className="profile-feedback-alert error modal-alert">
+                                <AlertCircle size={16} />
+                                <span>{editError}</span>
+                            </div>
+                        )}
+
+                        <form onSubmit={handleUpdateProfile} className="modal-body-form">
+                            <div className="profile-avatar-preview-box">
+                                <div className="avatar-preview-circle">
+                                    {(editUsername.trim() || user.username || 'U')[0].toUpperCase()}
+                                </div>
+                                <div className="avatar-preview-details">
+                                    <span className="preview-heading">Avatar Preview</span>
+                                    <span className="preview-subtext">Automatically updated based on your username</span>
+                                </div>
+                            </div>
+
+                            <div className="modal-input-group">
+                                <label htmlFor="edit-username">
+                                    Username <span className="required-mark">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    id="edit-username"
+                                    value={editUsername}
+                                    onChange={(e) => setEditUsername(e.target.value)}
+                                    placeholder="Enter your username..."
+                                    maxLength={30}
+                                    disabled={updatingProfile}
+                                    required
+                                    autoFocus
+                                />
+                                <span className="field-hint">2 to 30 characters. Must be unique.</span>
+                            </div>
+
+                            <div className="modal-input-group">
+                                <label htmlFor="edit-email">Email Address</label>
+                                <input
+                                    type="email"
+                                    id="edit-email"
+                                    value={user.email}
+                                    disabled
+                                    className="input-disabled"
+                                />
+                                <span className="field-hint">Linked to authentication and cannot be changed here.</span>
+                            </div>
+
+                            <div className="modal-actions-row">
+                                <button
+                                    type="button"
+                                    className="btn-modal-cancel"
+                                    onClick={() => setShowEditProfileModal(false)}
+                                    disabled={updatingProfile}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="btn-modal-save"
+                                    disabled={updatingProfile || !editUsername.trim()}
+                                >
+                                    <Sparkles size={14} />
+                                    <span>{updatingProfile ? 'Saving...' : 'Save Changes'}</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

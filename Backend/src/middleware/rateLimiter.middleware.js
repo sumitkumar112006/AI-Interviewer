@@ -288,9 +288,9 @@ const fullGenerationLimiter = createTieredRateLimiter({
     prefix: 'ratelimit:full-generation',
     windowSeconds: 2592000, // 30-day monthly limit
     limits: {
-        free: PLANS?.FREE?.generationLimit || 3,
-        pro: PLANS?.PRO?.generationLimit || 10,
-        premium: PLANS?.PREMIUM?.generationLimit || 25
+        free: PLANS?.FREE?.generationLimit || 100,
+        pro: PLANS?.PRO?.generationLimit || 100,
+        premium: PLANS?.PREMIUM?.generationLimit || 100
     },
     message: 'Generation credit limit reached for your plan.'
 });
@@ -300,11 +300,11 @@ const fullGenerationLimiter = createTieredRateLimiter({
  * Reads from MongoDB instead of Redis — always accurate
  */
 async function getUserGenCredits(user) {
-    if (!user) return { plan: 'free', limit: 2, used: 0, remaining: 2 };
+    if (!user) return { plan: 'free', limit: 100, used: 0, remaining: 100 };
 
     const userModel = require('../models/user.model');
     const subscriptionModel = require('../models/subscription.model');
-    const limits = { free: 2, pro: 10, premium: 25 };
+    const limits = { free: 100, pro: 100, premium: 100 };
 
     const userId = user.id || user._id;
     const now = new Date();
@@ -313,7 +313,7 @@ async function getUserGenCredits(user) {
     let freshUser = await userModel.findById(userId);
     if (!freshUser) {
         const fallbackPlan = (user.plan || 'free').toLowerCase();
-        const fallbackLimit = limits[fallbackPlan] || 2;
+        const fallbackLimit = limits[fallbackPlan] || 100;
         return { plan: fallbackPlan, limit: fallbackLimit, used: 0, remaining: fallbackLimit };
     }
 
@@ -347,7 +347,7 @@ async function getUserGenCredits(user) {
 
     // Recompute limits after potential reset (bonus may have been cleared)
     const userPlan = (freshUser.plan || 'free').toLowerCase();
-    const baseRequests = limits[userPlan] !== undefined ? limits[userPlan] : 2;
+    const baseRequests = limits[userPlan] !== undefined ? limits[userPlan] : 100;
     const bonusCredits = freshUser.customBonusCredits || 0;
     const maxRequests = Math.max(0, baseRequests + bonusCredits);
 
