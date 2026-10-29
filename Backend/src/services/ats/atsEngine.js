@@ -177,10 +177,17 @@ async function calculateAtsMatchScore({ resume = '', jobDescription = '', skipEm
         ? evaluationResults.reduce((acc, curr) => acc + curr.matchConfidence, 0) / evaluationResults.length
         : 1.0;
 
+    const missingTech = evaluationResults.filter(r => techCategories.includes(r.category) && r.score === 0).map(r => r.requirementName);
+    const matchedTech = evaluationResults.filter(r => techCategories.includes(r.category) && r.score > 0).map(r => r.requirementName);
+
+    const missingOther = evaluationResults.filter(r => !techCategories.includes(r.category) && r.score === 0).map(r => r.requirementName);
+    const matchedOther = evaluationResults.filter(r => !techCategories.includes(r.category) && r.score > 0).map(r => r.requirementName);
+
     return {
         ats_score,
+        overallScore: ats_score, // backward-compatible alias
         confidence: Number(avgConfidence.toFixed(2)),
-        // Internal explainability breakdown (never exposed as a long user report)
+        // Internal explainability breakdown
         breakdown: {
             archetype: parsedJD.archetype,
             rawScore: Math.round(scaledRaw),
@@ -193,6 +200,14 @@ async function calculateAtsMatchScore({ resume = '', jobDescription = '', skipEm
                 education: Math.round(educationScore * 100),
                 projects: Math.round(projectsScore * 100),
                 atsCompatibility: Math.round(atsCompatibilityScore * 100)
+            },
+            skillsMatch: {
+                missing: missingTech,
+                matched: matchedTech
+            },
+            keywordMatch: {
+                missing: missingOther,
+                matched: matchedOther
             },
             totalRequirements: evaluationResults.length,
             matchedRequirements: evaluationResults.filter(r => r.score > 0).length

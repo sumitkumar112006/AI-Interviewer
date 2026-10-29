@@ -403,3 +403,17 @@ export async function calculateResumeAtsScore(interviewReportId, resumeHtml = nu
     }
 }
 
+
+export async function calculateAtsScoreApi({ interviewId, resumeHtml, jobDescription }) {
+    try {
+        const url = interviewId ? `/api/interview/ats-score/${interviewId}` : `/api/interview/ats-score`;
+        const response = await api.post(url, {
+            resumeHtml,
+            jobDescription
+        });
+        return response.data;
+    } catch (err) {
+        console.warn('Failed to calculate grounded ATS score:', err);
+        return null;
+    }
+}

@@ -3,6 +3,7 @@ const mongoose = require('mongoose')
 const crypto = require('crypto')
 const { parseResumeLinks, formatExtractedLinksForPrompt } = require('../services/linkExtractor.js')
 const { calculateATSScore } = require('../services/atsScorer.js')
+const { calculateAtsMatchScore } = require('../services/ats/atsEngine')
 const { generateInterviewReport, generateResumePfd, generateResumeHtml, rewriteResumeSection, extractSkillsFromResumeHtml, getAIStatus } = require('../services/ai.service')
 const interviewReportModle = require('../models/interviewReport.model')
 const interviewReportModel = require('../models/interviewReport.model')
@@ -258,7 +259,7 @@ async function getInterviewReportByIdController(req, res, next) {
         const targetJdText = interviewReport.jobDescription || '';
         if (effectiveResumeText && targetJdText) {
             try {
-                const atsResult = await calculateATSScore(effectiveResumeText, targetJdText);
+                const atsResult = await calculateAtsMatchScore({ resume: effectiveResumeText, jobDescription: targetJdText });
                 if (typeof atsResult?.overallScore === 'number') {
                     interviewReport.matchScore = atsResult.overallScore;
                     interviewReport.atsScoreBreakdown = atsResult.breakdown;
@@ -561,7 +562,7 @@ async function updateResumeHtmlController(req, res, next) {
 
         if (savedResumeText && jdText) {
             try {
-                const atsResult = await calculateATSScore(savedResumeText, jdText);
+                const atsResult = await calculateAtsMatchScore({ resume: savedResumeText, jobDescription: jdText });
                 if (typeof atsResult?.overallScore === 'number') {
                     dynamicScore = atsResult.overallScore;
                     atsBreakdown = atsResult.breakdown;
@@ -840,7 +841,7 @@ async function calculateResumeAtsScoreController(req, res, next) {
             return res.status(400).json({ message: "Resume content is required to calculate ATS score" });
         }
 
-        const atsResult = await calculateATSScore(resumeText, jdText);
+        const atsResult = await calculateAtsMatchScore({ resume: rawInput, jobDescription: jdText });
         const dynamicScore = atsResult.overallScore;
 
         const updateDoc = {
@@ -865,7 +866,7 @@ async function calculateResumeAtsScoreController(req, res, next) {
             success: true,
             matchScore: dynamicScore,
             breakdown: atsResult.breakdown,
-            suggestions: atsResult.suggestions
+            suggestions: atsResult.suggestions || []
         });
     } catch (error) {
         console.error("calculateResumeAtsScoreController error:", error.message);
