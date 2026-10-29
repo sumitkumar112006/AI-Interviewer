@@ -18,6 +18,8 @@ Backend/dist/
 .vercel/
 strix_runs/
 .agents/
+Edge cases
+DPDP_Privacy_Policy_and_Compliance_Guide.pdf
 
 # Logs & Temporary Scratch Files
 *.log

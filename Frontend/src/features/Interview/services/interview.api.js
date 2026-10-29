@@ -401,4 +401,5 @@ export async function calculateResumeAtsScore(interviewReportId, resumeHtml = nu
         console.warn('Failed to calculate dynamic ATS score:', err);
         return null;
     }
-}
+}
+
