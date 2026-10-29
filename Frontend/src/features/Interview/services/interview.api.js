@@ -365,3 +365,13 @@ export async function clearAssistantHistoryApi() {
         return { message: 'Failed to clear history' };
     }
 }
+
+export async function calculateAtsScoreApi({ interviewId, resumeHtml, resume, jobDescription }) {
+    const url = interviewId ? `/api/interview/ats-score/${interviewId}` : `/api/interview/ats-score`;
+    const response = await api.post(url, {
+        interviewId,
+        resumeHtml: resumeHtml || resume,
+        jobDescription
+    });
+    return response.data;
+}

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { generateResumePdf, getInterviewReportById, updateResumeHtml, rewriteResumeSection, getActiveJob } from '../services/interview.api'
+import { generateResumePdf, getInterviewReportById, updateResumeHtml, rewriteResumeSection, getActiveJob, calculateAtsScoreApi } from '../services/interview.api'
 import { useInterview } from '../hooks/useInterview'
 import { useAuth } from '../../Auth/hooks/useAuth'
 import ShimmerLoading from '../../Shared/components/ShimmerLoading'
@@ -56,6 +56,72 @@ const Resume = () => {
 
     const editorRef  = useRef(null)
     const chatEndRef = useRef(null)
+    const atsRef     = useRef(null)
+
+    // Grounded ATS Score Calculator State
+    const [atsData, setAtsData] = useState({
+        score: null,
+        confidence: null,
+        breakdown: null,
+        loading: false
+    })
+    const [showAtsBreakdown, setShowAtsBreakdown] = useState(false)
+    const hasInitialCalculatedRef = useRef(false)
+
+    // Grounded ATS calculation handler
+    const handleCalculateAtsScore = useCallback(async () => {
+        if (!interviewId) return
+        setAtsData(prev => ({ ...prev, loading: true }))
+        try {
+            const currentHtml = editorRef.current?.getHtml() || htmlContent
+            const res = await calculateAtsScoreApi({
+                interviewId,
+                resumeHtml: currentHtml,
+                jobDescription: report?.jobDescription
+            })
+            if (res && typeof res.ats_score === 'number') {
+                setAtsData({
+                    score: res.ats_score,
+                    confidence: res.confidence,
+                    breakdown: res.breakdown,
+                    loading: false
+                })
+                if (setReport) {
+                    setReport(prev => prev ? ({ ...prev, matchScore: res.ats_score }) : prev)
+                }
+            }
+        } catch (err) {
+            console.warn('ATS calculation notice:', err.message)
+        } finally {
+            setAtsData(prev => ({ ...prev, loading: false }))
+        }
+    }, [interviewId, htmlContent, report?.jobDescription, setReport])
+
+    // Auto-calculate ATS score when resume and JD are loaded
+    useEffect(() => {
+        if (!hasInitialCalculatedRef.current && interviewId && (htmlContent || report?.generatedResumeHtml) && report?.jobDescription) {
+            hasInitialCalculatedRef.current = true
+            handleCalculateAtsScore()
+        }
+    }, [interviewId, htmlContent, report?.jobDescription, report?.generatedResumeHtml, handleCalculateAtsScore])
+
+    // Sync matchScore from DB report
+    useEffect(() => {
+        if (report?.matchScore && atsData.score === null) {
+            setAtsData(prev => ({ ...prev, score: report.matchScore }))
+        }
+    }, [report?.matchScore, atsData.score])
+
+    // Close popover on outside click
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (atsRef.current && !atsRef.current.contains(e.target)) {
+                setShowAtsBreakdown(false)
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [])
 
     // ── Load resume HTML with health validation & DB fallback ─────────────
     useEffect(() => {
@@ -225,6 +291,9 @@ const Resume = () => {
                     : 'Saved: Your resume changes have been saved to the database successfully!',
                 type: isAuto ? 'auto' : 'manual'
             })
+
+            // Automatically recalculate ATS score for latest saved edits
+            handleCalculateAtsScore()
 
             setTimeout(() => {
                 setSaveNotification(null)
@@ -433,6 +502,81 @@ const Resume = () => {
                     <span className="rp-eyebrow">Resume Studio</span>
                     <h1 className="rp-title">{displayTitle}</h1>
                     {isDirty && <span className="rp-unsaved-badge">● Unsaved</span>}
+
+                    {/* ── Grounded ATS Match Score Badge & Dropdown ── */}
+                    <div className="rp-ats-score-container" ref={atsRef}>
+                        <button
+                            type="button"
+                            className={`rp-ats-badge ${
+                                (atsData.score ?? report?.matchScore ?? 0) >= 75
+                                    ? 'score-high'
+                                    : (atsData.score ?? report?.matchScore ?? 0) >= 60
+                                    ? 'score-mid'
+                                    : 'score-low'
+                            }`}
+                            onClick={() => setShowAtsBreakdown(prev => !prev)}
+                            title="Click to view ATS Score breakdown or recalculate"
+                        >
+                            <span>🎯 ATS</span>
+                            <span className="ats-score-val">
+                                {atsData.loading ? '...' : `${atsData.score ?? report?.matchScore ?? '--'}/100`}
+                            </span>
+                            {atsData.loading && <span className="ats-spinner" />}
+                        </button>
+
+                        {showAtsBreakdown && (
+                            <div className="rp-ats-popover" role="dialog" aria-label="ATS Score Breakdown">
+                                <div className="popover-header">
+                                    <h4>ATS Compatibility</h4>
+                                    <span className="archetype-tag">
+                                        {atsData.breakdown?.archetype?.replace('_', ' ') || 'ENGINEERING'}
+                                    </span>
+                                </div>
+
+                                <div className="popover-breakdown-list">
+                                    <div className="breakdown-row">
+                                        <span className="row-label">Technical Skills</span>
+                                        <span className="row-score">
+                                            {atsData.breakdown?.categories?.technicalSkills ?? '--'}%
+                                        </span>
+                                    </div>
+                                    <div className="breakdown-row">
+                                        <span className="row-label">Required Qualifications</span>
+                                        <span className="row-score">
+                                            {atsData.breakdown?.categories?.requiredQualifications ?? '--'}%
+                                        </span>
+                                    </div>
+                                    <div className="breakdown-row">
+                                        <span className="row-label">Responsibilities</span>
+                                        <span className="row-score">
+                                            {atsData.breakdown?.categories?.responsibilities ?? '--'}%
+                                        </span>
+                                    </div>
+                                    <div className="breakdown-row">
+                                        <span className="row-label">Experience Fit</span>
+                                        <span className="row-score">
+                                            {atsData.breakdown?.categories?.experience ?? '--'}%
+                                        </span>
+                                    </div>
+                                    <div className="breakdown-row">
+                                        <span className="row-label">ATS Format Quality</span>
+                                        <span className="row-score">
+                                            {atsData.breakdown?.categories?.atsCompatibility ?? '--'}%
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    className="popover-recalc-btn"
+                                    onClick={handleCalculateAtsScore}
+                                    disabled={atsData.loading}
+                                >
+                                    {atsData.loading ? 'Calculating…' : '↺ Recalculate for Current Edits'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 <nav className="rp-actions" aria-label="Resume actions">

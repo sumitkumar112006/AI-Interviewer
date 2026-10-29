@@ -1,6 +1,7 @@
 const express = require('express')
 const authMidleware = require('../middleware/auth.middleware')
 const interviewController = require('../controller/interview.controller')
+const atsController = require('../controller/ats.controller')
 const upload = require('../middleware/file.middleware')
 const { createRateLimiter, createTieredRateLimiter, fullGenerationLimiter } = require('../middleware/rateLimiter.middleware')
 
@@ -98,6 +99,10 @@ interviewRouter.put('/resume/:interviewReportId', authMidleware.authUser, checkR
 
 // Update interview progress (questions responses, roadmap tasks)
 interviewRouter.put('/progress/:interviewId', authMidleware.authUser, interviewController.updateInterviewProgressController)
+
+// Grounded ATS Match Score Calculator
+interviewRouter.post('/ats-score', authMidleware.authUser, atsController.calculateAtsScoreController)
+interviewRouter.post('/ats-score/:interviewId', authMidleware.authUser, atsController.calculateAtsScoreController)
 
 /**
  * @route GET /api/interview/:interviewId
