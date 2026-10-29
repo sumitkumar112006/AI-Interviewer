@@ -333,6 +333,35 @@
      - Clean SVG radial gauge displaying the exact match score (0-100%).
      - Top navigation bar integration: `ATS Score: {score}%` badge.
 
+### 🔹 Session: 2026-10-22 (Part 2)
+- **Topic**: 1-Click Missing Keyword Inserter, Live ATS Recalculation with Shimmer, Full Skills Window & AI Section Insertion
+- **Completed Actions**:
+  1. **1-Click Missing Keyword Inserter (`Frontend/src/features/Interview/pages/Resume.jsx`, `ResumeSkillsWindow.jsx`, `resume.scss`, `skillsWindow.scss`)**:
+     - Extracted missing technical skills and keywords from ATS breakdown (`breakdown.skillsMatch.missing` & `breakdown.keywordMatch.missing`).
+     - Added quick-access horizontal chip strip (`.rp-missing-keywords-bar`) directly above `<ResumeEditor>` displaying interactive pills with `+` action badges.
+     - Added dedicated Sub-Window 3 (`missing-window`) inside `ResumeSkillsWindow` with amber indicator dots (`.capsule-missing.is-clickable-inserter`) and filter integration.
+     - Implemented smart `handleInsertKeyword`:
+       - If TipTap is focused: injects formatted keyword directly at cursor position.
+       - If not focused: executes regex section discovery to append the keyword into the Technical Skills block without duplicate headings or syntax breakage.
+       - Immediately updates `resumeSkills` state, synchronizes `localStorage`, removes keyword from missing list, and triggers real-time ATS recalculation.
+  2. **Debounced Live ATS Score Recalculator & Header Shimmer Sweep (`Resume.jsx`, `resume.scss`)**:
+     - Configured responsive 750ms debounced `triggerAtsRecalculation` calling `calculateResumeAtsScore(interviewId, html)`.
+     - Added dynamic CSS shimmer sweep (`.rp-ats-badge.is-calculating`) with `@keyframes ats-shimmer-sweep` and `@keyframes ats-badge-shimmer` giving fluid visual feedback during active computation.
+     - Automatically recalculates on keystrokes, 1-click keyword insertions, AI snippet applications, diff acceptances, and manual/auto saves.
+  3. **Restored Full Two-Window Skills Evolution Panel (`ResumeSkillsWindow.jsx`, `skillsWindow.scss`)**:
+     - Restored the dual sub-window skills interface (Current Resume Skills vs. Original Baseline Skills) alongside the new Missing JD Keywords window.
+     - Independent collapse chevrons (`>`), metric filter strip (New `+N`, Retained, Not in Resume, Missing JD), live search, and resizable draggable slider edge (`skills-window-slider-edge`).
+  4. **Intelligent Section Insertion Engine (`Frontend/src/features/Interview/utils/trackUpdatePart.js`)**:
+     - Upgraded `TrackUpdatePart` diff engine to support pure additions (e.g. adding a new project to `PROJECTS` or adding a new role to `EXPERIENCE`).
+     - When no target leaf node matches, it dynamically discovers the section boundary, inserts the new item into both `mergedDoc` and `diffDoc` (with `<ins class="kivi-diff-ins">`), preventing changes from being lost when diffs are accepted.
+  5. **End-to-End Live Browser Automated Testing (`browser_subagent`)**:
+     - Logged in and tested live on `http://localhost:5173/resume/6ada414e5618c3a6fd644ba6` against Microsoft Research India JD.
+     - Verified 1-Click Keywords: clicked missing keyword pills which instantly injected into the resume.
+     - Added 2 new projects via KIVI AI Assistant: *Distributed Real-Time AI Inference Pipeline* and *Self-Evolving Agentic RL Framework with LLM Reward Modeling*.
+     - Added targeted professional experience: *AI Research Engineer – Microsoft Research India (2026 – Present)*.
+     - Verified ATS Match Score progression: **25%** $\rightarrow$ **57%** $\rightarrow$ **79%** (Skills Match: **100%**, Keyword Match: **88%**, Experience Match: **80%**).
+     - Saved and verified in MongoDB. Recorded WebP session video in artifacts.
+
 ---
 
 ## 🔮 Capabilities Preserved for Future Frontend Implementation
@@ -341,13 +370,9 @@ The following advanced capabilities are fully built and verified in the backend 
 
 1. **Interactive ATS Category Breakdown Drawer**:
    - Tabbed or accordion view expanding the overall ATS score into its 6 constituent categories: Keyword Match (30%), Skills Match (25%), Experience (20%), Education (10%), Title Alignment (10%), and Document Formatting (5%).
-2. **Missing Keywords & Skills 1-Click Injector**:
-   - Interactive badge chips listing high-frequency missing technical skills and JD keywords with a click-to-insert mechanism into active TipTap editor bullet points.
-3. **AI-Powered ATS Actionable Improvement Suggestions**:
+2. **AI-Powered ATS Actionable Improvement Suggestions Drawer**:
    - Dedicated drawer or modal displaying LLM-generated recommendations to tailor bullet points and close experience/title gaps.
-4. **Live Dynamic ATS Score Recalculator**:
-   - Real-time client-side debounced scoring as the candidate edits resume text in TipTap.
-5. **Direct File Upload ATS Scoring API**:
+3. **Direct File Upload ATS Scoring API**:
    - `POST /api/ats/score` endpoint to upload and evaluate PDF / DOCX resumes directly with `pdf-parse` and `multer`.
 
 ---
@@ -366,9 +391,11 @@ The following advanced capabilities are fully built and verified in the backend 
 - [x] Integrate PDF/DOCX hyperlink extraction into AI prompt pipelines (`Backend/src/services/linkExtractor.js`).
 - [x] Streamline Resume Studio page to show ONLY the ATS score.
 - [x] Enable real-time, responsive ATS score recalculation upon updating resume in editor or saving.
+- [x] Implement 1-Click Missing Keyword & Skills Injector above editor and in Skills Window.
+- [x] Implement Shimmer Sweep Animation on ATS Badge during recalculation.
+- [x] Implement Intelligent Section Insertion in TrackUpdatePart for AI-generated projects & experience.
 - [ ] Implement Future Capability 1: Interactive ATS Category Breakdown Drawer.
-- [ ] Implement Future Capability 2: 1-Click Missing Keyword & Skills Injector.
-- [ ] Implement Future Capability 3: Actionable AI ATS Improvement Suggestions Drawer.
+- [ ] Implement Future Capability 2: Actionable AI ATS Improvement Suggestions Drawer.
 - [ ] Test Google Supabase login & OTP flow end-to-end.
 - [ ] Finalize deployment pipelines (Vercel Frontend + Railway/Render Backend).
 
