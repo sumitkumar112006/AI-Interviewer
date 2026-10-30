@@ -58,11 +58,13 @@ export function sanitizeResumeHtml(html) {
                 return
             }
 
-            // Remove javascript: hrefs / srcs
-            if ((name === 'href' || name === 'src' || name === 'action') &&
-                (value.startsWith('javascript:') || value.startsWith('vbscript:'))) {
-                el.removeAttribute(attr.name)
-                return
+            // Remove dangerous protocols (javascript:, vbscript:, data:)
+            if (name === 'href' || name === 'src' || name === 'action') {
+                const normVal = attr.value.trim().toLowerCase().replace(/[\s\u0000-\u001F]+/g, '')
+                if (normVal.startsWith('javascript:') || normVal.startsWith('vbscript:') || normVal.startsWith('data:')) {
+                    el.removeAttribute(attr.name)
+                    return
+                }
             }
 
             // Sanitize and clean href attributes from escaped quotes or backslashes (e.g. \"https://...\" or "https://...\")
@@ -74,8 +76,22 @@ export function sanitizeResumeHtml(html) {
                     .replace(/\\\\/g, '')
                     .trim()
 
+                const normHref = cleanHref.toLowerCase().replace(/[\s\u0000-\u001F]+/g, '')
+                if (
+                    normHref.startsWith('javascript:') ||
+                    normHref.startsWith('vbscript:') ||
+                    normHref.startsWith('data:')
+                ) {
+                    el.removeAttribute('href')
+                    return
+                }
+
                 if (cleanHref) {
                     el.setAttribute('href', cleanHref)
+                    if (el.tagName.toLowerCase() === 'a' && /^https?:\/\//i.test(cleanHref)) {
+                        el.setAttribute('target', '_blank')
+                        el.setAttribute('rel', 'noopener noreferrer')
+                    }
                 } else {
                     el.removeAttribute('href')
                 }

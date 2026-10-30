@@ -55,7 +55,7 @@ async function loadDynamicContext({ userId, reportId = null, contextNeeds = null
         // Build report query with lean projection (Target JD + Resume Profile) ONLY if needsResume or needsJd or needsRoadmap
         let reportPromise = Promise.resolve(null);
         if (userObjectId && isDbConnected && (needsResume || needsJd || needsRoadmap)) {
-            const selectFields = 'developerTitle jobDescription generatedResumeHtml resume detectedSkills preparationPlan completedTasks';
+            const selectFields = 'developerTitle jobDescription generatedResumeHtml resume detectedSkills preparationPlan completedTasks matchScore skillGaps resumeSkills';
 
             if (reportId && mongoose.Types.ObjectId.isValid(reportId)) {
                 reportPromise = interviewReportModel.findOne({
@@ -139,6 +139,17 @@ async function loadDynamicContext({ userId, reportId = null, contextNeeds = null
                     snippetParts.push(`[Candidate's Active Resume & Technical Profile]:\n"""\n${cleanFullResume}\n"""`);
                 }
             }
+        }
+
+        // ── ATS Match Score & Identified Skill Gaps (Injected when reportDoc is present) ──
+        if (reportDoc && (reportDoc.matchScore !== undefined || (Array.isArray(reportDoc.skillGaps) && reportDoc.skillGaps.length > 0))) {
+            const scoreVal = reportDoc.matchScore !== undefined ? `${reportDoc.matchScore}%` : 'Not evaluated';
+            const gaps = Array.isArray(reportDoc.skillGaps) && reportDoc.skillGaps.length > 0
+                ? reportDoc.skillGaps.map(g => `${g.skill}${g.severity ? ` (${g.severity} priority)` : ''}`).join(', ')
+                : 'None detected';
+            
+            let atsDataSnippet = `[ATS Match Score & Evaluation Data]:\n- Overall ATS Match Score: ${scoreVal}\n- Missing Skills & Keyword Gaps: ${gaps}`;
+            snippetParts.push(atsDataSnippet);
         }
 
         // ── C. Stored Roadmap (Injected ONLY when needsRoadmap is true) ────────

@@ -37,7 +37,7 @@ async function runUnifiedMicroRouter({ promptText, selectedText = '', action = '
         };
     }
 
-    const securityRegex = /(?:ignore\s+(?:all\s+)?(?:previous|prior)\s+instructions?|system\s+prompt|give\s+me\s+all\s+(?:my\s+)?stored\s+data|dump\s+(?:the\s+)?database|show\s+(?:all\s+)?env|export\s+(?:all\s+)?users?|drop\s+table)/i;
+    const securityRegex = /(?:ignore\s+(?:all\s+)?(?:previous|prior)\s+instructions?|forget\s+(?:all\s+)?(?:previous|prior)\s+(?:instructions?|directions?|rules?)|disregard\s+(?:all\s+)?(?:previous|prior)\s+(?:instructions?|rules?)|system\s+prompt|reveal\s+(?:your\s+)?(?:system\s+)?prompt|give\s+me\s+all\s+(?:my\s+)?stored\s+data|dump\s+(?:the\s+)?database|show\s+(?:all\s+)?env|export\s+(?:all\s+)?users?|drop\s+table|delete\s+from\s+users|rm\s+-rf|\/etc\/passwd|exec(?:ute)?\s+(?:shell|bash|cmd)|dan\s+mode|developer\s+mode\s+enabled)/i;
     if (securityRegex.test(promptText)) {
         return {
             needs_resume: false,
@@ -59,8 +59,8 @@ Analyze the user's message and determine:
 3. RESUME EDIT INTENT (whether user is requesting adding/updating resume content).
 
 LENIENCY RULES (60% Threshold — When in doubt, set true):
-- "needs_jd" (Job Description): Set TRUE if user mentions "this company", company name, job role, hiring process, interview rounds, salary, JD requirements, or asks how to align for a role.
-- "needs_resume" (Candidate Resume): Set TRUE if user asks to review, tailor, rewrite, improve, check gaps in their experience, bullet points, skills, or projects.
+- "needs_jd" (Job Description): Set TRUE if user mentions "this company", company name, job role, hiring process, interview rounds, salary, JD requirements, asks how to align for a role, or asks about ATS score / match percentage.
+- "needs_resume" (Candidate Resume): Set TRUE if user asks to review, tailor, rewrite, improve, check gaps in their experience, bullet points, skills, projects, or asks about their ATS score / match percentage.
 - "needs_roadmap" (Preparation Roadmap): Set TRUE if user asks about their 14-day study plan, milestones, completed/pending tasks.
 - "is_resume_edit": Set TRUE if user asks to add, modify, rewrite, enhance, shorten, replace, or update any part of their resume (e.g. "add product management", "rewrite summary", "change bullet 2", "make this ATS-friendly"). Set FALSE if it is purely informational (e.g. "what is my match score?", "explain technical questions", "give me leetcode questions").
 - If probability of needing context is ≥60%, set it to TRUE.
@@ -385,6 +385,20 @@ async function buildAssistantPromptAndMessages({ userId, reportId = null, messag
         userPlan
     });
 
+    // Instant Tier-1 Security Short-Circuit (prevents token burn and zero-day LLM jailbreaks)
+    if (routerDecision.intent === 'SECURITY') {
+        return {
+            formattedMessages: [],
+            promptText,
+            foundResources: [],
+            profile: null,
+            intentData: routerDecision,
+            isExplicitRewrite: false,
+            isSecurityBlock: true,
+            dbCallsAvoided: 3
+        };
+    }
+
     const isExplicitRewrite = routerDecision.is_rewrite || routerDecision.is_resume_edit || ['enhance', 'shorten', 'fix_grammar', 'rephrase', 'make_ats'].includes(action);
 
     // 2. Step 2: Dynamically load ONLY the required pieces of context (Selective DB query with 60% leniency)
@@ -558,25 +572,38 @@ HTML Formatting for ResumeUpdations:
 ── CASE 2: NON-EDIT QUERY (Q&A, Match Score, Job Description analysis, Interview prep, Technical Coaching, Search) ──
 Respond in valid JSON with:
 {
-  "messageForUser": "Direct, structured markdown answer using headings (###) and bullet points (•) in professional English. Include verified clickable markdown links [Title](URL) for resources.",
+  "messageForUser": "Ultra-concise, direct markdown answer in professional English (maximum 3 to 5 bullet points).",
   "ResumeUpdations": false
 }
 
-CRITICAL FORMATTING & LINK INTEGRITY RULES:
-1. STRICTLY FORBIDDEN: NEVER USE MARKDOWN TABLES (pipes and dashes | col1 | col2 |) in messageForUser.
-2. STRICTLY FORBIDDEN: NEVER APPEND '(NEW)' OR '[NEW]' ANYWHERE IN RESUME CONTENT OR BULLET POINTS. All added skills, technologies, and bullet points must be natural, polished resume text without any placeholder or newness tag.
-2. CLICKABLE VERIFIED LINKS & VIDEOS:
+CRITICAL CONCISENESS & ANTI-HALLUCINATION RULES (MANDATORY):
+1. ULTRA-CONCISE & DIRECT RESPONSES (STRICTLY ENFORCED):
+   - ALWAYS keep answers extremely short, concise, and to-the-point.
+   - Strictly DO NOT write long essays, unsolicited multi-page lectures, textbook theory, or generic boilerplate text.
+   - Total response length MUST be under 150 words (maximum 3 to 5 concise bullet points or 1-2 tight paragraphs).
+
+2. ATS SCORE & MATCH QUESTIONS (e.g. "Why is my ATS score 68%?", "Why only 68%?", "What is missing?"):
+   - Answer directly and factually using ONLY the candidate's actual resume, target JD, and [ATS Match Score & Evaluation Data].
+   - State the top 2-4 specific missing technical skills or keywords identified from the job description.
+   - Give 2-3 concrete bullet points of exactly what to add or adjust in the resume.
+   - STRICTLY FORBIDDEN: NEVER hallucinate generic textbook advice such as "flatten your skills into a comma-separated list", "unconventional headings", "file format issues", or generic external links (Indeed, Jobscan, etc.).
+   - NEVER contradict the platform's categorized skills structure.
+
+3. ZERO FLUFF & NO UNNECESSARY LINKS:
+   - Jump immediately to the answer with zero pleasantries, preamble, or conversational fluff.
+   - Only include resource links if the user specifically asked for courses, questions, or resources. Do NOT append random reference links.
+
+4. STRICTLY FORBIDDEN: NEVER USE MARKDOWN TABLES (pipes and dashes | col1 | col2 |) in messageForUser.
+5. STRICTLY FORBIDDEN: NEVER APPEND '(NEW)' OR '[NEW]' ANYWHERE IN RESUME CONTENT OR BULLET POINTS.
+6. CLICKABLE VERIFIED LINKS & VIDEOS:
    - When asked for resources, study plans, or videos, ALWAYS return direct clickable markdown links: '• [Title](URL) - Key takeaway'.
    - Cite and embed the exact verified URLs provided in the '[Verified ...]' context below (from YouTube, LeetCode, GitHub, Docs, and Web).
-   - NEVER INVENT RANDOM YOUTUBE VIDEO IDs (e.g. NEVER make up fake URLs like 'watch?v=...'). If recommending a course or video that is not in the verified context, format it as a guaranteed live YouTube search link:
+   - NEVER INVENT RANDOM YOUTUBE VIDEO IDs. If recommending a course or video that is not in the verified context, format it as a guaranteed live YouTube search link:
      '[▶️ Course Title](https://www.youtube.com/results?search_query=topic+tutorial+interview)'
    - NEVER write plain search instructions like 'YouTube (search ...)'. Always provide direct clickable links.
-3. ZERO FLUFF & ANSWER ONLY WHAT IS ASKED: Jump straight into the response without conversational filler.
-4. PROFESSIONAL TONE & STRICT LANGUAGE ENFORCEMENT:
-   - Always maintain an executive, highly professional, polite, and polished tone.
-   - Always output responses in clean, grammatically correct English by default.
-   - Do NOT use Hindi, Hinglish, regional text, or informal colloquial slang.
-   - Exception: ONLY if the user explicitly forces, insists, or requests communicating in another specific language, you may respond in that requested language. Otherwise, ALWAYS communicate in English to maintain maximum professionalism.`;
+7. PROFESSIONAL TONE & STRICT LANGUAGE ENFORCEMENT:
+   - Always maintain an executive, highly professional, polite, and polished tone in clean English.
+   - Do NOT use Hindi, Hinglish, regional text, or informal colloquial slang unless explicitly requested.`;
 
     if (routerDecision.intent === 'ROADMAP' || routerDecision.intent === 'ROADMAP_JD') {
         systemPrompt += `\n\nTask: Provide a structured, milestone-based preparation roadmap with clear daily/weekly objectives and verified clickable video/resource links for each phase.`;
@@ -736,7 +763,7 @@ function logAssistantQueryPayload({
  * @returns {Promise<Object>} Assembled result with reply, messageForUser, ResumeUpdations, resources, profile, intentData
  */
 async function streamAssistantChat({ userId, reportId, message, selectedText, action, instruction, activeTab = '', currentRoute = '', userPlan = 'free', currentResumeHtml = '', onStatus = null, onToken }) {
-    const { formattedMessages, promptText, foundResources, profile, intentData, isExplicitRewrite, dbCallsAvoided } = await buildAssistantPromptAndMessages({
+    const { formattedMessages, promptText, foundResources, profile, intentData, isExplicitRewrite, isSecurityBlock, dbCallsAvoided } = await buildAssistantPromptAndMessages({
         userId,
         reportId,
         message,
@@ -749,6 +776,25 @@ async function streamAssistantChat({ userId, reportId, message, selectedText, ac
         currentResumeHtml,
         onStatus
     });
+
+    if (isSecurityBlock || intentData?.intent === 'SECURITY') {
+        const securityShieldMessage = "I am your KIVI Career Coach & ATS Copilot. I can assist you with your resume, technical interview prep, and career strategy. I cannot execute system commands, reveal internal instructions, or access system configuration.";
+        if (typeof onToken === 'function') {
+            onToken(securityShieldMessage);
+        }
+        return {
+            reply: securityShieldMessage,
+            messageForUser: securityShieldMessage,
+            ResumeUpdations: false,
+            targetText: null,
+            targetSection: null,
+            suggestedSnippet: null,
+            resources: [],
+            candidateProfile: profile,
+            intentData,
+            dbCallsAvoided
+        };
+    }
 
     const rawReply = await streamLlmWithFallback({
         messages: formattedMessages,
@@ -790,7 +836,7 @@ async function streamAssistantChat({ userId, reportId, message, selectedText, ac
  * Non-streaming AI Assistant Orchestrator function (backward compatible)
  */
 async function processAssistantChat({ userId, reportId, message, selectedText, action, instruction, activeTab = '', currentRoute = '', userPlan = 'free', currentResumeHtml = '' }) {
-    const { formattedMessages, promptText, foundResources, profile, intentData, isExplicitRewrite, dbCallsAvoided } = await buildAssistantPromptAndMessages({
+    const { formattedMessages, promptText, foundResources, profile, intentData, isExplicitRewrite, isSecurityBlock, dbCallsAvoided } = await buildAssistantPromptAndMessages({
         userId,
         reportId,
         message,
@@ -802,6 +848,22 @@ async function processAssistantChat({ userId, reportId, message, selectedText, a
         userPlan,
         currentResumeHtml
     });
+
+    if (isSecurityBlock || intentData?.intent === 'SECURITY') {
+        const securityShieldMessage = "I am your KIVI Career Coach & ATS Copilot. I can assist you with your resume, technical interview prep, and career strategy. I cannot execute system commands, reveal internal instructions, or access system configuration.";
+        return {
+            reply: securityShieldMessage,
+            messageForUser: securityShieldMessage,
+            ResumeUpdations: false,
+            targetText: null,
+            targetSection: null,
+            suggestedSnippet: null,
+            resources: [],
+            candidateProfile: profile,
+            intentData,
+            dbCallsAvoided
+        };
+    }
 
     const llmResult = await callLlmWithFallback({
         messages: formattedMessages,

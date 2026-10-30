@@ -15,6 +15,12 @@ async function chatAssistantController(req, res, next) {
             return res.status(400).json({ message: 'A prompt message, instruction, or highlighted snippet is required.' });
         }
 
+        // Bounded input sanitation against DoS, payload bombing, and memory exhaustion
+        const safeMessage = typeof message === 'string' ? message.slice(0, 15000) : '';
+        const safeSelectedText = typeof selectedText === 'string' ? selectedText.slice(0, 15000) : '';
+        const safeInstruction = typeof instruction === 'string' ? instruction.slice(0, 15000) : '';
+        const safeResumeHtml = typeof currentResumeHtml === 'string' ? currentResumeHtml.slice(0, 500000) : '';
+
         const wantsStreaming = stream !== false;
 
         if (wantsStreaming) {
@@ -39,14 +45,7 @@ async function chatAssistantController(req, res, next) {
                 const result = await streamAssistantChat({
                     userId,
                     reportId,
-                    message,
-                    selectedText,
-                    action,
-                    instruction,
-                    activeTab,
-                    currentRoute,
-                    userPlan,
-                    currentResumeHtml,
+                    message: safeMessage, selectedText: safeSelectedText, action, instruction: safeInstruction, activeTab, currentRoute, userPlan, currentResumeHtml: safeResumeHtml,
                     onStatus: (status) => {
                         if (!clientAborted) {
                             res.write(`data: ${JSON.stringify({ type: 'status', ...status })}\n\n`);

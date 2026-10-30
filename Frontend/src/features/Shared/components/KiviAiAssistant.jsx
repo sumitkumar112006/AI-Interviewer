@@ -69,10 +69,14 @@ function cleanUserFacingText(text) {
     if (!text || typeof text !== 'string') return '';
     const trimmed = text.trim();
     if (trimmed.startsWith('{')) {
-        // Try to extract messageForUser from inside JSON
-        const match = trimmed.match(/"(?:messageForUser|replyText|message)"\s*:\s*"((?:\\\\"|[^"])*)"/);
+        // Try to extract messageForUser from inside JSON safely handling escaped quotes and newlines
+        const match = trimmed.match(/"(?:messageForUser|replyText|message)"\s*:\s*"((?:\\.|[^"\\])*)"/);
         if (match && match[1]) {
-            return match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n');
+            try {
+                return JSON.parse('"' + match[1] + '"');
+            } catch {
+                return match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
+            }
         }
         // In the middle of streaming opening brace
         return 'Analyzing and applying updates to your resume...';
@@ -109,8 +113,9 @@ const getChatStorageKey = (uid) => uid ? `kivi_chat_history_${uid}` : 'kivi_chat
 const ChatMessageBubble = React.memo(function ChatMessageBubble({ msg }) {
     // Memoize rendered HTML so static messages parse markdown only once
     const renderedHtml = useMemo(() => {
-        return renderMarkdown(msg.text, msg.isStreaming);
-    }, [msg.text, msg.isStreaming]);
+        const displayText = msg.sender === 'ai' ? cleanUserFacingText(msg.text) : msg.text;
+        return renderMarkdown(displayText, msg.isStreaming);
+    }, [msg.text, msg.isStreaming, msg.sender]);
 
     return (
         <div className={`chat-bubble-row ${msg.sender}`}>
@@ -667,7 +672,7 @@ export function KiviAiAssistant() {
                         if (msg.id === aiMsgId) {
                             return {
                                 ...msg,
-                                text: doneData?.replyText || doneData?.reply || displayedTextRef.current || msg.text || 'I could not find specific details for that query.',
+                                text: doneData?.messageForUser || doneData?.replyText || doneData?.reply || cleanUserFacingText(displayedTextRef.current) || msg.text || 'I could not find specific details for that query.',
                                 targetText: doneData?.targetText || msg.targetText || null,
                                 suggestedSnippet: doneData?.suggestedSnippet || null,
                                 resources: doneData?.resources || [],
