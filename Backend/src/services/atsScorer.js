@@ -1216,6 +1216,9 @@ function cosineSimilarity(vecA, vecB) {
 // 7. EXPORTS (ESM & CommonJS Dual Compatibility)
 // ============================================================================
 
+const { extractATSImprovements } = require('./ats/atsImprovementExtractor');
+
+exports.extractATSImprovements = extractATSImprovements;
 exports.calculateATSScore = calculateATSScore;
 exports.scoreKeywords = scoreKeywords;
 exports.scoreSkills = scoreSkills;
@@ -1233,6 +1236,7 @@ exports.default = calculateATSScore;
 
 module.exports = {
   calculateATSScore,
+  extractATSImprovements,
   scoreKeywords,
   scoreSkills,
   scoreExperience,

@@ -1463,97 +1463,90 @@ $text-muted:     var(--text-secondary, #bac1b8);
     }
 }
 
-// ── Floating AI Diff Banner & In-Place Highlight ──────────────────────────────
-.kivi-floating-diff-banner {
-    position: sticky;
-    top: 52px;
-    z-index: 45;
-    margin: 0.75rem auto;
-    width: fit-content;
-    max-width: 90%;
-    display: flex;
+// ── In-Place Contextual Diff Action Pill (Anchored directly at change site) ─────
+.kivi-inline-diff-pill {
+    position: absolute;
+    z-index: 60;
+    display: inline-flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 1.25rem;
-    padding: 0.55rem 1rem;
-    background: rgba(18, 21, 19, 0.92);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(59, 130, 246, 0.4);
+    gap: 2px;
+    padding: 2px 4px;
+    background: rgba(18, 21, 19, 0.94);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: 9999px;
-    box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4), 0 0 16px rgba(59, 130, 246, 0.2);
-    animation: slideDownPlayer 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.4), 0 0 10px rgba(16, 185, 129, 0.2);
+    animation: inlineDiffFade 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    user-select: none;
+    pointer-events: auto;
 
     .light-theme &,
     [data-theme="light"] & {
-        background: rgba(255, 255, 255, 0.95);
-        border-color: rgba(37, 99, 235, 0.35);
-        box-shadow: 0 8px 24px -4px rgba(37, 99, 235, 0.15), 0 0 12px rgba(37, 99, 235, 0.1);
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid rgba(0, 0, 0, 0.14);
+        box-shadow: 0 4px 14px -2px rgba(0, 0, 0, 0.12), 0 0 8px rgba(16, 185, 129, 0.15);
     }
 
-    .diff-banner-left {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-
-        .diff-sparkle-icon {
-            color: #3b82f6;
-            animation: audioPulse 2s infinite ease-in-out;
-        }
-
-        .diff-banner-title {
-            font-size: 0.825rem;
-            font-weight: 600;
-            color: #f3f0e9;
-            letter-spacing: -0.01em;
-
-            .light-theme &,
-            [data-theme="light"] & {
-                color: #1e293b;
-            }
-        }
+    @media print {
+        display: none !important;
     }
 
-    .diff-banner-actions {
-        display: flex;
+    .diff-pill-btn {
+        display: inline-flex;
         align-items: center;
-        gap: 0.5rem;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        padding: 0;
+        font-family: inherit;
+        font-weight: 300;
+        line-height: 1;
 
-        button {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            padding: 0.32rem 0.75rem;
-            font-size: 0.775rem;
-            font-weight: 600;
-            border-radius: 9999px;
-            cursor: pointer;
-            transition: all 0.15s ease;
-            border: none;
-        }
-
-        .diff-reject-btn {
-            background: rgba(239, 68, 68, 0.12);
+        &.diff-pill-reject {
             color: #f87171;
-            border: 1px solid rgba(239, 68, 68, 0.25);
-
             &:hover {
-                background: rgba(239, 68, 68, 0.25);
+                background: rgba(239, 68, 68, 0.18);
                 color: #ef4444;
+                transform: scale(1.1);
             }
         }
 
-        .diff-accept-btn {
-            background: #2563eb;
-            color: #ffffff;
-            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
-
+        &.diff-pill-accept {
+            color: #34d399;
             &:hover {
-                background: #1d4ed8;
-                transform: translateY(-1px);
-                box-shadow: 0 4px 12px rgba(37, 99, 235, 0.5);
+                background: rgba(16, 185, 129, 0.2);
+                color: #10b981;
+                transform: scale(1.1);
             }
         }
+    }
+
+    .diff-pill-divider {
+        width: 1px;
+        height: 11px;
+        background: rgba(255, 255, 255, 0.18);
+
+        .light-theme &,
+        [data-theme="light"] & {
+            background: rgba(0, 0, 0, 0.12);
+        }
+    }
+}
+
+@keyframes inlineDiffFade {
+    from {
+        opacity: 0;
+        transform: translateY(3px) scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
     }
 }
 

@@ -326,6 +326,8 @@ const ResumeEditor = forwardRef(function ResumeEditor(
 
     // ── Active AI Diff State ──────────────────────────────────────────────────
     const [activeDiff, setActiveDiff] = useState(null)
+    const [diffPillPos, setDiffPillPos] = useState(null)
+    const pageRef = useRef(null)
 
     const editor = useEditor({
         extensions: [
@@ -506,13 +508,14 @@ const ResumeEditor = forwardRef(function ResumeEditor(
             }
         }
 
-        // 3. Smooth scroll to the diff element
+        // 3. Smooth scroll to the diff element & position the in-place pill
         setTimeout(() => {
-            const diffNode = document.querySelector('.kivi-diff-del, .kivi-diff-ins, .kivi-floating-diff-banner')
+            const diffNode = document.querySelector('.kivi-diff-del, .kivi-diff-ins')
             if (diffNode) {
                 diffNode.scrollIntoView({ behavior: 'smooth', block: 'center' })
             }
-        }, 60)
+            updateDiffPillPosition()
+        }, 80)
     }, [editor])
 
     // When initialHtml changes externally, update editor content
@@ -524,6 +527,47 @@ const ResumeEditor = forwardRef(function ResumeEditor(
             }
         }
     }, [initialHtml, editor])
+
+    // Position the in-place diff action pill directly where changes are occurring
+    const updateDiffPillPosition = useCallback(() => {
+        if (!activeDiff || !pageRef.current) {
+            setDiffPillPos(null)
+            return
+        }
+        const pageEl = pageRef.current
+        const targetNode = pageEl.querySelector('.kivi-diff-ins, .kivi-diff-ins-block, .kivi-diff-del')
+        if (targetNode) {
+            const pageRect = pageEl.getBoundingClientRect()
+            const nodeRect = targetNode.getBoundingClientRect()
+
+            // Position directly above the changed text
+            let top = (nodeRect.top - pageRect.top) - 30
+            if (top < 6) {
+                top = (nodeRect.bottom - pageRect.top) + 6
+            }
+            let left = Math.max(10, Math.min(pageRect.width - 65, (nodeRect.left - pageRect.left)))
+
+            setDiffPillPos({ top, left })
+        }
+    }, [activeDiff])
+
+    useEffect(() => {
+        if (!activeDiff) {
+            setDiffPillPos(null)
+            return
+        }
+
+        updateDiffPillPosition()
+        const t1 = setTimeout(updateDiffPillPosition, 60)
+        const t2 = setTimeout(updateDiffPillPosition, 250)
+
+        window.addEventListener('resize', updateDiffPillPosition, { passive: true })
+        return () => {
+            clearTimeout(t1)
+            clearTimeout(t2)
+            window.removeEventListener('resize', updateDiffPillPosition)
+        }
+    }, [activeDiff, updateDiffPillPosition])
 
     // Expose methods to parent via ref
     useImperativeHandle(ref, () => ({
@@ -1714,41 +1758,41 @@ const ResumeEditor = forwardRef(function ResumeEditor(
                 </div>
             )}
 
-            {/* ── Floating AI Diff Accept / Reject Banner ── */}
-            {activeDiff && (
-                <div className="kivi-floating-diff-banner">
-                    <div className="diff-banner-left">
-                        <Sparkles size={14} className="diff-sparkle-icon" />
-                        <span className="diff-banner-title">
-                            {activeDiff.sectionName ? `AI Suggested: ${activeDiff.sectionName}` : 'AI Suggested Resume Update'}
-                        </span>
-                    </div>
-                    <div className="diff-banner-actions">
-                        <button
-                            type="button"
-                            className="diff-reject-btn"
-                            onClick={handleRejectDiff}
-                            title="Reject and keep current content"
-                        >
-                            <X size={14} />
-                            <span>Reject</span>
-                        </button>
-                        <button
-                            type="button"
-                            className="diff-accept-btn"
-                            onClick={handleAcceptDiff}
-                            title="Accept and apply change to resume"
-                        >
-                            <Check size={14} />
-                            <span>Accept</span>
-                        </button>
-                    </div>
-                </div>
-            )}
-
             {/* ── A4 Editor Canvas ── */}
             <div className="tiptap-canvas-wrap" id="print-root">
-                <div className="tiptap-a4-page">
+                <div className="tiptap-a4-page" ref={pageRef} style={{ position: 'relative' }}>
+                    {/* In-Place Contextual Diff Action Pill (Only where changes are applied) */}
+                    {activeDiff && diffPillPos && (
+                        <div
+                            className="kivi-inline-diff-pill"
+                            style={{
+                                top: `${diffPillPos.top}px`,
+                                left: `${diffPillPos.left}px`,
+                            }}
+                            role="toolbar"
+                            aria-label="Diff actions"
+                        >
+                            <button
+                                type="button"
+                                className="diff-pill-btn diff-pill-reject"
+                                onClick={handleRejectDiff}
+                                title="Reject (✕)"
+                                aria-label="Reject change"
+                            >
+                                <X size={13} strokeWidth={1.3} />
+                            </button>
+                            <div className="diff-pill-divider" />
+                            <button
+                                type="button"
+                                className="diff-pill-btn diff-pill-accept"
+                                onClick={handleAcceptDiff}
+                                title="Accept (✓)"
+                                aria-label="Accept change"
+                            >
+                                <Check size={13} strokeWidth={1.4} />
+                            </button>
+                        </div>
+                    )}
                     <EditorContent editor={editor} />
                 </div>
             </div>
