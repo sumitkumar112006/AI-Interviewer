@@ -761,6 +761,7 @@ export function KiviAiAssistant() {
                     streamQueueRef.current += token;
                 },
                 onDone: (data) => {
+                    console.log('%c[KIVI AI Assistant Done Event]', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;', data);
                     pendingDoneDataRef.current = data;
                     isStreamingDoneRef.current = true;
                     if (fetchUsage) fetchUsage();

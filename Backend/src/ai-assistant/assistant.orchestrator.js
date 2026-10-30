@@ -188,7 +188,10 @@ function parseDualPayloadAssistantReply(rawReply, isExplicitRewrite = false) {
             const messageForUser = parsed.messageForUser || parsed.replyText || parsed.message || 'Here is the response.';
             const rawResumeUpdation = parsed.ResumeUpdations ?? parsed.resumeUpdations ?? parsed.suggestedSnippet;
             const isResumeEdit = rawResumeUpdation && rawResumeUpdation !== false && rawResumeUpdation !== 'false' && rawResumeUpdation !== 'null';
-            const resumeHtml = isResumeEdit ? String(rawResumeUpdation).trim() : false;
+            let resumeHtml = isResumeEdit ? String(rawResumeUpdation).trim() : false;
+            if (resumeHtml && typeof resumeHtml === 'string') {
+                resumeHtml = resumeHtml.replace(/\s*\(NEW\)/gi, '').replace(/\s*\[NEW\]/gi, '').trim();
+            }
 
             return {
                 messageForUser,
@@ -449,10 +452,9 @@ Respond in valid JSON with:
 }
 HTML Formatting for ResumeUpdations:
 - Use semantic HTML tags matching TipTap typography: '<p>', '<h3>', '<ul><li><strong>...</strong></li></ul>', '<a href=\"...\">'.
-- SKILLS & BULLET POINT UPDATES: When modifying, adding, or deleting a skill or bullet point in an existing list (e.g. 'AI & ML APIs', 'Databases', or a work experience bullet), set 'targetText' to the EXACT original line from the candidate's resume (e.g. 'AI & ML APIs: OpenAI API, Google Gemini API, GitHub Copilot') and return ONLY the updated line in 'ResumeUpdations' (e.g. '<li><strong>AI & ML APIs:</strong> OpenAI API, Google Gemini API, GitHub Copilot, LangChain (RAG) (NEW)</li>'). DO NOT return other unrelated bullet points or the entire section!
+- SKILLS & BULLET POINT UPDATES: When modifying, adding, or deleting a skill or bullet point in an existing list (e.g. 'AI & ML APIs', 'Databases', or a work experience bullet), set 'targetText' to the EXACT original line from the candidate's resume (e.g. 'AI & ML APIs: OpenAI API, Google Gemini API, GitHub Copilot') and return ONLY the updated line in 'ResumeUpdations' (e.g. '<li><strong>AI & ML APIs:</strong> OpenAI API, Google Gemini API, GitHub Copilot, LangChain (RAG)</li>'). NEVER append '(NEW)' or any marker indicating newness — write standard, professional resume text. DO NOT return other unrelated bullet points or the entire section!
 - SECTION & PARAGRAPH REWRITES: When rewriting a specific section (e.g. Summary or full Experience), DO NOT repeat the section title/heading (e.g. do NOT output '<h3>Summary</h3>' or 'Summary') if the heading already exists in the document. Return ONLY the updated body content ('<p>...</p>' or '<ul><li>...</li></ul>').
 - If you DO include the section heading, ensure 'targetText' includes BOTH the original section heading and its content so the entire section is replaced cleanly.
-- Append '(NEW)' to any missing skills added from the JD (e.g. '<strong>Product Management (NEW)</strong>').
 - DO NOT dump raw markdown code fences inside 'messageForUser'.
 
 ── CASE 2: NON-EDIT QUERY (Q&A, Match Score, Job Description analysis, Interview prep, Technical Coaching, Search) ──
@@ -464,6 +466,7 @@ Respond in valid JSON with:
 
 CRITICAL FORMATTING & LINK INTEGRITY RULES:
 1. STRICTLY FORBIDDEN: NEVER USE MARKDOWN TABLES (pipes and dashes | col1 | col2 |) in messageForUser.
+2. STRICTLY FORBIDDEN: NEVER APPEND '(NEW)' OR '[NEW]' ANYWHERE IN RESUME CONTENT OR BULLET POINTS. All added skills, technologies, and bullet points must be natural, polished resume text without any placeholder or newness tag.
 2. CLICKABLE VERIFIED LINKS & VIDEOS:
    - When asked for resources, study plans, or videos, ALWAYS return direct clickable markdown links: '• [Title](URL) - Key takeaway'.
    - Cite and embed the exact verified URLs provided in the '[Verified ...]' context below (from YouTube, LeetCode, GitHub, Docs, and Web).
@@ -573,6 +576,31 @@ function sanitizeOutputLinks(replyText, verifiedResources = []) {
 /**
  * Logs only the exact prompt and messages payload sent to the LLM (including user query)
  */
+
+/**
+ * Logs the AI Assistant final response and resume snippet in the terminal.
+ */
+function logAssistantResponse({ reply, ResumeUpdations, targetText }) {
+    const timeStr = new Date().toLocaleTimeString();
+    console.log('\n' + '═'.repeat(80));
+    console.log(`🤖 [AI ASSISTANT RESPONSE] | ${timeStr}`);
+    console.log('═'.repeat(80));
+
+    console.log('\n💬 AI Reply:');
+    console.log(reply ? String(reply).trim() : '(No text reply)');
+
+    console.log('\n📝 Resume Snippet (ResumeUpdations):');
+    if (ResumeUpdations && ResumeUpdations !== false) {
+        console.log(typeof ResumeUpdations === 'string' ? ResumeUpdations.trim() : JSON.stringify(ResumeUpdations, null, 2));
+        if (targetText) {
+            console.log(`🎯 Target Text: "${targetText}"`);
+        }
+    } else {
+        console.log('false (No resume changes)');
+    }
+    console.log('\n' + '═'.repeat(80) + '\n');
+}
+
 function logAssistantQueryPayload({
     promptText,
     formattedMessages
@@ -640,11 +668,17 @@ async function streamAssistantChat({ userId, reportId, message, selectedText, ac
     // Save active turn in Redis memory buffer asynchronously
     processTurnInBackground(userId, promptText, dualPayload.messageForUser || fullReply);
 
+    logAssistantResponse({
+        reply: dualPayload.messageForUser || fullReply,
+        ResumeUpdations: dualPayload.ResumeUpdations,
+        targetText: dualPayload.targetText || selectedText || null
+    });
+
     return {
         reply: dualPayload.messageForUser || fullReply,
         messageForUser: dualPayload.messageForUser || fullReply,
         ResumeUpdations: dualPayload.ResumeUpdations,
-        targetText: dualPayload.suggestedSnippet ? (dualPayload.targetText || selectedText || null) : null,
+        targetText: dualPayload.targetText || selectedText || null,
         suggestedSnippet: dualPayload.suggestedSnippet || (dualPayload.ResumeUpdations !== false ? dualPayload.ResumeUpdations : null),
         resources: foundResources,
         candidateProfile: profile,
@@ -682,11 +716,17 @@ async function processAssistantChat({ userId, reportId, message, selectedText, a
 
     processTurnInBackground(userId, promptText, dualPayload.messageForUser || replyText);
 
+    logAssistantResponse({
+        reply: dualPayload.messageForUser || replyText,
+        ResumeUpdations: dualPayload.ResumeUpdations,
+        targetText: dualPayload.targetText || selectedText || null
+    });
+
     return {
         reply: dualPayload.messageForUser || replyText,
         messageForUser: dualPayload.messageForUser || replyText,
         ResumeUpdations: dualPayload.ResumeUpdations,
-        targetText: dualPayload.suggestedSnippet ? (dualPayload.targetText || selectedText || null) : null,
+        targetText: dualPayload.targetText || selectedText || null,
         suggestedSnippet: dualPayload.suggestedSnippet || (dualPayload.ResumeUpdations !== false ? dualPayload.ResumeUpdations : null),
         resources: foundResources,
         candidateProfile: profile,

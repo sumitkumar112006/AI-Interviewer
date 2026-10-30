@@ -17,6 +17,9 @@ export function sanitizeResumeHtml(html) {
         // Replace unescaped literal '\n' string sequences (backslash + n) with clean space
         .replace(/\\n/g, ' ')
         .replace(/\\r/g, '')
+        // Strip (NEW) or [NEW] placeholders from AI suggestions
+        .replace(/\s*\(NEW\)/gi, '')
+        .replace(/\s*\[NEW\]/gi, '')
         // Strip stray bracketed coaching placeholders (e.g. [Question: How did you...], [Insert Metric])
         .replace(/\[\s*(?:Question|Note|Tip|Critique|Action|Clarify|Metric|Insert|TODO)[^\]]*\]/gi, '')
         // Fix LLM JS date string interpolations like " + new Date().toLocaleDateString(...) + "

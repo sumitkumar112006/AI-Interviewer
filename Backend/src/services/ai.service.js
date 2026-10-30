@@ -1335,10 +1335,9 @@ When the user asks to rewrite, enhance, shorten, update, or replace any line, bu
    - **Summary:** "<p>Results-oriented Software Engineer with 2+ years experience building scalable full-stack applications...</p>"
    - **Bullet Points:** "<li>Engineered high-performance REST APIs with Node.js and Redis, reducing p99 latency by 35%...</li>"
    - **Experience / Role Titles:** "<h3><strong>Job Title</strong> — <em>Company Name</em> <span style=\"float: right;\">2024 – Present</span></h3>"
-   - **Skills:** "<p><strong>Languages:</strong> JavaScript, TypeScript, Python, <strong>Go (NEW)</strong></p>"
+   - **Skills:** "<p><strong>Languages:</strong> JavaScript, TypeScript, Python, <strong>Go</strong></p>"
    - **Links:** "<a href=\"https://github.com/...\">GitHub</a>"
    - **A4 Constraint:** Keep bullets concise (1–2 lines) and preserve clean A4 layout.
-4. **New Skills Handling:** When introducing missing skills required by the JD that the candidate may need to learn, append "(NEW)" (e.g. "<strong>Docker (NEW)</strong>").
 5. **Concise User Explanation:** Provide a 1–2 sentence executive explanation in "replyText" in clean markdown highlighting why the change strengthens their application.
 
 If the user highlighted text manually, "targetText" should be that highlighted text.

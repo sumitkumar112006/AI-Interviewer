@@ -9,6 +9,7 @@
 'use strict';
 
 const { WEIGHT_PROFILES } = require('./config/weights.config');
+const { TECH_CATALOG } = require('./config/aliases.config');
 const { parseJobDescription } = require('./parsers/jdParser');
 const { parseResume } = require('./parsers/resumeParser');
 const { matchSingleRequirement } = require('./matchers/requirementMatcher');
@@ -140,7 +141,7 @@ async function calculateAtsMatchScore({ resume = '', jobDescription = '', skipEm
         return sum / items.length;
     };
 
-    const techCategories = ['PROGRAMMING_LANGUAGE', 'FRAMEWORK', 'DATABASE', 'CLOUD', 'DEVOPS', 'AI_ML'];
+    const techCategories = Object.keys(TECH_CATALOG);
     const technicalSkillsScore = getAvgScore(r => techCategories.includes(r.category));
     const requiredQualsScore = getAvgScore(r => r.isMandatory);
     const responsibilitiesScore = getAvgScore(r => r.category === 'RESPONSIBILITY');

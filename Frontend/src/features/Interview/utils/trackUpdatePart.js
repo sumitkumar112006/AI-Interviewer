@@ -161,6 +161,21 @@ export function TrackUpdatePart(oldResumeHtml = '', updatedResume = '', explicit
                         bestMatchIndex = idx
                     }
                 }
+            } else {
+                // Token-overlap similarity for paraphrased or slightly edited lines
+                const targetTokens = strippedTarget.split(/\s+/).filter(t => t.length > 3);
+                const nodeTokens = strippedNodeText.split(/\s+/).filter(t => t.length > 3);
+                if (targetTokens.length >= 2 && nodeTokens.length >= 2) {
+                    const common = targetTokens.filter(t => nodeTokens.includes(t));
+                    const overlapRatio = (common.length * 2) / (targetTokens.length + nodeTokens.length);
+                    if (overlapRatio >= 0.50) {
+                        const score = Math.round(overlapRatio * 65);
+                        if (score > bestMatchScore) {
+                            bestMatchScore = score;
+                            bestMatchIndex = idx;
+                        }
+                    }
+                }
             }
         })
     }

@@ -32,6 +32,21 @@ function inferArchetype(text = '') {
     if (/\b(data engineer|etl|data pipeline|snowflake|spark|kafka|bigquery|hadoop)\b/i.test(lower)) {
         return 'DATA_ENGINEER';
     }
+    if (/\b(data analyst|business analyst|bi analyst|tableau|power bi|looker|analytics)\b/i.test(lower)) {
+        return 'DATA_ANALYST';
+    }
+    if (/\b(product manager|product management|scrum master|technical product manager|tpm)\b/i.test(lower)) {
+        return 'PRODUCT_MANAGER';
+    }
+    if (/\b(ui\/ux|ux designer|product designer|ui designer|interaction designer|figma)\b/i.test(lower)) {
+        return 'UI_UX_DESIGNER';
+    }
+    if (/\b(marketing|seo|growth hacker|content strategist|social media|sem|performance marketing)\b/i.test(lower)) {
+        return 'MARKETING';
+    }
+    if (/\b(sales|business development|hr|human resources|recruiter|finance|accountant|operations)\b/i.test(lower)) {
+        return 'BUSINESS_OPERATIONS';
+    }
     return 'SOFTWARE_ENGINEER';
 }
 
