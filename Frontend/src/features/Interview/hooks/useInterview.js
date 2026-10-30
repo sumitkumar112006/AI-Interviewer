@@ -21,6 +21,7 @@ export const useInterview = () => {
         setReport, 
         reports, 
         setReports,
+        updateReportInList,
         previousResume,
         jobDescription,
         newResume
@@ -160,6 +161,7 @@ export const useInterview = () => {
         generateReport, 
         getResumePdf, 
         deleteReport,
+        updateReportInList,
         previousResume,
         jobDescription,
         newResume,

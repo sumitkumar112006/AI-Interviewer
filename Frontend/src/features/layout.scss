@@ -128,7 +128,7 @@
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
-  padding: 1.5rem 1.15rem;
+  padding: 1.5rem 1.15rem 0.75rem 1.15rem;
   flex-shrink: 0;
   box-sizing: border-box;
   height: 100vh;
@@ -407,11 +407,12 @@
 .sidebar-recent-section {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-height: 0;
   margin-top: 0.75rem;
   padding-top: 1.15rem;
   border-top: 1px solid var(--border-color);
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.5rem;
 
   .sidebar-section-header {
     display: flex;
@@ -499,7 +500,9 @@
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
-    max-height: 220px;
+    flex: 1;
+    min-height: 0;
+    max-height: none;
     overflow-y: auto;
     padding-right: 0.15rem;
 
@@ -642,6 +645,50 @@
     &:hover {
       background: rgba(239, 123, 93, 0.08);
       transform: translateX(2px);
+    }
+  }
+}
+
+/* ===== SIDEBAR FOOTER (DOCKED AT BOTTOM OF SCREEN) ===== */
+.sidebar-footer {
+  margin-top: auto;
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  background: var(--bg-sidebar);
+  border-top: 1px solid var(--border-color);
+  padding: 0.75rem 0.15rem max(0.4rem, env(safe-area-inset-bottom, 0.4rem)) 0.15rem;
+  box-sizing: border-box;
+
+  .sidebar-view-all-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--accent-color);
+    text-decoration: none;
+    padding: 0.55rem 0.75rem;
+    border-radius: 6px;
+    background: rgba(239, 123, 93, 0.08);
+    border: 1px solid rgba(239, 123, 93, 0.22);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+    &:hover {
+      background: rgba(239, 123, 93, 0.16);
+      border-color: rgba(239, 123, 93, 0.45);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(239, 123, 93, 0.12);
+
+      svg {
+        transform: translateX(3px);
+      }
+    }
+
+    svg {
+      transition: transform 0.2s ease;
+      color: var(--accent-color);
+      flex-shrink: 0;
     }
   }
 }
@@ -1351,7 +1398,7 @@
     flex-direction: column;
     border-right: 1px solid var(--border-color);
     border-bottom: none;
-    padding: 1.5rem 1.25rem 3rem 1.25rem;
+    padding: 1.5rem 1.25rem 0.75rem 1.25rem;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
@@ -1523,4 +1570,168 @@
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+/* ── Sidebar Report Hover Card ─────────────────────────────── */
+.sidebar-report-hover-card {
+  position: fixed;
+  z-index: 999999;
+  width: 250px;
+  background: rgba(22, 27, 24, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 0.85rem 0.95rem;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  animation: fadeInHoverCard 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  box-sizing: border-box;
+
+  .light-theme &,
+  [data-theme='light'] & {
+    background: rgba(255, 255, 255, 0.97);
+    border-color: rgba(27, 33, 28, 0.15);
+    box-shadow: 0 12px 32px rgba(27, 33, 28, 0.15), 0 2px 8px rgba(27, 33, 28, 0.08);
+  }
+
+  .hover-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.55rem;
+
+    .hover-card-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.25;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .hover-card-score {
+      font-size: 0.65rem;
+      font-family: var(--font-mono, monospace);
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 5px;
+      border: 1px solid;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+  }
+
+  .hover-card-section {
+    margin-bottom: 0.55rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+
+    .light-theme &,
+    [data-theme='light'] & {
+      border-bottom-color: rgba(27, 33, 28, 0.08);
+    }
+
+    .hover-section-label {
+      display: block;
+      font-size: 0.62rem;
+      font-family: var(--font-mono, monospace);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 0.3rem;
+    }
+
+    .hover-section-value {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .hover-skills-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.3rem;
+      align-items: center;
+
+      .hover-skill-pill {
+        font-size: 0.65rem;
+        background: rgba(239, 68, 68, 0.12);
+        color: #f87171;
+        border: 1px solid rgba(239, 68, 68, 0.28);
+        border-radius: 4px;
+        padding: 1px 5px;
+        white-space: nowrap;
+        max-width: 110px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .hover-skill-more {
+        font-size: 0.62rem;
+        color: var(--text-muted);
+        font-family: var(--font-mono, monospace);
+      }
+    }
+  }
+
+  .hover-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.64rem;
+    color: var(--text-muted);
+
+    .hover-metrics-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+
+      .hover-metric-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+
+        .metric-dot {
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+
+          &.tech-dot {
+            background: #38bdf8;
+          }
+
+          &.roadmap-dot {
+            background: #34d399;
+          }
+        }
+      }
+    }
+
+    .hover-date-stamp {
+      font-size: 0.62rem;
+      color: var(--text-muted);
+    }
+  }
+}
+
+@keyframes fadeInHoverCard {
+  from {
+    opacity: 0;
+    transform: translateX(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@media (max-width: 768px) {
+  .sidebar-report-hover-card {
+    display: none !important;
+  }
 }

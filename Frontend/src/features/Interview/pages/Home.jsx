@@ -1,3 +1,11 @@
+function formatFileSize(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
 import React, { useEffect, useRef, useState } from 'react'
 import '../style/home.scss'
 import { useInterview } from '../hooks/useInterview'
@@ -54,14 +62,11 @@ const Home = () => {
     const isResumeBlocked = Boolean(user?.blockedFeatures?.resumeGeneration)
     const isGenerationBlocked = isReportsBlocked || isResumeBlocked
 
-    const [formData, setFormData] = useState({ jobDescription: '', selfDescription: '' })
+    const [formData, setFormData] = useState({ jobDescription: '' })
     const [selectedFileName, setSelectedFileName] = useState('')
+    const [selectedFile, setSelectedFile] = useState(null)
+    const [previewUrl, setPreviewUrl] = useState(null)
     const [isDragOver, setIsDragOver] = useState(false)
-    const [presets, setPresets] = useState(user?.careerProfile?.savedDescriptions || [])
-    const [showPresetInput, setShowPresetInput] = useState(false)
-    const [presetTitle, setPresetTitle] = useState('')
-    const [presetSaving, setPresetSaving] = useState(false)
-    const [saveAsDefault, setSaveAsDefault] = useState(false)
 
     const [confirmModal, setConfirmModal] = useState({
         isOpen: false,
@@ -80,22 +85,17 @@ const Home = () => {
     const navigate = useNavigate()
 
     const recentReports = Array.isArray(reports) ? reports : []
-
     useEffect(() => {
-        if (user?.careerProfile?.savedDescriptions) {
-            setPresets(user.careerProfile.savedDescriptions)
+        return () => {
+            if (previewUrl) URL.revokeObjectURL(previewUrl)
         }
-        // Auto-fill self-description from saved career profile if form is initially empty
-        if (!formData.selfDescription && user?.careerProfile?.selfDescription) {
-            setFormData(prev => ({ ...prev, selfDescription: user.careerProfile.selfDescription }))
-        }
-    }, [user])
+    }, [previewUrl])
+
 
     useEffect(() => {
         if (!report) return
         setFormData({
-            jobDescription: report.jobDescription ?? '',
-            selfDescription: report.selfDescription ?? ''
+            jobDescription: report.jobDescription ?? ''
         })
     }, [report])
 
@@ -137,7 +137,16 @@ const Home = () => {
 
     const handleFileChange = (e) => {
         const file = e.target.files[0]
-        setSelectedFileName(file ? file.name : '')
+        if (file) {
+            setSelectedFileName(file.name)
+            setSelectedFile(file)
+            if (file.type === 'application/pdf') {
+                if (previewUrl) URL.revokeObjectURL(previewUrl)
+                setPreviewUrl(URL.createObjectURL(file))
+            } else {
+                setPreviewUrl(null)
+            }
+        }
     }
 
     const handleDrop = (e) => {
@@ -149,118 +158,30 @@ const Home = () => {
             dt.items.add(file)
             resumeInputRef.current.files = dt.files
             setSelectedFileName(file.name)
-        }
-    }
-
-    const handleSelectPreset = (presetItem) => {
-        setFormData(prev => ({ ...prev, selfDescription: presetItem.content }))
-    }
-
-    const handleSavePreset = async () => {
-        if (!presetTitle.trim()) {
-            setConfirmModal({
-                isOpen: true,
-                title: 'Profile Label Required',
-                message: 'Please enter a short profile label (e.g. Frontend Developer, Backend, Full Stack).',
-                details: 'Labeling your presets allows you to quickly switch between tailored self descriptions.',
-                confirmText: 'Understood',
-                cancelText: 'Close',
-                type: 'warning',
-                loading: false,
-                onConfirm: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
-            })
-            return
-        }
-        if (!formData.selfDescription?.trim()) {
-            setConfirmModal({
-                isOpen: true,
-                title: 'Empty Self Description',
-                message: 'Please enter your self description in the box before saving it as a profile preset.',
-                details: null,
-                confirmText: 'Understood',
-                cancelText: 'Close',
-                type: 'warning',
-                loading: false,
-                onConfirm: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
-            })
-            return
-        }
-
-        setPresetSaving(true)
-        try {
-            const res = await updateCareerProfile({
-                newDescription: {
-                    title: presetTitle.trim(),
-                    content: formData.selfDescription.trim()
-                },
-                selfDescription: formData.selfDescription.trim()
-            })
-            if (res?.careerProfile?.savedDescriptions) {
-                setPresets(res.careerProfile.savedDescriptions)
+            setSelectedFile(file)
+            if (file.type === 'application/pdf') {
+                if (previewUrl) URL.revokeObjectURL(previewUrl)
+                setPreviewUrl(URL.createObjectURL(file))
             } else {
-                setPresets(prev => [...prev, { title: presetTitle.trim(), content: formData.selfDescription.trim() }])
+                setPreviewUrl(null)
             }
-            if (setUser && res?.careerProfile) {
-                setUser(prev => prev ? ({ ...prev, careerProfile: res.careerProfile }) : prev)
-            }
-            setPresetTitle('')
-            setShowPresetInput(false)
-        } catch (err) {
-            console.error('Save preset error:', err)
-            setConfirmModal({
-                isOpen: true,
-                title: 'Save Failed',
-                message: 'Failed to save profile preset. Please try again.',
-                details: err?.response?.data?.message || err?.message || 'Server error',
-                confirmText: 'Dismiss',
-                cancelText: 'Close',
-                type: 'danger',
-                loading: false,
-                onConfirm: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
-            })
-        } finally {
-            setPresetSaving(false)
         }
     }
 
-    const handleDeletePreset = (presetItem, e) => {
-        e.stopPropagation()
-        const displayTitle = presetItem.title?.length > 40
-            ? `${presetItem.title.slice(0, 40)}...`
-            : presetItem.title || 'Selected Preset'
-
-        setConfirmModal({
-            isOpen: true,
-            title: 'Delete Profile Preset',
-            message: `Are you sure you want to delete the preset "${displayTitle}"?`,
-            details: 'This profile description will be permanently removed from your saved presets.',
-            confirmText: 'Delete Preset',
-            cancelText: 'Cancel',
-            type: 'danger',
-            loading: false,
-            onConfirm: async () => {
-                setConfirmModal(prev => ({ ...prev, loading: true }))
-                try {
-                    const res = await updateCareerProfile({
-                        deleteDescriptionId: presetItem._id,
-                        deleteDescriptionTitle: presetItem.title
-                    })
-                    if (res?.careerProfile?.savedDescriptions) {
-                        setPresets(res.careerProfile.savedDescriptions)
-                    } else {
-                        setPresets(prev => prev.filter(p => p._id ? p._id !== presetItem._id : p.title !== presetItem.title))
-                    }
-                    if (setUser && res?.careerProfile) {
-                        setUser(prev => prev ? ({ ...prev, careerProfile: res.careerProfile }) : prev)
-                    }
-                    setConfirmModal(prev => ({ ...prev, isOpen: false, loading: false }))
-                } catch (err) {
-                    console.error('Delete preset error:', err)
-                    setConfirmModal(prev => ({ ...prev, loading: false }))
-                }
-            }
-        })
+    const handleRemoveFile = (e) => {
+        e?.stopPropagation()
+        if (resumeInputRef.current) {
+            resumeInputRef.current.value = ''
+        }
+        if (previewUrl) {
+            URL.revokeObjectURL(previewUrl)
+        }
+        setSelectedFileName('')
+        setSelectedFile(null)
+        setPreviewUrl(null)
     }
+
+
 
     const handleGenerateReport = async () => {
         if (isGenerationBlocked) return
@@ -297,37 +218,10 @@ const Home = () => {
                 })
                 return
             }
-            if (!formData.selfDescription?.trim()) {
-                setConfirmModal({
-                    isOpen: true,
-                    title: 'Self Description Required',
-                    message: 'Please add a brief candidate summary or select one of your saved presets.',
-                    details: null,
-                    confirmText: 'Got it',
-                    cancelText: 'Close',
-                    type: 'warning',
-                    loading: false,
-                    onConfirm: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
-                })
-                return
-            }
-
             const data = await generateReport({
                 jobDescription: formData.jobDescription,
-                selfDescription: formData.selfDescription,
-                resumeFile,
-                saveSelfDescription: saveAsDefault
+                resumeFile
             })
-
-            if (saveAsDefault && setUser) {
-                setUser(prev => prev ? ({
-                    ...prev,
-                    careerProfile: {
-                        ...(prev.careerProfile || {}),
-                        selfDescription: formData.selfDescription.trim()
-                    }
-                }) : prev)
-            }
 
             const interviewId = extractObjectId(data?._id)
             if (interviewId) {
@@ -478,31 +372,93 @@ const Home = () => {
                         </div>
                     </div>
 
-                    {/* MIDDLE: Upload + Self Description + Button */}
+                    {/* MIDDLE: Upload Resume + Generate Button */}
                     <div className="col-mid">
                         <div className="panel input-group file-group">
-                            <div className="section-heading">
-                                <h3>Upload Resume</h3>
+                            <div className="section-heading split">
+                                <h3>{selectedFile ? 'Uploaded Resume' : 'Upload Resume'}</h3>
+                                {selectedFile && (
+                                    <div className="file-header-actions">
+                                        <button
+                                            type="button"
+                                            className="file-change-btn"
+                                            onClick={() => resumeInputRef.current?.click()}
+                                            title="Choose a different resume file"
+                                        >
+                                            Change
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="file-remove-btn"
+                                            onClick={handleRemoveFile}
+                                            title="Remove uploaded resume"
+                                            aria-label="Remove uploaded resume"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                )}
                             </div>
-                            <label
-                                className={`file-label ${isDragOver ? 'file-label--drag' : ''}`}
-                                htmlFor="resume"
-                                onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
-                                onDragLeave={() => setIsDragOver(false)}
-                                onDrop={handleDrop}
-                            >
-                                <div className="file-label__inner">
-                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="file-label__icon">
-                                        <polyline points="16 16 12 12 8 16" />
-                                        <line x1="12" y1="12" x2="12" y2="21" />
-                                        <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
-                                    </svg>
-                                    <span className="file-label__text">
-                                        {selectedFileName ? `✓ ${selectedFileName}` : 'Upload Resume'}
-                                    </span>
-                                    <span className="file-label__sub">PDF, DOCX (Max 10MB)</span>
+
+                            {selectedFile ? (
+                                <div className="resume-uploaded-view">
+                                    <div className="resume-file-info-bar">
+                                        <div className="resume-file-meta">
+                                            <svg className="resume-file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                                <polyline points="14 2 14 8 20 8" />
+                                            </svg>
+                                            <span className="resume-file-name" title={selectedFile.name}>
+                                                {selectedFile.name}
+                                            </span>
+                                        </div>
+                                        <span className="resume-file-size">
+                                            {formatFileSize(selectedFile.size)}
+                                        </span>
+                                    </div>
+
+                                    {previewUrl ? (
+                                        <div className="resume-preview-frame-container">
+                                            <iframe
+                                                src={`${previewUrl}#toolbar=0&navpanes=0`}
+                                                title="Uploaded Resume Preview"
+                                                className="uploaded-resume-preview-frame"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="resume-docx-placeholder">
+                                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                                <polyline points="14 2 14 8 20 8" />
+                                                <line x1="16" y1="13" x2="8" y2="13" />
+                                                <line x1="16" y1="17" x2="8" y2="17" />
+                                                <polyline points="10 9 9 9 8 9" />
+                                            </svg>
+                                            <p className="docx-label">Word Document (.docx) Ready</p>
+                                            <span className="docx-sub">Text will be extracted automatically during analysis</span>
+                                        </div>
+                                    )}
                                 </div>
-                            </label>
+                            ) : (
+                                <label
+                                    className={`file-label ${isDragOver ? 'file-label--drag' : ''}`}
+                                    htmlFor="resume"
+                                    onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
+                                    onDragLeave={() => setIsDragOver(false)}
+                                    onDrop={handleDrop}
+                                >
+                                    <div className="file-label__inner">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="file-label__icon">
+                                            <polyline points="16 16 12 12 8 16" />
+                                            <line x1="12" y1="12" x2="12" y2="21" />
+                                            <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+                                        </svg>
+                                        <span className="file-label__text">Upload Resume</span>
+                                        <span className="file-label__sub">PDF, DOCX (Max 10MB)</span>
+                                    </div>
+                                </label>
+                            )}
+
                             <input
                                 ref={resumeInputRef}
                                 hidden
@@ -514,96 +470,7 @@ const Home = () => {
                             />
                         </div>
 
-                        <div className="panel input-group textarea-group">
-                            <div className="section-heading split">
-                                <label htmlFor="selfDescription">Self Description</label>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPresetInput(!showPresetInput)}
-                                    className="preset-toggle-btn"
-                                    title="Save or switch candidate profile presets"
-                                >
-                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: '4px'}}>
-                                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                                        <polyline points="17 21 17 13 7 13 7 21" />
-                                        <polyline points="7 3 7 8 15 8" />
-                                    </svg>
-                                    <span>{showPresetInput ? 'Cancel' : '+ Save Preset'}</span>
-                                </button>
-                            </div>
 
-                            {/* Saved Profile Presets Quick Selection Bar */}
-                            <div className="profile-presets-bar">
-                                <span className="presets-label">Saved Profiles:</span>
-                                {presets.length === 0 ? (
-                                    <span className="presets-empty">No presets yet</span>
-                                ) : (
-                                    <div className="presets-list">
-                                        {presets.map((p, idx) => {
-                                            const isSelected = formData.selfDescription.trim() === p.content?.trim();
-                                            return (
-                                                <button
-                                                    key={p._id || idx}
-                                                    type="button"
-                                                    className={`preset-chip ${isSelected ? 'preset-chip--active' : ''}`}
-                                                    onClick={() => handleSelectPreset(p)}
-                                                    title={`Click to auto-fill: ${p.content}`}
-                                                >
-                                                    <span className="preset-chip__icon">⚡</span>
-                                                    <span className="preset-chip__title">{p.title}</span>
-                                                    <span
-                                                        className="preset-chip__del"
-                                                        onClick={(e) => handleDeletePreset(p, e)}
-                                                        title="Delete profile preset"
-                                                    >
-                                                        &times;
-                                                    </span>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Inline Preset Save Form */}
-                            {showPresetInput && (
-                                <div className="preset-save-box">
-                                    <input
-                                        type="text"
-                                        placeholder="Profile Label (e.g. Frontend, Backend, Full Stack)..."
-                                        value={presetTitle}
-                                        onChange={(e) => setPresetTitle(e.target.value)}
-                                        className="preset-title-input"
-                                    />
-                                    <button
-                                        type="button"
-                                        className="preset-save-btn"
-                                        onClick={handleSavePreset}
-                                        disabled={presetSaving || !presetTitle.trim() || !formData.selfDescription.trim()}
-                                    >
-                                        {presetSaving ? 'Saving...' : 'Save Profile'}
-                                    </button>
-                                </div>
-                            )}
-
-                            <textarea
-                                value={formData.selfDescription}
-                                onChange={handleInputChange}
-                                name="selfDescription"
-                                id="selfDescription"
-                                placeholder='Enter your self description in a few sentences, or pick a saved profile preset above...'
-                            />
-
-                            <label className="save-default-toggle" htmlFor="save-default-self-desc">
-                                <input
-                                    id="save-default-self-desc"
-                                    type="checkbox"
-                                    checked={saveAsDefault}
-                                    onChange={(e) => setSaveAsDefault(e.target.checked)}
-                                />
-                                <span>Save as default profile self-description</span>
-                            </label>
-                        </div>
 
                         <button
                             onClick={handleGenerateReport}

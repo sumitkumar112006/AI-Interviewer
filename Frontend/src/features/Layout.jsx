@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useAuth } from "./Auth/hooks/useAuth";
 import { useInterview } from "./Interview/hooks/useInterview";
 import { getAiModelInfo } from "./Interview/services/interview.api";
@@ -51,7 +51,7 @@ function getReportTitle(reportItem) {
 
 const Layout = ({ children }) => {
   const { user, usage, fetchUsage, handleLogout } = useAuth();
-  const { reports, getReports, deleteReport } = useInterview();
+  const { reports, getReports, deleteReport, setReport } = useInterview();
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
   const [deleteModal, setDeleteModal] = useState({
     isOpen: false,
@@ -59,6 +59,55 @@ const Layout = ({ children }) => {
     title: '',
     loading: false
   });
+  const [hoveredReport, setHoveredReport] = useState(null);
+  const [hoverPos, setHoverPos] = useState(null);
+  const hoverTimeoutRef = useRef(null);
+
+  const handleOpenReport = (reportItem) => {
+    const rId = extractObjectId(reportItem?._id || reportItem?.id || reportItem?.interviewId);
+    if (!rId) return;
+
+    if (setReport) {
+      setReport(reportItem);
+    }
+
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    setHoveredReport(null);
+    setHoverPos(null);
+
+    const currentPath = location.pathname;
+    if (currentPath.startsWith('/resume/')) {
+      navigate(`/resume/${rId}`);
+    } else if (currentPath.startsWith('/cover-letter/')) {
+      navigate(`/cover-letter/${rId}`);
+    } else {
+      navigate(`/interview/${rId}`);
+    }
+
+    setIsSidebarOpen(false);
+  };
+
+  const handleReportMouseEnter = (report, event) => {
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) return;
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const popoverHeight = 160;
+    let top = rect.top;
+    if (top + popoverHeight > window.innerHeight) {
+      top = Math.max(16, window.innerHeight - popoverHeight - 16);
+    }
+    setHoverPos({ top, left: rect.right + 10 });
+    setHoveredReport(report);
+  };
+
+  const handleReportMouseLeave = () => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredReport(null);
+      setHoverPos(null);
+    }, 70);
+  };
 
   const handleDeleteSidebarReport = (interviewId, title) => {
     setDeleteModal({
@@ -378,7 +427,7 @@ const Layout = ({ children }) => {
               </div>
             ) : (
               filteredSidebarReports.slice(0, 8).map((r, idx) => {
-                const rId = extractObjectId(r?._id);
+                const rId = extractObjectId(r?._id || r?.id || r?.interviewId);
                 const title = getReportTitle(r);
                 const dateStr = formatDate(r?.createdAt ?? r?.updatedAt);
                 const scoreColor = getMatchScoreColor(r?.matchScore);
@@ -388,21 +437,17 @@ const Layout = ({ children }) => {
                   <div
                     key={rId || idx}
                     className={`sidebar-report-item ${isActive ? 'active' : ''}`}
-                    onClick={() => {
-                      if (rId) {
-                        navigate(`/interview/${rId}`, { state: { interviewReport: r } });
-                        setIsSidebarOpen(false);
-                      }
-                    }}
+                    onClick={() => handleOpenReport(r)}
+                    onMouseEnter={(e) => handleReportMouseEnter(r, e)}
+                    onMouseLeave={handleReportMouseLeave}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && rId) {
-                        navigate(`/interview/${rId}`, { state: { interviewReport: r } });
-                        setIsSidebarOpen(false);
+                      if (e.key === 'Enter') {
+                        handleOpenReport(r);
                       }
                     }}
-                    title={`View: ${title}`}
+                    title=""
                   >
                     <div className="sidebar-report-left">
                       <svg className="sidebar-report-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -447,21 +492,25 @@ const Layout = ({ children }) => {
             )}
           </div>
 
-          {recentReportsList.length > 0 && (
+        </div>
+
+        {recentReportsList.length > 0 && (
+          <div className="sidebar-footer">
             <Link
               to="/reports"
               className="sidebar-view-all-link"
               onClick={() => setIsSidebarOpen(false)}
+              title="View all interview reports"
             >
               <span>View All Reports ({recentReportsList.length})</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="5" y1="12" x2="19" y2="12" />
                 <polyline points="12 5 19 12 12 19" />
               </svg>
             </Link>
-          )}
-        </div>
-            </aside>
+          </div>
+        )}
+      </aside>
 
       {/* RIGHT CONTENT WRAPPER */}
       <div className="app-content-wrapper">
@@ -647,6 +696,75 @@ const Layout = ({ children }) => {
         onConfirm={handleConfirmDelete}
         onClose={() => setDeleteModal(prev => ({ ...prev, isOpen: false }))}
       />
+
+      {/* Sleek Floating Hover Preview Popover for Recent Reports */}
+      {hoveredReport && hoverPos && (
+        <div
+          className="sidebar-report-hover-card"
+          style={{
+            top: `${hoverPos.top}px`,
+            left: `${hoverPos.left}px`
+          }}
+        >
+          <div className="hover-card-header">
+            <span className="hover-card-title">{getReportTitle(hoveredReport)}</span>
+            {hoveredReport.matchScore && (
+              <span
+                className="hover-card-score"
+                style={{
+                  color: getMatchScoreColor(hoveredReport.matchScore),
+                  borderColor: `${getMatchScoreColor(hoveredReport.matchScore)}40`,
+                  background: `${getMatchScoreColor(hoveredReport.matchScore)}18`
+                }}
+              >
+                {hoveredReport.matchScore}% Match
+              </span>
+            )}
+          </div>
+
+          {/* Missing Skills Tags or Target Role */}
+          {Array.isArray(hoveredReport.skillGaps) && hoveredReport.skillGaps.length > 0 ? (
+            <div className="hover-card-section">
+              <span className="hover-section-label">Target Skill Gaps:</span>
+              <div className="hover-skills-pills">
+                {hoveredReport.skillGaps.slice(0, 3).map((gap, i) => {
+                  const skillName = typeof gap === 'string' ? gap : (gap?.skill || gap?.name || 'Skill');
+                  return (
+                    <span key={i} className="hover-skill-pill">
+                      {skillName}
+                    </span>
+                  );
+                })}
+                {hoveredReport.skillGaps.length > 3 && (
+                  <span className="hover-skill-more">+{hoveredReport.skillGaps.length - 3} more</span>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="hover-card-section">
+              <span className="hover-section-label">Target Role:</span>
+              <span className="hover-section-value">{hoveredReport.developerTitle || 'Software Engineer'}</span>
+            </div>
+          )}
+
+          {/* Prep Metrics & Date */}
+          <div className="hover-card-footer">
+            <div className="hover-metrics-row">
+              <span className="hover-metric-item">
+                <span className="metric-dot tech-dot" />
+                {hoveredReport.counts?.technical ?? (hoveredReport.technicalQuestions?.length || 0)} Questions
+              </span>
+              <span className="hover-metric-item">
+                <span className="metric-dot roadmap-dot" />
+                {hoveredReport.counts?.roadmap ?? (hoveredReport.preparationPlan?.length || 0)} Steps
+              </span>
+            </div>
+            <div className="hover-date-stamp">
+              {formatDate(hoveredReport.createdAt ?? hoveredReport.updatedAt)}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

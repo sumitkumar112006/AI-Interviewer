@@ -53,11 +53,11 @@ async function generateInterviewReportController(req, res, next) {
 
         const rawSelfDesc = req.body?.selfDescription?.trim();
         const savedSelfDesc = req.user?.careerProfile?.selfDescription?.trim();
-        const effectiveSelfDescription = rawSelfDesc || savedSelfDesc;
+        const effectiveSelfDescription = rawSelfDesc || savedSelfDesc || "";
 
-        if (!effectiveSelfDescription || !req.body?.jobDescription?.trim()) {
+        if (!req.body?.jobDescription?.trim()) {
             return res.status(400).json({
-                message: "Job description and self description are required"
+                message: "Job description is required"
             })
         }
 
@@ -315,6 +315,18 @@ async function getAllInterviewReportController(req, res, next) {
                 reportObj.detectedSkills = processReportSkills(reportObj)
             }
 
+            const techCount = Array.isArray(reportObj.technicalQuestions) ? reportObj.technicalQuestions.length : 0;
+            const behavioralCount = Array.isArray(reportObj.behavioralQuestion) ? reportObj.behavioralQuestion.length : 0;
+            const planCount = Array.isArray(reportObj.preparationPlan) ? reportObj.preparationPlan.length : 0;
+            const completedCount = Array.isArray(reportObj.completedTasks) ? reportObj.completedTasks.length : 0;
+
+            reportObj.counts = {
+                technical: techCount,
+                behavioral: behavioralCount,
+                roadmap: planCount,
+                completedRoadmap: completedCount
+            };
+
             delete reportObj.resume
             delete reportObj.selfDescription
             delete reportObj.jobDescription
@@ -497,6 +509,9 @@ async function deleteReportById(req, res, next) {
             })
         }
 
+        await deleteCache(`cache:report:${interviewReportId}:${req.user.id}`);
+        await deleteCache(`cache:reports:user:${req.user.id}`);
+
         return res.status(200).json({
             message: "Report deleted successfully!",
             deletedReportId: interviewReportId
@@ -590,9 +605,10 @@ async function updateResumeHtmlController(req, res, next) {
             { returnDocument: 'after' }
         );
 
-        // Invalidate report detail cache & RAG vector chunk cache
+        // Invalidate report detail cache, user recent reports list cache & RAG chunk cache
         const cacheKey = `cache:report:${interviewReportId}:${userIdStr}`
         await deleteCache(cacheKey)
+        await deleteCache(`cache:reports:user:${userIdStr}`)
         await invalidateChunkCache(interviewReportId)
 
         res.status(200).json({
@@ -858,9 +874,10 @@ async function calculateResumeAtsScoreController(req, res, next) {
             updateDoc
         );
 
-        // Invalidate cache
+        // Invalidate both report detail cache and user recent reports list cache
         const cacheKey = `cache:report:${interviewReportId}:${userIdStr}`;
         await deleteCache(cacheKey);
+        await deleteCache(`cache:reports:user:${userIdStr}`);
 
         return res.status(200).json({
             success: true,

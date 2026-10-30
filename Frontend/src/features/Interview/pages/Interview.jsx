@@ -176,45 +176,44 @@ const Interview = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'technical';
 
-    const { report: sharedReport } = useInterview();
+    const { report: sharedReport, setReport: setSharedReport } = useInterview();
     const [report, setReport] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [summaryOpen, setSummaryOpen] = useState(false);
 
-    const routeReport = location.state?.interviewReport ?? null;
-    const sharedReportMatchesRoute = extractObjectId(sharedReport?._id) === interviewId ? sharedReport : null;
-    const routeReportMatchesRoute = extractObjectId(routeReport?._id) === interviewId ? routeReport : null;
-    const fallbackReport = routeReportMatchesRoute ?? sharedReportMatchesRoute;
-
     const handleUpdateReport = (updatedReport) => {
         setReport(updatedReport);
+        if (setSharedReport) setSharedReport(updatedReport);
     };
 
     useEffect(() => {
-        if (fallbackReport) {
-            setReport((currentReport) => currentReport ?? fallbackReport);
-            setLoading(false);
-        }
-    }, [fallbackReport]);
-
-    useEffect(() => {
         let isMounted = true;
+        // Check if sharedReport already has full data (with technicalQuestions) for this interviewId
+        const sharedId = extractObjectId(sharedReport?._id);
+        const hasQuestions = Array.isArray(sharedReport?.technicalQuestions) && sharedReport.technicalQuestions.length > 0;
+        if (sharedId === interviewId && hasQuestions) {
+            setReport(sharedReport);
+            setLoading(false);
+        } else {
+            setReport(null);
+            setLoading(true);
+        }
+        setError('');
+
         async function loadInterviewReport() {
-            setLoading((currentLoading) => !fallbackReport || currentLoading);
-            if (!fallbackReport) {
-                setError('');
-            }
             try {
                 const response = await getInterviewReportById(interviewId);
                 if (!isMounted) return;
-                setReport(response?.interviewReport ?? fallbackReport ?? null);
+                const fetched = response?.interviewReport ?? null;
+                setReport(fetched);
+                if (fetched && setSharedReport) {
+                    setSharedReport(fetched);
+                }
                 setError('');
             } catch (err) {
                 if (!isMounted) return;
-                if (!fallbackReport) {
-                    setError(err?.response?.data?.message || 'Unable to load interview report right now.');
-                }
+                setError(err?.response?.data?.message || 'Unable to load interview report right now.');
             } finally {
                 if (isMounted) {
                     setLoading(false);
@@ -225,7 +224,7 @@ const Interview = () => {
         return () => {
             isMounted = false;
         };
-    }, [fallbackReport, interviewId]);
+    }, [interviewId]);
 
     const normalizedReport = useMemo(() => normalizeReport(report), [report]);
 

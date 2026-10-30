@@ -39,7 +39,7 @@ function isHealthyResumeHtml(html) {
 const Resume = () => {
     const { interviewId } = useParams()
     const navigate = useNavigate()
-    const { report, loading, setLoading, getReoprtById, setReport } = useInterview()
+    const { report, loading, setLoading, getReoprtById, setReport, updateReportInList } = useInterview()
     const { user, fetchUsage } = useAuth()
 
     const [error, setError]           = useState('')
@@ -54,6 +54,21 @@ const Resume = () => {
 
     // ATS Score & Side Window state
     const [matchScore, setMatchScore] = useState(() => report?.matchScore ?? 85)
+
+    const handleScoreUpdate = useCallback((newScore, extraUpdates = {}) => {
+        if (typeof newScore !== 'number') return;
+        setMatchScore(newScore);
+        if (updateReportInList && interviewId) {
+            updateReportInList(interviewId, { matchScore: newScore, ...extraUpdates });
+        }
+    }, [interviewId, updateReportInList]);
+
+    // Ensure recent reports sidebar reflects current score in real-time
+    useEffect(() => {
+        if (typeof matchScore === 'number' && interviewId && updateReportInList) {
+            updateReportInList(interviewId, { matchScore });
+        }
+    }, [interviewId, matchScore, updateReportInList]);
     const [atsBreakdown, setAtsBreakdown] = useState(() => report?.atsScoreBreakdown || null)
     const [atsLoading, setAtsLoading] = useState(false)
     const [isSkillsWindowOpen, setIsSkillsWindowOpen] = useState(() => {
@@ -85,6 +100,7 @@ const Resume = () => {
         async function init() {
             setDbLoading(true)
             setError('')
+            setHtmlContent('')
 
             // 1. Instant check: Do we have a healthy draft in localStorage from recent edits?
             let cachedDraft = null
@@ -115,7 +131,7 @@ const Resume = () => {
                 if (!mounted) return
 
                 if (typeof fetched?.matchScore === 'number') {
-                    setMatchScore(fetched.matchScore)
+                    handleScoreUpdate(fetched.matchScore)
                 }
                 if (fetched?.atsScoreBreakdown) {
                     setAtsBreakdown(fetched.atsScoreBreakdown)
@@ -169,7 +185,7 @@ const Resume = () => {
                 calculateResumeAtsScore(interviewId, fetched?.generatedResumeHtml || cachedDraft)
                     .then(atsRes => {
                         if (mounted && typeof atsRes?.matchScore === 'number') {
-                            setMatchScore(atsRes.matchScore)
+                            handleScoreUpdate(atsRes.matchScore, atsRes?.breakdown ? { atsScoreBreakdown: atsRes.breakdown } : {})
                         }
                         if (mounted && atsRes?.breakdown) {
                             setAtsBreakdown(atsRes.breakdown)
@@ -334,7 +350,7 @@ const Resume = () => {
             try {
                 const atsRes = await calculateResumeAtsScore(interviewId, html)
                 if (typeof atsRes?.matchScore === 'number') {
-                    setMatchScore(atsRes.matchScore)
+                    handleScoreUpdate(atsRes.matchScore, atsRes?.breakdown ? { atsScoreBreakdown: atsRes.breakdown } : {})
                 }
                 if (atsRes?.breakdown) {
                     setAtsBreakdown(atsRes.breakdown)
@@ -469,9 +485,9 @@ const Resume = () => {
                 setReport(res.interviewReport)
             }
             if (typeof res?.matchScore === 'number') {
-                setMatchScore(res.matchScore)
+                handleScoreUpdate(res.matchScore)
             } else if (typeof res?.interviewReport?.matchScore === 'number') {
-                setMatchScore(res.interviewReport.matchScore)
+                handleScoreUpdate(res.interviewReport.matchScore)
             }
             if (res?.breakdown) {
                 setAtsBreakdown(res.breakdown)
@@ -904,10 +920,33 @@ const Resume = () => {
                     loading={skillsLoading}
                     missingKeywords={missingKeywords}
                     onInsertKeyword={handleInsertKeyword}
+                    atsScore={matchScore}
+                    atsBreakdown={atsBreakdown}
                 />
 
                 {/* Right Side: TipTap editor (Part 2: Resume Preview) */}
                 <main className="rp-editor-col">
+                    {/* Mobile Banner Trigger to Open Skills Evolution (Matches Image 3) */}
+                    <div 
+                        className="mobile-skills-evolution-banner" 
+                        onClick={toggleSkillsWindow}
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Open Skills Evolution"
+                    >
+                        <div className="m-banner-content">
+                            <span className="m-banner-icon">⚡</span>
+                            <div className="m-banner-text">
+                                <span className="m-banner-title">Skills Evolution</span>
+                                <span className="m-banner-sub">Tracking new additions vs. original</span>
+                            </div>
+                            {skillsDiff?.stats?.newCount > 0 && (
+                                <span className="m-banner-badge">+{skillsDiff.stats.newCount}</span>
+                            )}
+                        </div>
+                        <span className="m-banner-chevron">&gt;</span>
+                    </div>
+
                     {/* 1-Click Missing Keywords Inserter Bar */}
                     {missingKeywords && missingKeywords.length > 0 && (
                         <div className="rp-missing-keywords-bar" aria-label="1-Click Missing Keywords Inserter">
@@ -934,6 +973,7 @@ const Resume = () => {
 
                     {htmlContent ? (
                         <ResumeEditor
+                            key={interviewId}
                             ref={editorRef}
                             initialHtml={htmlContent}
                             placeholder="Your resume content will appear here. Start editing!"

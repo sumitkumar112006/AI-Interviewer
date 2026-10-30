@@ -12,6 +12,20 @@ export const InterviewProvider = ({ children }) => {
     const [report, setReport] = useState(null)
     const [reports, setReports] = useState(null)
 
+    const updateReportInList = (reportId, updates) => {
+        if (!reportId || !updates) return;
+        setReports(prev => {
+            if (!Array.isArray(prev)) return prev;
+            return prev.map(r => {
+                const id = r?._id?.$oid || r?._id;
+                if (String(id) === String(reportId)) {
+                    return { ...r, ...updates };
+                }
+                return r;
+            });
+        });
+    };
+
     const previousResume = report?.resume || ""
     const jobDescription = report?.jobDescription || ""
     const newResume = report?.generatedResumeHtml || ""
@@ -24,6 +38,7 @@ export const InterviewProvider = ({ children }) => {
             setReport, 
             reports, 
             setReports,
+            updateReportInList,
             previousResume,
             jobDescription,
             newResume

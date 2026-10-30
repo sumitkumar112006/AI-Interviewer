@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import '../style/skillsWindow.scss';
 
 /**
@@ -40,7 +40,9 @@ export default function ResumeSkillsWindow({
     stats = {},
     loading = false,
     missingKeywords = [],
-    onInsertKeyword = null
+    onInsertKeyword = null,
+    atsScore = 80,
+    atsBreakdown = null
 }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'new' | 'previous' | 'omitted' | 'older' | 'missing'
@@ -49,21 +51,68 @@ export default function ResumeSkillsWindow({
     const [isCurrentOpen, setIsCurrentOpen] = useState(true);
     const [isOlderOpen, setIsOlderOpen] = useState(true);
     const [isMissingOpen, setIsMissingOpen] = useState(true);
+    // Horizontal scroll controls for metric pills strip (< > arrows)
+    const metricsStripRef = useRef(null);
+    const [canScrollLeft, setCanScrollLeft] = useState(false);
+    const [canScrollRight, setCanScrollRight] = useState(false);
+    const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(true);
+
+    const updateScrollButtons = useCallback(() => {
+        if (!metricsStripRef.current) return;
+        const { scrollLeft, scrollWidth, clientWidth } = metricsStripRef.current;
+        setCanScrollLeft(scrollLeft > 4);
+        setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 6);
+    }, []);
+
+    const scrollStrip = (direction) => {
+        if (!metricsStripRef.current) return;
+        metricsStripRef.current.scrollBy({ left: direction, behavior: 'smooth' });
+        setTimeout(updateScrollButtons, 250);
+    };
+
+    // Responsive Mobile Screen Detection
+    const [isMobile, setIsMobile] = useState(() => {
+        if (typeof window !== 'undefined') {
+            return window.innerWidth <= 768;
+        }
+        return false;
+    });
+
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobile(window.innerWidth <= 768);
+        };
+        window.addEventListener('resize', handleResize, { passive: true });
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    // Touch gesture for mobile swipe down to dismiss
+    const touchStartY = useRef(0);
+    const handleTouchStart = (e) => {
+        touchStartY.current = e.touches[0].clientY;
+    };
+    const handleTouchEnd = (e) => {
+        const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+        if (deltaY > 60) {
+            onToggle?.();
+        }
+    };
 
     // Dynamic width slider management (resizable edge)
     const [windowWidth, setWindowWidth] = useState(() => {
         try {
             const saved = localStorage.getItem('kivi_skills_window_width');
-            return saved ? Math.max(280, Math.min(760, parseInt(saved, 10))) : 420;
+            return saved ? Math.max(260, Math.min(520, parseInt(saved, 10))) : 380;
         } catch {
-            return 420;
+            return 380;
         }
     });
     const [isResizing, setIsResizing] = useState(false);
     const asideRef = useRef(null);
-    const startPosRef = useRef({ startX: 0, startWidth: 420 });
+    const startPosRef = useRef({ startX: 0, startWidth: 380 });
 
     const handleMouseDown = (e) => {
+        if (isMobile) return;
         e.preventDefault();
         e.stopPropagation();
         
@@ -84,8 +133,8 @@ export default function ResumeSkillsWindow({
         const handleMouseMove = (e) => {
             const delta = e.clientX - startPosRef.current.startX;
             const targetWidth = Math.round(startPosRef.current.startWidth + delta);
-            const maxWidth = Math.min(760, Math.floor(window.innerWidth * 0.55));
-            const clampedWidth = Math.max(280, Math.min(maxWidth, targetWidth));
+            const maxWidth = Math.min(520, Math.floor(window.innerWidth * 0.40));
+            const clampedWidth = Math.max(260, Math.min(maxWidth, targetWidth));
             setWindowWidth(clampedWidth);
         };
 
@@ -208,34 +257,114 @@ export default function ResumeSkillsWindow({
         }).length;
     }, [olderList, currentSkillsLowerSet]);
 
+    // Actionable ATS Improvement Suggestions
+    const suggestionsList = useMemo(() => {
+        const list = [];
+        
+        // 1. Critical Missing Skills
+        if (Array.isArray(missingKeywords) && missingKeywords.length > 0) {
+            const topMissing = missingKeywords.slice(0, 4);
+            list.push({
+                id: 'missing-keywords',
+                type: 'critical',
+                title: 'Add Missing Critical Skills',
+                badge: `+${Math.min(15, missingKeywords.length * 4)}% Gain`,
+                description: `Your resume is missing target keywords: ${topMissing.join(', ')}. Adding these directly satisfies the ATS keyword parser.`,
+                actionableItems: topMissing,
+                actionLabel: 'Insert Keyword'
+            });
+        }
+
+        // 2. Quantifiable Outcomes & Metrics
+        list.push({
+            id: 'quantifiable-metrics',
+            type: 'metrics',
+            title: 'Quantify Experience Bullet Points',
+            badge: '+6% Gain',
+            description: 'Top ATS algorithms reward measurable impact. Use numbers, % gains, or scale (e.g. "reduced latency by 45%", "scaled to 10k users").',
+            tip: 'Example: "Engineered cache layer reducing query latency from 120ms to 8ms."'
+        });
+
+        // 3. Section Heading Standardisation
+        list.push({
+            id: 'headings-format',
+            type: 'formatting',
+            title: 'Standardize Section Headings',
+            badge: '+4% Gain',
+            description: 'Ensure standard headings: Summary, Technical Skills, Professional Experience, Projects, Education for 100% parsing accuracy.',
+            tip: 'Avoid merged headings like "Skills & Tools" — keep "Technical Skills" distinct.'
+        });
+
+        // 4. Role Title Alignment
+        list.push({
+            id: 'title-alignment',
+            type: 'alignment',
+            title: 'Align Profile with Target Position',
+            badge: '+3% Gain',
+            description: 'Include the target job title in your summary/profile line so recruiters and semantic matchers immediately match candidate intent.',
+            tip: 'Example: "Software Engineer specializing in Python, React, and cloud architectures."'
+        });
+
+        return list;
+    }, [missingKeywords]);
+
+    useEffect(() => {
+        updateScrollButtons();
+        window.addEventListener('resize', updateScrollButtons);
+        return () => window.removeEventListener('resize', updateScrollButtons);
+    }, [updateScrollButtons, newCount, previousCount, omittedCount, missingCount, olderCount, suggestionsList.length]);
+
     return (
-        <aside 
-            ref={asideRef}
-            className={`rp-skills-window ${isOpen ? 'open' : 'closed'} ${isResizing ? 'is-resizing' : ''}`}
-            style={isOpen ? { 
-                width: `${windowWidth}px`, 
-                minWidth: `${windowWidth}px`, 
-                maxWidth: `${windowWidth}px`,
-                flex: `0 0 ${windowWidth}px`
-            } : {}}
-            aria-label="Resume Skills Comparison"
-        >
-            {/* ── Toggle Handle / Chevron Trigger (Always accessible on left edge when closed) ── */}
-            <button
-                type="button"
-                className={`skills-docked-toggle-btn ${isOpen ? 'is-open' : 'is-closed'}`}
-                onClick={onToggle}
-                title={isOpen ? "Collapse Skills Difference Window (<)" : "Open Skills Difference Window (>)"}
-                aria-expanded={isOpen}
+        <>
+            {/* ── Mobile Backdrop Overlay (Closes drawer on outside tap) ── */}
+            {isOpen && isMobile && (
+                <div 
+                    className="skills-window-backdrop" 
+                    onClick={onToggle}
+                    aria-label="Close skills window"
+                />
+            )}
+
+            <aside 
+                ref={asideRef}
+                className={`rp-skills-window ${isOpen ? 'open' : 'closed'} ${isResizing ? 'is-resizing' : ''} ${isMobile ? 'is-mobile-sheet' : ''}`}
+                style={isOpen && !isMobile ? { 
+                    width: `${windowWidth}px`, 
+                    minWidth: `${windowWidth}px`, 
+                    maxWidth: `${windowWidth}px`,
+                    flex: `0 0 ${windowWidth}px`
+                } : {}}
+                aria-label="Resume Skills Comparison"
             >
-                <span className="toggle-chevron">&gt;</span>
-                {!isOpen && (
-                    <span className="toggle-label-vertical">
-                        <span className="toggle-dot">●</span>
-                        Open Skills Difference {newCount > 0 ? `(+${newCount})` : ''}
-                    </span>
+                {/* ── Mobile Drag Handle Bar ── */}
+                {isMobile && (
+                    <div 
+                        className="mobile-drag-handle-bar" 
+                        onClick={onToggle} 
+                        onTouchStart={handleTouchStart}
+                        onTouchEnd={handleTouchEnd}
+                        title="Swipe down or tap to close"
+                    >
+                        <div className="mobile-drag-handle" />
+                    </div>
                 )}
-            </button>
+
+                {/* ── Toggle Handle / Chevron Trigger (Accessible when closed) ── */}
+                <button
+                    type="button"
+                    className={`skills-docked-toggle-btn ${isOpen ? 'is-open' : 'is-closed'}`}
+                    onClick={onToggle}
+                    title={isOpen ? "Collapse Skills Difference Window (<)" : "Open Skills Difference Window (>)"}
+                    aria-expanded={isOpen}
+                >
+                    <span className="toggle-chevron">{isMobile ? '⚡' : '>'}</span>
+                    {!isOpen && (
+                        <span className="toggle-label-vertical">
+                            <span className="toggle-dot">●</span>
+                            Skills Evolution {newCount > 0 ? `(+${newCount})` : ''}
+                        </span>
+                    )}
+                </button>
 
             {/* ── Main Skills Window Content (Visible when open) ── */}
             <div className="skills-window-inner">
@@ -267,6 +396,7 @@ export default function ResumeSkillsWindow({
                                 <option value="omitted">Not in Resume ({omittedCount})</option>
                                 <option value="older">Original Baseline ({olderCount})</option>
                                 {missingCount > 0 && <option value="missing">Missing JD Keywords (+{missingCount})</option>}
+                                <option value="improvements">✦ Suggestions (+{suggestionsList.length})</option>
                             </select>
                             <span className="select-chevron">▾</span>
                         </div>
@@ -278,64 +408,102 @@ export default function ResumeSkillsWindow({
                             title="Collapse Skills Window (<)"
                             aria-label="Collapse Skills Window"
                         >
-                            <span className="close-chevron">&lt;</span>
+                            <span className="close-chevron">{isMobile ? '✕' : '<'}</span>
                         </button>
                     </div>
                 </div>
 
-                {/* ── Metric Summary Pill Bar ── */}
-                <div className="skills-metrics-strip">
-                    <div 
-                        className={`metric-chip new-metric ${activeFilter === 'new' ? 'active' : ''}`}
-                        onClick={() => setActiveFilter(activeFilter === 'new' ? 'all' : 'new')}
-                        title="Filter by newly added skills (Green)"
+                {/* ── Metric Summary Pill Bar with Horizontal Scroll and <> Arrows ── */}
+                <div className="skills-metrics-strip-container">
+                    <button
+                        type="button"
+                        className={`strip-scroll-btn left ${canScrollLeft ? 'active' : 'disabled'}`}
+                        onClick={() => scrollStrip(-140)}
+                        title="Scroll left (<)"
+                        aria-label="Scroll left to see previous metrics"
+                        disabled={!canScrollLeft}
                     >
-                        <span className="chip-badge-dot green"></span>
-                        <span className="chip-label">New Added</span>
-                        <span className="chip-count green">+{newCount}</span>
-                    </div>
+                        ‹
+                    </button>
 
                     <div 
-                        className={`metric-chip prev-metric ${activeFilter === 'previous' ? 'active' : ''}`}
-                        onClick={() => setActiveFilter(activeFilter === 'previous' ? 'all' : 'previous')}
-                        title="Filter by retained original skills (Blue)"
+                        className="skills-metrics-strip"
+                        ref={metricsStripRef}
+                        onScroll={updateScrollButtons}
                     >
-                        <span className="chip-badge-dot blue"></span>
-                        <span className="chip-label">Retained</span>
-                        <span className="chip-count blue">{previousCount}</span>
-                    </div>
-
-                    <div 
-                        className={`metric-chip omitted-metric ${activeFilter === 'omitted' ? 'active' : ''}`}
-                        onClick={() => setActiveFilter(activeFilter === 'omitted' ? 'all' : 'omitted')}
-                        title="Filter by skills not in current resume (Red)"
-                    >
-                        <span className="chip-badge-dot red"></span>
-                        <span className="chip-label">Not in Resume</span>
-                        <span className="chip-count red">{omittedCount}</span>
-                    </div>
-
-                    {missingCount > 0 && (
                         <div 
-                            className={`metric-chip missing-metric ${activeFilter === 'missing' ? 'active' : ''}`}
-                            onClick={() => setActiveFilter(activeFilter === 'missing' ? 'all' : 'missing')}
-                            title="Filter by missing JD keywords (Click to insert)"
+                            className={`metric-chip new-metric ${activeFilter === 'new' ? 'active' : ''}`}
+                            onClick={() => setActiveFilter(activeFilter === 'new' ? 'all' : 'new')}
+                            title="Filter by newly added skills (Green)"
                         >
-                            <span className="chip-badge-dot amber"></span>
-                            <span className="chip-label">Missing JD</span>
-                            <span className="chip-count amber">+{missingCount}</span>
+                            <span className="chip-badge-dot green"></span>
+                            <span className="chip-label">New Added</span>
+                            <span className="chip-count green">+{newCount}</span>
                         </div>
-                    )}
 
-                    <div 
-                        className={`metric-chip older-metric ${activeFilter === 'older' ? 'active' : ''}`}
-                        onClick={() => setActiveFilter(activeFilter === 'older' ? 'all' : 'older')}
-                        title="Filter by all original baseline skills"
-                    >
-                        <span className="chip-badge-dot neutral"></span>
-                        <span className="chip-label">Original</span>
-                        <span className="chip-count neutral">{olderCount}</span>
+                        <div 
+                            className={`metric-chip prev-metric ${activeFilter === 'previous' ? 'active' : ''}`}
+                            onClick={() => setActiveFilter(activeFilter === 'previous' ? 'all' : 'previous')}
+                            title="Filter by retained original skills (Blue)"
+                        >
+                            <span className="chip-badge-dot blue"></span>
+                            <span className="chip-label">Retained</span>
+                            <span className="chip-count blue">{previousCount}</span>
+                        </div>
+
+                        <div 
+                            className={`metric-chip omitted-metric ${activeFilter === 'omitted' ? 'active' : ''}`}
+                            onClick={() => setActiveFilter(activeFilter === 'omitted' ? 'all' : 'omitted')}
+                            title="Filter by skills not in current resume (Red)"
+                        >
+                            <span className="chip-badge-dot red"></span>
+                            <span className="chip-label">Not in Resume</span>
+                            <span className="chip-count red">{omittedCount}</span>
+                        </div>
+
+                        {missingCount > 0 && (
+                            <div 
+                                className={`metric-chip missing-metric ${activeFilter === 'missing' ? 'active' : ''}`}
+                                onClick={() => setActiveFilter(activeFilter === 'missing' ? 'all' : 'missing')}
+                                title="Filter by missing JD keywords (Click to insert)"
+                            >
+                                <span className="chip-badge-dot amber"></span>
+                                <span className="chip-label">Missing JD</span>
+                                <span className="chip-count amber">+{missingCount}</span>
+                            </div>
+                        )}
+
+                        <div 
+                            className={`metric-chip older-metric ${activeFilter === 'older' ? 'active' : ''}`}
+                            onClick={() => setActiveFilter(activeFilter === 'older' ? 'all' : 'older')}
+                            title="Filter by all original baseline skills"
+                        >
+                            <span className="chip-badge-dot neutral"></span>
+                            <span className="chip-label">Original</span>
+                            <span className="chip-count neutral">{olderCount}</span>
+                        </div>
+
+                        <div 
+                            className={`metric-chip suggestions-metric ${activeFilter === 'improvements' ? 'active' : ''}`}
+                            onClick={() => setActiveFilter(activeFilter === 'improvements' ? 'all' : 'improvements')}
+                            title="View ATS Improvement Suggestions & Score Boosts"
+                        >
+                            <span className="chip-badge-dot purple"></span>
+                            <span className="chip-label">Suggestions</span>
+                            <span className="chip-count purple">+{suggestionsList.length}</span>
+                        </div>
                     </div>
+
+                    <button
+                        type="button"
+                        className={`strip-scroll-btn right ${canScrollRight ? 'active' : 'disabled'}`}
+                        onClick={() => scrollStrip(140)}
+                        title="Scroll right (>)"
+                        aria-label="Scroll right to see more metrics"
+                        disabled={!canScrollRight}
+                    >
+                        ›
+                    </button>
                 </div>
 
                 {/* ── Search & Filter Input ── */}
@@ -592,12 +760,12 @@ export default function ResumeSkillsWindow({
                 </div>
             </div>
 
-            {/* ── Slider Edge (Draggable right border to resize width) ── */}
-            {isOpen && (
+            {/* ── Slider Edge (Draggable right border to resize width on desktop) ── */}
+            {isOpen && !isMobile && (
                 <div 
                     className={`skills-window-slider-edge ${isResizing ? 'active' : ''}`}
                     onMouseDown={handleMouseDown}
-                    onDoubleClick={() => setWindowWidth(460)}
+                    onDoubleClick={() => setWindowWidth(380)}
                     title="Drag slider edge to manage width (Double-click to reset)"
                     role="separator"
                     aria-orientation="vertical"
@@ -610,5 +778,6 @@ export default function ResumeSkillsWindow({
                 </div>
             )}
         </aside>
+        </>
     );
 }

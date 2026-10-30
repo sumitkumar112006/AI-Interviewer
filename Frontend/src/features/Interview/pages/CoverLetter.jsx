@@ -347,6 +347,7 @@ const CoverLetter = () => {
                         />
                     ) : coverLetter ? (
                         <ResumeEditor
+                            key={interviewId}
                             ref={editorRef}
                             initialHtml={htmlContent}
                             placeholder="Your cover letter will appear here."

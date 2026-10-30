@@ -112,13 +112,11 @@ export const generateInterviewReport = async ({ jobDescription, selfDescription,
         throw new Error('Job description is required.')
     }
 
-    if (!selfDescription || !selfDescription.trim()) {
-        throw new Error('Self description is required.')
-    }
-
     const formData = new FormData()
     formData.append("jobDescription", jobDescription.trim())
-    formData.append("selfDescription", selfDescription.trim())
+    if (selfDescription && selfDescription.trim()) {
+        formData.append("selfDescription", selfDescription.trim())
+    }
     formData.append("resume", resumeFile)
     if (saveSelfDescription) {
         formData.append("saveSelfDescription", "true")
