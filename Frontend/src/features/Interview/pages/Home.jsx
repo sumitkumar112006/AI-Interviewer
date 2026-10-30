@@ -57,7 +57,6 @@ const Home = () => {
     const [formData, setFormData] = useState({ jobDescription: '', selfDescription: '' })
     const [selectedFileName, setSelectedFileName] = useState('')
     const [isDragOver, setIsDragOver] = useState(false)
-    const [searchQuery, setSearchQuery] = useState('')
     const [presets, setPresets] = useState(user?.careerProfile?.savedDescriptions || [])
     const [showPresetInput, setShowPresetInput] = useState(false)
     const [presetTitle, setPresetTitle] = useState('')
@@ -81,10 +80,6 @@ const Home = () => {
     const navigate = useNavigate()
 
     const recentReports = Array.isArray(reports) ? reports : []
-
-    const filteredReports = recentReports.filter(r =>
-        getReportTitle(r).toLowerCase().includes(searchQuery.toLowerCase())
-    )
 
     useEffect(() => {
         if (user?.careerProfile?.savedDescriptions) {
@@ -363,40 +358,6 @@ const Home = () => {
         }
     }
 
-    const handleDeleteReport = (interviewId, e) => {
-        e.stopPropagation()
-        setConfirmModal({
-            isOpen: true,
-            title: 'Delete Interview Report',
-            message: 'Are you sure you want to permanently delete this interview report session?',
-            details: 'This action cannot be undone. All questions, match scores, and interview analysis will be lost.',
-            confirmText: 'Delete Report',
-            cancelText: 'Cancel',
-            type: 'danger',
-            loading: false,
-            onConfirm: async () => {
-                setConfirmModal(prev => ({ ...prev, loading: true }))
-                try {
-                    await deleteReport(interviewId)
-                    setConfirmModal(prev => ({ ...prev, isOpen: false, loading: false }))
-                } catch (error) {
-                    setConfirmModal(prev => ({
-                        ...prev,
-                        title: 'Delete Failed',
-                        message: error?.message || 'Failed to delete report.',
-                        loading: false
-                    }))
-                }
-            }
-        })
-    }
-
-    const handleViewReport = (reportItem) => {
-        const interviewId = extractObjectId(reportItem?._id)
-        if (!interviewId) return
-        navigate(`/interview/${interviewId}`, { state: { interviewReport: reportItem } })
-    }
-
     // Stats derived from reports
     const totalReports = recentReports.length
     const avgMatchScore = recentReports.length > 0
@@ -664,106 +625,6 @@ const Home = () => {
                                 </>
                             )}
                         </button>
-                    </div>
-
-                    {/* RIGHT: Recent Reports Sidebar */}
-                    <div id="reports-section" className="col-right panel reports-sidebar">
-                        <div className="reports-sidebar__header">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ff6b9d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
-                                <polyline points="17 6 23 6 23 12" />
-                            </svg>
-                            <h2>Recent Reports</h2>
-                        </div>
-
-                        <div className="reports-search">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <circle cx="11" cy="11" r="8" />
-                                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                            </svg>
-                            <input
-                                type="text"
-                                placeholder="Search by title..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="reports-search__input"
-                            />
-                            <span className="reports-search__label">Match Score</span>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="12" y1="5" x2="12" y2="19" />
-                                <polyline points="19 12 12 19 5 12" />
-                            </svg>
-                        </div>
-
-                        <div className="reports-list">
-                            {filteredReports.length === 0 && (
-                                <div className="reports-empty">
-                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#6b7fa8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                                        <polyline points="14 2 14 8 20 8" />
-                                    </svg>
-                                    <p>{searchQuery ? 'No reports match your search.' : 'No reports yet. Generate your first one!'}</p>
-                                </div>
-                            )}
-                            {filteredReports.map((reportItem, index) => {
-                                const interviewId = extractObjectId(reportItem?._id)
-                                const title = getReportTitle(reportItem)
-                                const scoreColor = getMatchScoreColor(reportItem?.matchScore)
-
-                                return (
-                                    <div
-                                        key={interviewId || `report-${index}`}
-                                        className="report-row"
-                                        onClick={() => handleViewReport(reportItem)}
-                                        role="button"
-                                        tabIndex={0}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleViewReport(reportItem)}
-                                        title={`View: ${title}`}
-                                    >
-                                        <div className="report-row__icon">
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                                                <polyline points="14 2 14 8 20 8" />
-                                            </svg>
-                                        </div>
-                                        <div className="report-row__info">
-                                            <span className="report-row__title">{title.length > 22 ? `${title.slice(0, 22)}...` : title}</span>
-                                            <span className="report-row__date">{formatDate(reportItem?.createdAt ?? reportItem?.updatedAt)}</span>
-                                        </div>
-                                        <div className="report-row__actions">
-                                            {reportItem?.matchScore && (
-                                                <span
-                                                    className="report-row__score"
-                                                    style={{ color: scoreColor, borderColor: `${scoreColor}40`, background: `${scoreColor}18` }}
-                                                >
-                                                    {reportItem.matchScore}
-                                                </span>
-                                            )}
-                                            <button
-                                                type="button"
-                                                className="report-row__delete"
-                                                onClick={(e) => handleDeleteReport(interviewId, e)}
-                                                disabled={!interviewId}
-                                                title="Delete Report"
-                                                aria-label="Delete Report"
-                                            >
-                                                <img src="/bin.png" alt="Delete" style={{ width: '13px', height: '13px', objectFit: 'contain', opacity: 0.7 }} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                )
-                            })}
-                        </div>
-
-                        {filteredReports.length > 0 && (
-                            <button className="view-all-btn" onClick={() => navigate('/reports')}>
-                                View All Reports ({filteredReports.length})
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <line x1="5" y1="12" x2="19" y2="12" />
-                                    <polyline points="12 5 19 12 12 19" />
-                                </svg>
-                            </button>
-                        )}
                     </div>
                 </div>
 

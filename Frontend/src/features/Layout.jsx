@@ -8,11 +8,89 @@ import { Outlet, useNavigate, Link, useLocation } from "react-router-dom";
 import { Zap, Bot } from "lucide-react";
 import Footer from "./Footer/components/Footer";
 import UserCreditsPopup from "../components/userCreditsPopup";
+import ConfirmModal from "./Shared/components/ConfirmModal";
 import "./layout.scss";
+
+
+function extractObjectId(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && '$oid' in value) return String(value.$oid ?? '').trim();
+  return String(value).trim();
+}
+
+function extractDateValue(value) {
+  if (!value) return '';
+  if (typeof value === 'string' || value instanceof Date) return value;
+  if (typeof value === 'object' && '$date' in value) return value.$date;
+  return value;
+}
+
+function formatDate(value) {
+  if (!value) return '';
+  const normalizedValue = extractDateValue(value);
+  const date = new Date(normalizedValue);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-IN', {
+    day: '2-digit',
+    month: 'short'
+  }).format(date);
+}
+
+function getMatchScoreColor(score) {
+  if (!score) return '#6b7fa8';
+  const num = parseInt(String(score).replace('%', ''));
+  if (num >= 85) return '#22c55e';
+  if (num >= 70) return '#f59e0b';
+  return '#ef4444';
+}
+
+function getReportTitle(reportItem) {
+  return (reportItem?.developerTitle || reportItem?.Title || reportItem?.title || 'Untitled Report').trim();
+}
 
 const Layout = ({ children }) => {
   const { user, usage, fetchUsage, handleLogout } = useAuth();
-  const { reports, getReports } = useInterview();
+  const { reports, getReports, deleteReport } = useInterview();
+  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    interviewId: null,
+    title: '',
+    loading: false
+  });
+
+  const handleDeleteSidebarReport = (interviewId, title) => {
+    setDeleteModal({
+      isOpen: true,
+      interviewId,
+      title: title || 'Interview Report',
+      loading: false
+    });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteModal.interviewId) return;
+    setDeleteModal(prev => ({ ...prev, loading: true }));
+    try {
+      if (deleteReport) {
+        await deleteReport(deleteModal.interviewId);
+      }
+      const deletedId = deleteModal.interviewId;
+      setDeleteModal({ isOpen: false, interviewId: null, title: '', loading: false });
+      if (activeReportId === deletedId) {
+        navigate('/');
+      }
+    } catch (err) {
+      console.error('Delete sidebar report error:', err);
+      setDeleteModal(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  const recentReportsList = Array.isArray(reports) ? reports : [];
+  const filteredSidebarReports = recentReportsList.filter(r =>
+    getReportTitle(r).toLowerCase().includes(sidebarSearchQuery.toLowerCase())
+  );
   const navigate = useNavigate();
   const location = useLocation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -219,7 +297,7 @@ const Layout = ({ children }) => {
           </nav>
         </div>
 
-        <div className="sidebar-section">
+<div className="sidebar-section">
           <p className="sidebar-section-title">SETTINGS</p>
           <nav className="sidebar-nav">
             <Link to="/profile" className={`sidebar-link ${activeMenu === "profile" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
@@ -257,7 +335,133 @@ const Layout = ({ children }) => {
             </button>
           </nav>
         </div>
-      </aside>
+
+{/* RECENT REPORTS SECTION */}
+        <div className="sidebar-section sidebar-recent-section">
+          <div className="sidebar-section-header">
+            <p className="sidebar-section-title">RECENT REPORTS</p>
+            {recentReportsList.length > 0 && (
+              <span className="sidebar-reports-count">{recentReportsList.length}</span>
+            )}
+          </div>
+
+          {recentReportsList.length > 3 && (
+            <div className="sidebar-search-box">
+              <svg className="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search reports..."
+                value={sidebarSearchQuery}
+                onChange={(e) => setSidebarSearchQuery(e.target.value)}
+                className="sidebar-search-input"
+              />
+              {sidebarSearchQuery && (
+                <button
+                  type="button"
+                  className="sidebar-search-clear"
+                  onClick={() => setSidebarSearchQuery('')}
+                  title="Clear search"
+                >
+                  &times;
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="sidebar-reports-list">
+            {filteredSidebarReports.length === 0 ? (
+              <div className="sidebar-reports-empty">
+                {sidebarSearchQuery ? 'No matching reports' : 'No reports yet.'}
+              </div>
+            ) : (
+              filteredSidebarReports.slice(0, 8).map((r, idx) => {
+                const rId = extractObjectId(r?._id);
+                const title = getReportTitle(r);
+                const dateStr = formatDate(r?.createdAt ?? r?.updatedAt);
+                const scoreColor = getMatchScoreColor(r?.matchScore);
+                const isActive = activeReportId === rId;
+
+                return (
+                  <div
+                    key={rId || idx}
+                    className={`sidebar-report-item ${isActive ? 'active' : ''}`}
+                    onClick={() => {
+                      if (rId) {
+                        navigate(`/interview/${rId}`, { state: { interviewReport: r } });
+                        setIsSidebarOpen(false);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && rId) {
+                        navigate(`/interview/${rId}`, { state: { interviewReport: r } });
+                        setIsSidebarOpen(false);
+                      }
+                    }}
+                    title={`View: ${title}`}
+                  >
+                    <div className="sidebar-report-left">
+                      <svg className="sidebar-report-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                      </svg>
+                      <div className="sidebar-report-meta">
+                        <span className="sidebar-report-title">{title}</span>
+                        {dateStr && <span className="sidebar-report-date">{dateStr}</span>}
+                      </div>
+                    </div>
+
+                    <div className="sidebar-report-right">
+                      {r?.matchScore && (
+                        <span
+                          className="sidebar-report-score"
+                          style={{
+                            color: scoreColor,
+                            borderColor: `${scoreColor}40`,
+                            background: `${scoreColor}18`
+                          }}
+                        >
+                          {r.matchScore}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        className="sidebar-report-delete"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteSidebarReport(rId, title);
+                        }}
+                        title="Delete report"
+                        aria-label="Delete report"
+                      >
+                        <img src="/bin.png" alt="Delete" style={{ width: '11px', height: '11px', objectFit: 'contain', opacity: 0.7 }} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {recentReportsList.length > 0 && (
+            <Link
+              to="/reports"
+              className="sidebar-view-all-link"
+              onClick={() => setIsSidebarOpen(false)}
+            >
+              <span>View All Reports ({recentReportsList.length})</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="5" y1="12" x2="19" y2="12" />
+                <polyline points="12 5 19 12 12 19" />
+              </svg>
+            </Link>
+          )}
+        </div>
+            </aside>
 
       {/* RIGHT CONTENT WRAPPER */}
       <div className="app-content-wrapper">
@@ -430,6 +634,19 @@ const Layout = ({ children }) => {
         {/* Global Rich Footer */}
         <Footer theme={theme} />
       </div>
+      {/* Confirm Modal for Deleting Report from Sidebar */}
+      <ConfirmModal
+        isOpen={deleteModal.isOpen}
+        title="Delete Interview Report"
+        message={`Are you sure you want to permanently delete "${deleteModal.title}"?`}
+        details="This action cannot be undone. All questions, match scores, and interview analysis will be lost."
+        confirmText="Delete Report"
+        cancelText="Cancel"
+        type="danger"
+        loading={deleteModal.loading}
+        onConfirm={handleConfirmDelete}
+        onClose={() => setDeleteModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };
