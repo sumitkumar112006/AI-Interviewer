@@ -1,4 +1,4 @@
-import { sanitizeResumeHtml, parseAndSanitizeSnippet } from './sanitizeResumeHtml'
+import { sanitizeResumeHtml, parseAndSanitizeSnippet } from './sanitizeResumeHtml.js'
 
 /**
  * Normalizes text for resilient comparisons (collapses whitespace, removes non-breaking spaces).
@@ -51,11 +51,27 @@ function extractInnerSnippetHtml(html) {
     if (!html) return ''
     const parser = new DOMParser()
     const doc = parser.parseFromString(html, 'text/html')
-    const children = Array.from(doc.body.children)
-    if (children.length === 1 && (children[0].tagName === 'P' || children[0].tagName === 'LI')) {
-        return children[0].innerHTML
+
+    const li = doc.body.querySelector('li')
+    if (li) {
+        return li.innerHTML.trim()
     }
-    return html.replace(/^<p>|<\/p>$/gi, '').trim()
+
+    const children = Array.from(doc.body.children)
+    if (children.length === 1 && (children[0].tagName === 'P' || children[0].tagName === 'DIV')) {
+        return children[0].innerHTML.trim()
+    }
+
+    return html
+        .replace(/^\s*<ul[^>]*>/i, '')
+        .replace(/<\/ul>\s*$/i, '')
+        .replace(/^\s*<ol[^>]*>/i, '')
+        .replace(/<\/ol>\s*$/i, '')
+        .replace(/^\s*<li[^>]*>/i, '')
+        .replace(/<\/li>\s*$/i, '')
+        .replace(/^\s*<p[^>]*>/i, '')
+        .replace(/<\/p>\s*$/i, '')
+        .trim()
 }
 
 /**
@@ -69,7 +85,7 @@ function extractInnerSnippetHtml(html) {
  * @param {string|null} [explicitTargetText] - Explicit target text identified by LLM
  * @returns {Object} Structured diff descriptor
  */
-export function TrackUpdatePart(oldResumeHtml = '', updatedResume = '', explicitTargetText = null) {
+export function TrackUpdatePart(oldResumeHtml = '', updatedResume = '', explicitTargetText = null, explicitTargetSection = null) {
     if (!updatedResume || updatedResume === false || typeof updatedResume !== 'string') {
         return {
             hasChanges: false,
@@ -85,7 +101,12 @@ export function TrackUpdatePart(oldResumeHtml = '', updatedResume = '', explicit
     }
 
     const cleanOldHtml = sanitizeResumeHtml(oldResumeHtml)
-    const cleanUpdated = parseAndSanitizeSnippet(updatedResume)
+    let cleanUpdated = parseAndSanitizeSnippet(updatedResume)
+    if (cleanUpdated && typeof cleanUpdated === 'string') {
+        cleanUpdated = cleanUpdated
+            .replace(/<p><strong>\s*(?:Role\/Entry|Role|Entry):\s*<\/strong>\s*(.*?)<\/p>/gi, '<h3><strong>$1</strong></h3>')
+            .replace(/<strong>\s*(?:Role\/Entry|Role|Entry):\s*<\/strong>\s*/gi, '')
+    }
 
     if (!cleanUpdated) {
         return {
@@ -349,15 +370,8 @@ export function TrackUpdatePart(oldResumeHtml = '', updatedResume = '', explicit
         if (diffTargetNode && diffTargetNode.parentNode) {
             const oldInner = diffTargetNode.innerHTML
             if (isListItem) {
-                // For a list item: Show old line struck-through, new line highlighted right in that LI (or two consecutive LIs)
-                const newLi = diffDoc.createElement('li')
-                newLi.innerHTML = `<ins class="kivi-diff-ins">${innerNewSnippet}</ins>`
-                diffTargetNode.innerHTML = `<del class="kivi-diff-del">${oldInner}</del>`
-                if (diffTargetNode.nextSibling) {
-                    diffTargetNode.parentNode.insertBefore(newLi, diffTargetNode.nextSibling)
-                } else {
-                    diffTargetNode.parentNode.appendChild(newLi)
-                }
+                // Keep strictly inside the same LI element: Old struck-through, New highlighted
+                diffTargetNode.innerHTML = `<del class="kivi-diff-del">${oldInner}</del> <ins class="kivi-diff-ins">${innerNewSnippet}</ins>`
             } else {
                 // For a paragraph: Show old paragraph struck-through, new paragraph highlighted
                 const newP = diffDoc.createElement('p')
@@ -389,19 +403,27 @@ export function TrackUpdatePart(oldResumeHtml = '', updatedResume = '', explicit
     }
 
     // ── Fallback Insertion into a Target Section (e.g. Adding Project to PROJECTS) ──
-    let targetSectionName = null
+    let targetSectionName = explicitTargetSection ? explicitTargetSection.trim().toUpperCase() : null
     const lowerUpdated = cleanUpdated.toLowerCase()
-    if (lowerUpdated.includes('project') || /<h[23][^>]*>.*<\/h[23]>/i.test(cleanUpdated)) {
-        targetSectionName = 'PROJECT'
-    } else if (lowerUpdated.includes('experience') || lowerUpdated.includes('intern') || lowerUpdated.includes('engineer')) {
-        targetSectionName = 'EXPERIENCE'
-    } else if (lowerUpdated.includes('skill')) {
-        targetSectionName = 'SKILL'
+    if (!targetSectionName) {
+        if (lowerUpdated.includes('project') || /<h[23][^>]*>.*<\/h[23]>/i.test(cleanUpdated)) {
+            targetSectionName = 'PROJECTS'
+        } else if (lowerUpdated.includes('experience') || lowerUpdated.includes('intern') || lowerUpdated.includes('engineer') || lowerUpdated.includes('role')) {
+            targetSectionName = 'EXPERIENCE'
+        } else if (lowerUpdated.includes('skill') || lowerUpdated.includes('language') || lowerUpdated.includes('framework')) {
+            targetSectionName = 'SKILLS'
+        }
     }
 
     if (targetSectionName) {
         const headings = Array.from(mergedDoc.body.querySelectorAll('h1, h2, h3'))
-        const matchedHeading = headings.find(h => h.textContent.trim().toUpperCase().includes(targetSectionName))
+        const matchedHeading = headings.find(h => {
+            const hText = h.textContent.trim().toUpperCase()
+            if (targetSectionName === 'EXPERIENCE' || targetSectionName === 'PROFESSIONAL EXPERIENCE' || targetSectionName === 'WORK HISTORY') {
+                return hText.includes('EXPERIENCE') || hText.includes('WORK HISTORY') || hText.includes('PROFESSIONAL EXPERIENCE')
+            }
+            return hText.includes(targetSectionName)
+        })
 
         if (matchedHeading) {
             let insertBeforeNode = null
@@ -435,7 +457,13 @@ export function TrackUpdatePart(oldResumeHtml = '', updatedResume = '', explicit
             }
 
             const diffHeadings = Array.from(diffDoc.body.querySelectorAll('h1, h2, h3'))
-            const matchedDiffHeading = diffHeadings.find(h => h.textContent.trim().toUpperCase().includes(targetSectionName))
+            const matchedDiffHeading = diffHeadings.find(h => {
+            const hText = h.textContent.trim().toUpperCase()
+            if (targetSectionName === 'EXPERIENCE' || targetSectionName === 'PROFESSIONAL EXPERIENCE' || targetSectionName === 'WORK HISTORY') {
+                return hText.includes('EXPERIENCE') || hText.includes('WORK HISTORY') || hText.includes('PROFESSIONAL EXPERIENCE')
+            }
+            return hText.includes(targetSectionName)
+        })
             if (matchedDiffHeading) {
                 let diffInsertBefore = null
                 let diffSib = matchedDiffHeading.nextElementSibling

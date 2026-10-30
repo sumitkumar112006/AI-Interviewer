@@ -903,7 +903,7 @@ async function scoreFormatting(resumeText = '', options = {}, weight = DEFAULT_W
   // Check 1: Standard Sections (Total 40 points)
   const standardSections = [
     { name: 'Summary', regex: /\b(summary|professional\s+summary|profile|about\s+me|objective)\b/i },
-    { name: 'Experience', regex: /\b(experience|work\s+experience|employment|work\s+history)\b/i },
+    { name: 'Experience', regex: /\b(professional\s+experience|work\s+history|work\s+experience|experience|employment)\b/i },
     { name: 'Skills', regex: /\b(skills|technical\s+skills|technologies|core\s+competencies)\b/i },
     { name: 'Education', regex: /\b(education|academic|qualifications)\b/i },
     { name: 'Projects', regex: /\b(projects|key\s+projects|portfolio|personal\s+projects)\b/i }

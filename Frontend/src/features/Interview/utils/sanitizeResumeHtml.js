@@ -98,6 +98,22 @@ export function sanitizeResumeHtml(html) {
         })
     })
 
+    // Prune empty list items or empty paragraphs that cause ghost bullets
+    if (doc.body) {
+        doc.body.querySelectorAll('li').forEach(li => {
+            const hasText = Boolean(li.textContent && li.textContent.trim());
+            const hasMedia = Boolean(li.querySelector('img, svg, input'));
+            if (!hasText && !hasMedia) {
+                li.remove();
+            }
+        });
+        doc.body.querySelectorAll('ul, ol').forEach(list => {
+            if (list.children.length === 0) {
+                list.remove();
+            }
+        });
+    }
+
     // Convert consecutive pseudo-bullet <p> tags into semantic <ul><li>
     if (doc.body) {
         const paragraphs = Array.from(doc.body.querySelectorAll('p'))
@@ -130,6 +146,17 @@ export function sanitizeResumeHtml(html) {
         }
     }
 
+    
+    // Ensure all valid links have target="_blank" and secure rel attributes
+    if (doc.body) {
+        doc.body.querySelectorAll('a').forEach(a => {
+            if (a.getAttribute('href') && !a.getAttribute('target')) {
+                a.setAttribute('target', '_blank');
+                a.setAttribute('rel', 'noopener noreferrer');
+            }
+        });
+    }
+
     return (doc.body?.innerHTML || '').trim()
 }
 
@@ -156,6 +183,8 @@ export function parseAndSanitizeSnippet(snippet) {
     if (!snippet || typeof snippet !== 'string') return ''
 
     let text = snippet
+        .replace(/<p><strong>\s*(?:Role\/Entry|Role|Entry):\s*<\/strong>\s*(.*?)<\/p>/gi, '<h3><strong>$1</strong></h3>')
+        .replace(/<strong>\s*(?:Role\/Entry|Role|Entry):\s*<\/strong>\s*/gi, '')
         // Strip markdown fences: ```suggestion, ```html, ```markdown, etc.
         .replace(/^```[a-zA-Z0-9_-]*\s*\n?/gm, '')
         .replace(/\n?```$/gm, '')
@@ -203,7 +232,7 @@ export function parseAndSanitizeSnippet(snippet) {
             }
             if (line) {
                 // If line isn't already a heading or paragraph tag, wrap appropriately
-                if (/^<h[1-6]>/i.test(line) || /^<p>/i.test(line) || /^<ul>/i.test(line)) {
+                if (/^<h[1-6]>/i.test(line) || /^<p>/i.test(line) || /^<ul/i.test(line) || /^<ol/i.test(line) || /^<li/i.test(line) || /^<\/li>/i.test(line) || /^<\/ul>/i.test(line) || /^<\/ol>/i.test(line)) {
                     formattedLines.push(line)
                 } else if (STANDALONE_SECTION_REGEX.test(line)) {
                     formattedLines.push(`<h3>${line}</h3>`)
@@ -218,6 +247,12 @@ export function parseAndSanitizeSnippet(snippet) {
     }
 
     const processedHtml = formattedLines.join('\n')
-    return sanitizeResumeHtml(processedHtml)
+    const sanitized = sanitizeResumeHtml(processedHtml)
+    if (!sanitized) return ''
+    const singleLiMatch = sanitized.match(/^\s*<(?:ul|ol)[^>]*>\s*(<li[^>]*>[\s\S]*?<\/li>)\s*<\/(?:ul|ol)>\s*$/i)
+    if (singleLiMatch) {
+        return singleLiMatch[1]
+    }
+    return sanitized
 }
 

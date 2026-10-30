@@ -62,6 +62,24 @@ function autoCloseMarkdown(content = '') {
     return closed;
 }
 
+/**
+ * Extracts clean user-facing message from LLM stream (stripping raw JSON envelopes).
+ */
+function cleanUserFacingText(text) {
+    if (!text || typeof text !== 'string') return '';
+    const trimmed = text.trim();
+    if (trimmed.startsWith('{')) {
+        // Try to extract messageForUser from inside JSON
+        const match = trimmed.match(/"(?:messageForUser|replyText|message)"\s*:\s*"((?:\\\\"|[^"])*)"/);
+        if (match && match[1]) {
+            return match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n');
+        }
+        // In the middle of streaming opening brace
+        return 'Analyzing and applying updates to your resume...';
+    }
+    return text;
+}
+
 const renderMarkdown = (content, isStreaming = false) => {
     if (!content) return '';
     const safeContent = isStreaming ? autoCloseMarkdown(content) : content.replace(/<br\s*\/?>/gi, '\n');
@@ -772,7 +790,7 @@ export function KiviAiAssistant() {
                             ? window.__KIVI_GET_CURRENT_RESUME_HTML__()
                             : (currentResumeHtml || '');
 
-                        const diffRes = TrackUpdatePart(currentLiveHtml, data.ResumeUpdations, data.targetText);
+                        const diffRes = TrackUpdatePart(currentLiveHtml, data.ResumeUpdations, data.targetText, data.targetSection);
 
                         if (diffRes) {
                             window.dispatchEvent(new CustomEvent('kivi-show-diff', {

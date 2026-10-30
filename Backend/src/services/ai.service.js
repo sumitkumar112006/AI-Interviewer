@@ -1086,7 +1086,8 @@ If any optional section (e.g. Projects, Certifications, Achievements, Profile) i
    - Only include if present in candidate input (can also be merged into Skills). Omit if none provided.
    - Format: <ul><li>Certification Name – Issuing Body (Date) (<a href="...">link</a>)</li></ul>
 
-6. <h2>EXPERIENCE</h2>:
+6. <h2>PROFESSIONAL EXPERIENCE</h2>:
+   - Name this section "Professional Experience" (or "Work History") for ATS to reliably recognize work sections.
    - Company Name with location on right:
      <p><strong>Company Name</strong> <span style="float: right;">City, Country</span></p>
      <h3><strong>Job Title / Role</strong> <span style="float: right;">Start Date – Present / End Date</span></h3>
