@@ -13,7 +13,7 @@
 
 'use strict';
 
-const { logs, SeverityNumber, trace } = require('@opentelemetry/api');
+const { logs, SeverityNumber, trace, context } = require('@opentelemetry/api');
 
 // ── 1. Severity Configuration ────────────────────────────────────────────────
 const LOG_LEVELS = {
@@ -146,11 +146,15 @@ class KiviLogger {
                     severityNumber: levelConfig.severityNumber,
                     severityText: levelConfig.severityText,
                     body: typeof message === 'string' ? message : JSON.stringify(sanitizeMetadata(message)),
-                    attributes: logAttributes
+                    attributes: logAttributes,
+                    context: context.active()
                 });
             }
-        } catch {
-            // Telemetry failure is strictly non-fatal
+        } catch (emitErr) {
+            // Telemetry failure is strictly non-fatal. Safe diagnostic reporting without secrets or tokens.
+            if (process.env.OTEL_DIAGNOSTICS === 'true') {
+                console.warn(`[OpenTelemetry Safe Diagnostic] emit failed [${emitErr?.name || 'Error'}: ${emitErr?.message || 'unknown'}]`);
+            }
         }
 
         // 2. Format and output to local console for development & container stdout

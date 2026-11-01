@@ -6,6 +6,7 @@ const connectToDB = require('./src/config/database');
 const { connectToRedis } = require('./src/config/redis');
 const { initAiWorker } = require('./src/jobs/aiWorker');
 const reconciliationService = require('./src/services/reconciliation.service');
+const { logger } = require('./src/telemetry/logger');
 
 const PORT = process.env.PORT || 3000;
 
@@ -22,6 +23,7 @@ async function startServer() {
 
         app.listen(PORT, () => {
             console.log(`Server is running on port ${PORT}`);
+            logger.info('telemetry.log_test', { source: 'startup', service: 'kivi-backend' });
         });
     } catch (err) {
         console.error("Failed to start server:", err);

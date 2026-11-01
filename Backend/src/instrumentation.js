@@ -129,8 +129,12 @@ if (process.env.OTEL_METRICS_EXPORTER === 'otlp') {
 const logRecordProcessors = [];
 if (process.env.OTEL_LOGS_EXPORTER !== 'none') {
     try {
-        const logExporter = new OTLPLogExporter();
-        logRecordProcessors.push(new BatchLogRecordProcessor(logExporter));
+        const logsEndpoint = process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT ||
+            (process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+                ? `${process.env.OTEL_EXPORTER_OTLP_ENDPOINT.replace(/\/+$/, '')}/v1/logs`
+                : undefined);
+        const logExporter = new OTLPLogExporter(logsEndpoint ? { url: logsEndpoint } : undefined);
+        logRecordProcessors.push(new BatchLogRecordProcessor({ exporter: logExporter }));
     } catch (logErr) {
         console.warn('[OpenTelemetry] Failed to initialize OTLPLogExporter:', logErr.message);
     }
@@ -231,6 +235,7 @@ process.once('SIGINT', shutdownTelemetry);
 
 module.exports = {
     sdk,
-    isEnabled: !!sdk
+    isEnabled: !!sdk,
+    logRecordProcessors
 };
 
