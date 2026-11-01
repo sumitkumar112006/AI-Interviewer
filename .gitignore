@@ -20,6 +20,7 @@ strix_runs/
 .agents/
 Edge cases
 DPDP_Privacy_Policy_and_Compliance_Guide.pdf
+skills-lock.json
 
 # Logs & Temporary Scratch Files
 *.log
