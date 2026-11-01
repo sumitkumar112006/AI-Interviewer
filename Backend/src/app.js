@@ -4,6 +4,7 @@ const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const multer = require('multer');
 const { createRateLimiter } = require('./middleware/rateLimiter.middleware');
+const { httpMetricsMiddleware } = require('./telemetry/metrics');
 
 const globalLimiter = createRateLimiter({
     prefix: 'ratelimit:global',
@@ -49,6 +50,9 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// Low-cardinality OpenTelemetry HTTP Server Metrics
+app.use(httpMetricsMiddleware);
 
 // 1. Raw Webhook Endpoint mounted BEFORE standard JSON parser to preserve exact HMAC byte buffer
 const webhookController = require('./controller/webhook.controller');

@@ -8,6 +8,8 @@
 
 'use strict';
 
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
+const tracer = trace.getTracer('kivi-backend');
 const { CANONICAL_ALIASES, TECH_CATALOG } = require('../config/aliases.config');
 
 const CRITICAL_KEYWORDS = [
@@ -91,16 +93,24 @@ function extractRequiredEducation(text = '') {
  * @returns {Object} Structured JD
  */
 function parseJobDescription(jdText = '') {
-    if (!jdText || typeof jdText !== 'string') {
-        return {
-            archetype: 'SOFTWARE_ENGINEER',
-            requiredYearsExp: 0,
-            educationRequirement: { requiredLevel: 'ANY', isMandatory: false },
-            requirements: []
-        };
-    }
+    return tracer.startActiveSpan('kivi.jd.parse', {
+        attributes: {
+            'kivi.operation.type': 'jd_parse'
+        }
+    }, (span) => {
+        try {
+            if (!jdText || typeof jdText !== 'string') {
+                span.setStatus({ code: SpanStatusCode.OK });
+                return {
+                    archetype: 'SOFTWARE_ENGINEER',
+                    requiredYearsExp: 0,
+                    educationRequirement: { requiredLevel: 'ANY', isMandatory: false },
+                    requirements: []
+                };
+            }
 
-    const archetype = inferArchetype(jdText);
+            const archetype = inferArchetype(jdText);
+            span.setAttribute('kivi.job.archetype', archetype);
     const requiredYearsExp = extractRequiredYears(jdText);
     const educationRequirement = extractRequiredEducation(jdText);
 
@@ -154,12 +164,21 @@ function parseJobDescription(jdText = '') {
         }
     }
 
-    return {
-        archetype,
-        requiredYearsExp,
-        educationRequirement,
-        requirements
-    };
+    span.setStatus({ code: SpanStatusCode.OK });
+            return {
+                archetype,
+                requiredYearsExp,
+                educationRequirement,
+                requirements
+            };
+        } catch (err) {
+            span.recordException(err);
+            span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+            throw err;
+        } finally {
+            span.end();
+        }
+    });
 }
 
 module.exports = {

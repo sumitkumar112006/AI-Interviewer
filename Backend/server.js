@@ -1,4 +1,6 @@
 require('dotenv').config();
+// Initialize OpenTelemetry SDK before Express, Mongoose, ioredis, or any other application modules are imported
+require('./src/instrumentation');
 const app = require('./src/app');
 const connectToDB = require('./src/config/database');
 const { connectToRedis } = require('./src/config/redis');

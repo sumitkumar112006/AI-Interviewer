@@ -15,6 +15,7 @@ const {
     getAdminPaymentsController,
     getAdminSubscriptionsController,
     getAdminAuditLogsController,
+    getAdminSystemEventsController,
     getAdminInvoicesController,
     deleteUserController
 } = require('../controller/admin.controller');
@@ -128,6 +129,13 @@ adminRouter.get('/subscriptions', getAdminSubscriptionsController);
  * @access Private (Admin Only)
  */
 adminRouter.get('/audit-logs', getAdminAuditLogsController);
+
+/**
+ * @route GET /api/admin/system-events
+ * @description Get operational system events and audit trail
+ * @access Private (Admin Only)
+ */
+adminRouter.get('/system-events', getAdminSystemEventsController);
 
 /**
  * @route GET /api/admin/invoices

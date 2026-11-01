@@ -8,6 +8,8 @@
 
 'use strict';
 
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
+const tracer = trace.getTracer('kivi-backend');
 const { TECH_CATALOG, CANONICAL_ALIASES } = require('../config/aliases.config');
 
 const SECTION_PATTERNS = {
@@ -126,7 +128,14 @@ function evaluateAtsCompatibility(rawText = '', rawHtml = '') {
  */
 function parseResume(resumeInput = '') {
     const isHtml = /<[a-z][\s\S]*>/i.test(resumeInput);
-    const plainText = isHtml ? htmlToPlainText(resumeInput) : resumeInput;
+    return tracer.startActiveSpan('kivi.resume.parse', {
+        attributes: {
+            'kivi.operation.type': 'resume_parse',
+            'kivi.document.format': isHtml ? 'html' : 'text'
+        }
+    }, (span) => {
+        try {
+            const plainText = isHtml ? htmlToPlainText(resumeInput) : resumeInput;
     const rawHtml = isHtml ? resumeInput : '';
 
     const lines = plainText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -195,15 +204,24 @@ function parseResume(resumeInput = '') {
     const seniorityLevel = inferSeniority(plainText, totalYearsExp);
     const atsFormattingScore = evaluateAtsCompatibility(plainText, rawHtml);
 
-    return {
-        plainText,
-        evidenceList,
-        totalYearsExp,
-        education: { highestDegree },
-        seniorityLevel,
-        projects,
-        atsFormattingScore
-    };
+    span.setStatus({ code: SpanStatusCode.OK });
+            return {
+                plainText,
+                evidenceList,
+                totalYearsExp,
+                education: { highestDegree },
+                seniorityLevel,
+                projects,
+                atsFormattingScore
+            };
+        } catch (err) {
+            span.recordException(err);
+            span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+            throw err;
+        } finally {
+            span.end();
+        }
+    });
 }
 
 module.exports = {

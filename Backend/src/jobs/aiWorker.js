@@ -1,5 +1,9 @@
 const { Worker } = require('bullmq');
 const mongoose = require('mongoose');
+const { trace, context, ROOT_CONTEXT, propagation, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
+const { logger } = require('../telemetry/logger');
+
+const tracer = trace.getTracer('kivi-backend');
 const { createBullRedisConnection } = require('./redisConnection');
 const JobModel = require('../models/job.model');
 const interviewReportModel = require('../models/interviewReport.model');
@@ -21,26 +25,54 @@ function initAiWorker() {
     const workerConnection = createBullRedisConnection();
 
     aiWorkerInstance = new Worker('ai-generation', async (bullJob) => {
-        const { jobId } = bullJob.data;
-        console.log(`[AI Worker] Starting Job ${jobId} (Type: ${bullJob.name})...`);
+        const { jobId } = bullJob.data || {};
 
-        const jobDoc = await JobModel.findById(jobId);
-        if (!jobDoc) {
-            console.error(`[AI Worker] Job document not found in DB: ${jobId}`);
-            return;
-        }
-
-        if (jobDoc.status === 'done') {
-            console.log(`[AI Worker] Job ${jobId} is already marked as done.`);
-            return jobDoc.result;
-        }
-
-        // Mark as processing
-        jobDoc.status = 'processing';
-        await jobDoc.save();
-
+        // Extract W3C Trace Context from BullMQ job metadata
+        let parentContext = ROOT_CONTEXT;
         try {
-            switch (jobDoc.type) {
+            if (bullJob.data?.otelTraceContext && typeof bullJob.data.otelTraceContext === 'object') {
+                parentContext = propagation.extract(ROOT_CONTEXT, bullJob.data.otelTraceContext);
+            }
+        } catch {
+            parentContext = ROOT_CONTEXT;
+        }
+
+        return await context.with(parentContext, async () => {
+            return await tracer.startActiveSpan('kivi.ai.job', {
+                kind: SpanKind.CONSUMER,
+                attributes: {
+                    'messaging.system': 'bullmq',
+                    'messaging.destination': 'ai-generation',
+                    'messaging.operation': 'process',
+                    'kivi.job.type': bullJob.name || 'unknown',
+                    'kivi.processing.mode': 'async_worker'
+                }
+            }, async (jobSpan) => {
+                logger.info(`[AI Worker] Starting Job ${jobId} (Type: ${bullJob.name})...`, {
+                    jobType: bullJob.name
+                });
+
+                const jobDoc = await JobModel.findById(jobId);
+                if (!jobDoc) {
+                    logger.error(`[AI Worker] Job document not found in DB: ${jobId}`);
+                    jobSpan.setStatus({ code: SpanStatusCode.ERROR, message: 'Job document not found in DB' });
+                    jobSpan.setAttribute('kivi.job.status', 'not_found');
+                    return;
+                }
+
+                if (jobDoc.status === 'done') {
+                    logger.info(`[AI Worker] Job ${jobId} is already marked as done.`, { jobType: bullJob.name });
+                    jobSpan.setStatus({ code: SpanStatusCode.OK });
+                    jobSpan.setAttribute('kivi.job.status', 'already_done');
+                    return jobDoc.result;
+                }
+
+                // Mark as processing
+                jobDoc.status = 'processing';
+                await jobDoc.save();
+
+                try {
+                    switch (jobDoc.type) {
                 // 1. MOCK INTERVIEW & REPORT GENERATION
                 case 'interview_report': {
                     const { resumeText, selfDescription, jobDescription, userPlan, extractedLinks } = jobDoc.input;
@@ -140,7 +172,9 @@ function initAiWorker() {
                     jobDoc.creditDeducted = true;
                     await jobDoc.save();
 
-                    console.log(`[AI Worker] Job ${jobId} (interview_report) finished successfully. Created Report: ${interviewReport._id}`);
+                    logger.info(`[AI Worker] Job ${jobId} (interview_report) finished successfully. Created Report: ${interviewReport._id}`);
+                    jobSpan.setStatus({ code: SpanStatusCode.OK });
+                    jobSpan.setAttribute('kivi.job.status', 'completed');
                     return interviewReport;
                 }
 
@@ -234,7 +268,9 @@ function initAiWorker() {
                     jobDoc.creditDeducted = true;
                     await jobDoc.save();
 
-                    console.log(`[AI Worker] Job ${jobId} (resume_html) finished successfully for Report: ${interviewReportId}`);
+                    logger.info(`[AI Worker] Job ${jobId} (resume_html) finished successfully for Report: ${interviewReportId}`);
+                    jobSpan.setStatus({ code: SpanStatusCode.OK });
+                    jobSpan.setAttribute('kivi.job.status', 'completed');
                     return interviewReport;
                 }
 
@@ -345,32 +381,47 @@ function initAiWorker() {
                     jobDoc.creditDeducted = true;
                     await jobDoc.save();
 
-                    console.log(`[AI Worker] Job ${jobId} (rewrite_section) finished successfully. Target text: ${aiResponse.targetText ? 'Identified' : 'None'}`);
+                    logger.info(`[AI Worker] Job ${jobId} (rewrite_section) finished successfully. Target text: ${aiResponse.targetText ? 'Identified' : 'None'}`);
+                    jobSpan.setStatus({ code: SpanStatusCode.OK });
+                    jobSpan.setAttribute('kivi.job.status', 'completed');
                     return jobDoc.result;
                 }
 
                 default:
                     throw new Error(`Unknown job type: ${jobDoc.type}`);
             }
-        } catch (err) {
-            console.error(`[AI Worker] Job ${jobId} execution error:`, err);
-            jobDoc.status = 'failed';
-            jobDoc.error = err.message || 'Generation failed';
-            jobDoc.creditDeducted = true; // API was called
-            await jobDoc.save();
-            throw err;
-        }
+                } catch (err) {
+                    jobSpan.recordException(err);
+                    jobSpan.setStatus({ code: SpanStatusCode.ERROR, message: err?.message || 'AI job execution failed' });
+                    jobSpan.setAttribute('kivi.job.status', 'failed');
+                    logger.error(`[AI Worker] Job ${jobId} execution error: ${err.message}`, {
+                        error: err,
+                        jobType: bullJob.name
+                    });
+                    jobDoc.status = 'failed';
+                    jobDoc.error = err.message || 'Generation failed';
+                    jobDoc.creditDeducted = true; // API was called
+                    await jobDoc.save();
+                    throw err;
+                } finally {
+                    jobSpan.end();
+                }
+            });
+        });
     }, {
         connection: workerConnection,
         concurrency: 5
     });
 
     aiWorkerInstance.on('completed', (job) => {
-        console.log(`[AI Worker] BullMQ completed job: ${job.id}`);
+        logger.info(`[AI Worker] BullMQ completed job: ${job.id}`, { jobType: job.name });
     });
 
     aiWorkerInstance.on('failed', (job, err) => {
-        console.error(`[AI Worker] BullMQ failed job: ${job?.id}, Error: ${err.message}`);
+        logger.error(`[AI Worker] BullMQ failed job: ${job?.id}, Error: ${err.message}`, {
+            error: err,
+            jobType: job?.name
+        });
     });
 
     return aiWorkerInstance;

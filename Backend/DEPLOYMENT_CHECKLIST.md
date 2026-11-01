@@ -40,6 +40,38 @@ NODE_ENV = production
 3. **Logs**: Monitor Render dashboard logs for startup issues.
 4. **Database**: Ensure MongoDB Atlas allows Render's IP in whitelist (or set 0.0.0.0/0)
 
+## Production Observability (Grafana Cloud / OpenTelemetry)
+
+To stream production traces (Tempo), metrics (Mimir), and logs (Loki) to Grafana Cloud:
+
+1. **Grafana Cloud Account**: Log into [grafana.com](https://grafana.com) -> Open your hosted Grafana instance.
+2. **OTLP Gateway Endpoint**: Navigate to **Connections -> OpenTelemetry -> Configure**.
+   - Copy your regional OTLP endpoint (e.g. `https://otlp-gateway-prod-us-east-0.grafana.net/otlp`).
+3. **Access Policy Token**: Under **Security -> Access Policies**, create a token with:
+   - Scopes: `traces:write`, `metrics:write`, `logs:write`
+   - Copy the Instance ID and the generated token.
+4. **Basic Auth Header**:
+   - Compute `base64(INSTANCE_ID:TOKEN)`:
+     `node -e "console.log(Buffer.from('123456:glc_token...').toString('base64'))"`
+5. **Add Environment Variables to Render / Docker**:
+   ```
+   OTEL_SERVICE_NAME=kivi-backend
+   DEPLOYMENT_ENVIRONMENT=production
+   OTEL_TRACES_EXPORTER=otlp
+   OTEL_LOGS_EXPORTER=otlp
+   OTEL_METRICS_EXPORTER=otlp
+   LOG_LEVEL=info
+   OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp-gateway-prod-us-east-0.grafana.net/otlp
+   OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <base64_string>
+   OTEL_TRACES_SAMPLER=parentbased_always_on (or parentbased_traceidratio)
+   OTEL_TRACES_SAMPLER_ARG=1.0 (or 0.1 for 10% sampling)
+   ```
+6. **Cost Control & Sampling**:
+   - For high traffic, set `OTEL_TRACES_SAMPLER=parentbased_traceidratio` and `OTEL_TRACES_SAMPLER_ARG=0.1` (10% sampling) to stay well within Grafana Cloud free tier quotas.
+7. **Resilience & Kill-Switch**:
+   - If Grafana Cloud or OTLP collector is unreachable, KIVI continues normal operations without blocking.
+   - To completely disable telemetry instantly without redeploying code: set `OTEL_SDK_DISABLED=true`.
+
 ## Quick Deploy Steps
 
 1. Push code to GitHub: `git add . && git commit -m "Fix CORS for production" && git push`

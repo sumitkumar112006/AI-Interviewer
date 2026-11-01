@@ -1,6 +1,8 @@
 const { Queue } = require('bullmq');
+const { trace, context, propagation, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
 const { createBullRedisConnection } = require('./redisConnection');
 
+const tracer = trace.getTracer('kivi-backend');
 const queueConnection = createBullRedisConnection();
 
 const aiQueue = new Queue('ai-generation', {
@@ -23,13 +25,48 @@ const aiQueue = new Queue('ai-generation', {
 });
 
 /**
- * Helper to add an AI job to the BullMQ queue
+ * Helper to add an AI job to the BullMQ queue with W3C trace context propagation
  * @param {string} type - job type name
  * @param {object} data - payload containing jobId and metadata
  */
 async function enqueueAiJob(type, data = {}) {
-    return await aiQueue.add(type, data, {
-        jobId: data.jobId?.toString()
+    return tracer.startActiveSpan(`BullMQ producer ${type}`, {
+        kind: SpanKind.PRODUCER,
+        attributes: {
+            'messaging.system': 'bullmq',
+            'messaging.destination': 'ai-generation',
+            'messaging.destination_kind': 'queue',
+            'messaging.operation': 'publish',
+            'kivi.job.type': type || 'unknown'
+        }
+    }, async (producerSpan) => {
+        try {
+            // Inject W3C TraceContext into dedicated metadata field
+            const otelTraceContext = {};
+            try {
+                propagation.inject(context.active(), otelTraceContext);
+            } catch {
+                // Non-fatal if context injection fails
+            }
+
+            const payload = {
+                ...data,
+                otelTraceContext
+            };
+
+            const result = await aiQueue.add(type, payload, {
+                jobId: data.jobId?.toString()
+            });
+
+            producerSpan.setStatus({ code: SpanStatusCode.OK });
+            return result;
+        } catch (err) {
+            producerSpan.recordException(err);
+            producerSpan.setStatus({ code: SpanStatusCode.ERROR, message: err?.message || 'Failed to enqueue AI job' });
+            throw err;
+        } finally {
+            producerSpan.end();
+        }
     });
 }
 

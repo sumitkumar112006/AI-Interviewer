@@ -840,6 +840,48 @@ async function getAdminAuditLogsController(req, res) {
 }
 
 /**
+ * @name getAdminSystemEventsController
+ * @description Get system operational events and audit logs with pagination and severity filter
+ */
+async function getAdminSystemEventsController(req, res) {
+    try {
+        const { SystemEvent } = require("../models/systemEvent.model");
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+        const { severity, category, eventType } = req.query;
+
+        const filter = {};
+        if (severity) filter.severity = severity.toUpperCase();
+        if (category) filter.category = category.toUpperCase();
+        if (eventType) filter.eventType = eventType.trim();
+
+        const [events, totalCount] = await Promise.all([
+            SystemEvent.find(filter)
+                .populate('actorId', 'username email role')
+                .populate('targetId', 'username email role')
+                .sort({ createdAt: -1 })
+                .skip((page - 1) * limit)
+                .limit(limit)
+                .lean(),
+            SystemEvent.countDocuments(filter)
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            data: events,
+            pagination: {
+                total: totalCount,
+                page,
+                pages: Math.ceil(totalCount / limit) || 1,
+                limit
+            }
+        });
+    } catch (err) {
+        return res.status(500).json({ message: err.message || "Failed to fetch system events." });
+    }
+}
+
+/**
  * @name getAdminInvoicesController
  * @description Get all tax invoices
  */
@@ -954,6 +996,7 @@ module.exports = {
     getAdminPaymentsController,
     getAdminSubscriptionsController,
     getAdminAuditLogsController,
+    getAdminSystemEventsController,
     getAdminInvoicesController,
     deleteUserController
 };

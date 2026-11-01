@@ -8,6 +8,9 @@
 
 'use strict';
 
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
+const { recordAtsAnalysis } = require('../../telemetry/metrics');
+const tracer = trace.getTracer('kivi-backend');
 const { WEIGHT_PROFILES } = require('./config/weights.config');
 const { TECH_CATALOG } = require('./config/aliases.config');
 const { parseJobDescription } = require('./parsers/jdParser');
@@ -75,7 +78,15 @@ function computeProjectScore(projects = [], matches = []) {
  * @returns {Promise<Object>} { ats_score: number, confidence: number, breakdown: Object }
  */
 async function calculateAtsMatchScore({ resume = '', jobDescription = '', skipEmbeddings = false }) {
-    // 1. Structured Parsing
+    const atsStartTime = Date.now();
+    return tracer.startActiveSpan('kivi.ats.calculate', {
+        attributes: {
+            'kivi.operation.type': 'ats_calculate',
+            'kivi.processing.mode': skipEmbeddings ? 'deterministic' : 'hybrid'
+        }
+    }, async (span) => {
+        try {
+            // 1. Structured Parsing
     const parsedJD = parseJobDescription(jobDescription);
     const parsedResume = parseResume(resume);
 
@@ -184,36 +195,56 @@ async function calculateAtsMatchScore({ resume = '', jobDescription = '', skipEm
     const missingOther = evaluationResults.filter(r => !techCategories.includes(r.category) && r.score === 0).map(r => r.requirementName);
     const matchedOther = evaluationResults.filter(r => !techCategories.includes(r.category) && r.score > 0).map(r => r.requirementName);
 
-    return {
-        ats_score,
-        overallScore: ats_score, // backward-compatible alias
-        confidence: Number(avgConfidence.toFixed(2)),
-        // Internal explainability breakdown
-        breakdown: {
-            archetype: parsedJD.archetype,
-            rawScore: Math.round(scaledRaw),
-            penaltyFactor: Number(penaltyFactor.toFixed(3)),
-            categories: {
-                technicalSkills: Math.round(technicalSkillsScore * 100),
-                requiredQualifications: Math.round(requiredQualsScore * 100),
-                responsibilities: Math.round(responsibilitiesScore * 100),
-                experience: Math.round(experienceScore * 100),
-                education: Math.round(educationScore * 100),
-                projects: Math.round(projectsScore * 100),
-                atsCompatibility: Math.round(atsCompatibilityScore * 100)
-            },
-            skillsMatch: {
-                missing: missingTech,
-                matched: matchedTech
-            },
-            keywordMatch: {
-                missing: missingOther,
-                matched: matchedOther
-            },
-            totalRequirements: evaluationResults.length,
-            matchedRequirements: evaluationResults.filter(r => r.score > 0).length
+    span.setStatus({ code: SpanStatusCode.OK });
+            recordAtsAnalysis({
+                mode: skipEmbeddings ? 'deterministic' : 'hybrid',
+                status: 'success',
+                durationMs: Date.now() - atsStartTime
+            });
+            return {
+                ats_score,
+                overallScore: ats_score, // backward-compatible alias
+                confidence: Number(avgConfidence.toFixed(2)),
+                // Internal explainability breakdown
+                breakdown: {
+                    archetype: parsedJD.archetype,
+                    rawScore: Math.round(scaledRaw),
+                    penaltyFactor: Number(penaltyFactor.toFixed(3)),
+                    categories: {
+                        technicalSkills: Math.round(technicalSkillsScore * 100),
+                        requiredQualifications: Math.round(requiredQualsScore * 100),
+                        responsibilities: Math.round(responsibilitiesScore * 100),
+                        experience: Math.round(experienceScore * 100),
+                        education: Math.round(educationScore * 100),
+                        projects: Math.round(projectsScore * 100),
+                        atsCompatibility: Math.round(atsCompatibilityScore * 100)
+                    },
+                    skillsMatch: {
+                        missing: missingTech,
+                        matched: matchedTech
+                    },
+                    keywordMatch: {
+                        missing: missingOther,
+                        matched: matchedOther
+                    },
+                    totalRequirements: evaluationResults.length,
+                    matchedRequirements: evaluationResults.filter(r => r.score > 0).length
+                }
+            };
+        } catch (err) {
+            span.recordException(err);
+            span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+            recordAtsAnalysis({
+                mode: skipEmbeddings ? 'deterministic' : 'hybrid',
+                status: 'error',
+                durationMs: Date.now() - atsStartTime,
+                errorType: err.name || 'Error'
+            });
+            throw err;
+        } finally {
+            span.end();
         }
-    };
+    });
 }
 
 module.exports = {

@@ -1,4 +1,7 @@
 require('dotenv').config();
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
+const { instrumentLLMCall } = require('../telemetry/llmTelemetry');
+const tracer = trace.getTracer('kivi-backend');
 const Groq = require("groq-sdk")
 
 const { z } = require('zod')
@@ -649,13 +652,20 @@ async function callGemini(systemPrompt, userPrompt, plan = "free", isAssistant =
         try {
             console.log(`[AI] Attempting Gemini with Key ${keyState.id} (Model: ${model})...`);
             const client = new GoogleGenAI({ apiKey: keyState.key });
-            const response = await client.models.generateContent({
+            const response = await instrumentLLMCall({
+                provider: 'gcp.gemini',
                 model: model,
-                contents: [
-                    { role: 'user', parts: [{ text: `${systemPrompt}\n\nUser request:\n${userPrompt}` }] }
-                ],
-                config: {
-                    temperature: temperature,
+                operation: 'generate_content',
+                execute: async () => {
+                    return await client.models.generateContent({
+                        model: model,
+                        contents: [
+                            { role: 'user', parts: [{ text: `${systemPrompt}\n\nUser request:\n${userPrompt}` }] }
+                        ],
+                        config: {
+                            temperature: temperature,
+                        }
+                    });
                 }
             });
             return response.text;
@@ -709,13 +719,20 @@ async function callLlmWithFallback({ messages, systemPrompt, userPrompt, plan = 
         try {
             console.log(`[AI] Attempting Groq with Key ${keyState.id} (Model: ${model})...`);
             const client = new Groq({ apiKey: keyState.key });
-            const completion = await client.chat.completions.create({
+            const completion = await instrumentLLMCall({
+                provider: 'groq',
                 model: model,
-                messages: formattedMessages,
-                temperature: temperature,
-                max_tokens: maxTokens,
-                top_p: 1,
-                stream: false
+                operation: 'chat',
+                execute: async () => {
+                    return await client.chat.completions.create({
+                        model: model,
+                        messages: formattedMessages,
+                        temperature: temperature,
+                        max_tokens: maxTokens,
+                        top_p: 1,
+                        stream: false
+                    });
+                }
             });
 
             return completion.choices[0].message.content;
@@ -795,25 +812,34 @@ async function streamLlmWithFallback({ messages, systemPrompt, userPrompt, plan 
         try {
             console.log(`[AI SSE] Streaming from Groq (Key: ${keyState.id}, Model: ${model})...`);
             const client = new Groq({ apiKey: keyState.key });
-            const stream = await client.chat.completions.create({
+            await instrumentLLMCall({
+                provider: 'groq',
                 model: model,
-                messages: formattedMessages,
-                temperature: temperature,
-                max_tokens: maxTokens,
-                top_p: 1,
-                stream: true
-            });
+                operation: 'chat',
+                execute: async (span) => {
+                    const stream = await client.chat.completions.create({
+                        model: model,
+                        messages: formattedMessages,
+                        temperature: temperature,
+                        max_tokens: maxTokens,
+                        top_p: 1,
+                        stream: true
+                    });
 
-            for await (const chunk of stream) {
-                const token = chunk.choices[0]?.delta?.content || '';
-                if (token) {
-                    hasStreamedToken = true;
-                    fullText += token;
-                    if (typeof onToken === 'function') {
-                        onToken(token);
+                    for await (const chunk of stream) {
+                        const token = chunk.choices[0]?.delta?.content || '';
+                        if (token) {
+                            hasStreamedToken = true;
+                            fullText += token;
+                            if (typeof onToken === 'function') {
+                                onToken(token);
+                            }
+                        }
                     }
+
+                    return { fullText };
                 }
-            }
+            });
 
             if (fullText.trim().length > 0) {
                 return fullText;
@@ -861,26 +887,43 @@ async function streamLlmWithFallback({ messages, systemPrompt, userPrompt, plan 
             try {
                 console.log(`[AI SSE] Attempting Gemini Streaming (Key: ${keyState.id}, Model: ${geminiModel})...`);
                 const client = new GoogleGenAI({ apiKey: keyState.key });
-                const responseStream = await client.models.generateContentStream({
+                await instrumentLLMCall({
+                    provider: 'gcp.gemini',
                     model: geminiModel,
-                    contents: contents,
-                    config: {
-                        temperature: geminiTemp,
-                        maxOutputTokens: geminiMaxTokens,
-                        ...(sysMsg ? { systemInstruction: { parts: [{ text: sysMsg }] } } : {})
+                    operation: 'generate_content',
+                    execute: async (span) => {
+                        const responseStream = await client.models.generateContentStream({
+                            model: geminiModel,
+                            contents: contents,
+                            config: {
+                                temperature: geminiTemp,
+                                maxOutputTokens: geminiMaxTokens,
+                                ...(sysMsg ? { systemInstruction: { parts: [{ text: sysMsg }] } } : {})
+                            }
+                        });
+
+                        for await (const chunk of responseStream) {
+                            const token = chunk.text || '';
+                            if (token) {
+                                hasStreamedToken = true;
+                                fullText += token;
+                                if (typeof onToken === 'function') {
+                                    onToken(token);
+                                }
+                            }
+                            if (chunk.usageMetadata) {
+                                if (typeof chunk.usageMetadata.promptTokenCount === 'number') {
+                                    span.setAttribute('gen_ai.usage.input_tokens', chunk.usageMetadata.promptTokenCount);
+                                }
+                                if (typeof chunk.usageMetadata.candidatesTokenCount === 'number') {
+                                    span.setAttribute('gen_ai.usage.output_tokens', chunk.usageMetadata.candidatesTokenCount);
+                                }
+                            }
+                        }
+
+                        return { fullText };
                     }
                 });
-
-                for await (const chunk of responseStream) {
-                    const token = chunk.text || '';
-                    if (token) {
-                        hasStreamedToken = true;
-                        fullText += token;
-                        if (typeof onToken === 'function') {
-                            onToken(token);
-                        }
-                    }
-                }
 
                 if (fullText.trim().length > 0) {
                     return fullText;
@@ -928,6 +971,13 @@ async function generateInterviewReport({
     jobDescribe,
     plan = "free"
 }) {
+    return tracer.startActiveSpan('kivi.ai.generate', {
+        attributes: {
+            'kivi.operation.type': 'interview_report_generate',
+            'kivi.user.plan': plan || 'free'
+        }
+    }, async (span) => {
+        try {
     const candidateSummary = selfDescription ?? selfDescribe
     const roleDescription = jobDescription ?? jobDescribe
 
@@ -1034,7 +1084,16 @@ Job Description: ${roleDescription}
 
     console.log(interviewReport);
 
-    return interviewReport
+            span.setStatus({ code: SpanStatusCode.OK });
+            return interviewReport;
+        } catch (err) {
+            span.recordException(err);
+            span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+            throw err;
+        } finally {
+            span.end();
+        }
+    });
 }
 
 
@@ -1043,6 +1102,13 @@ Job Description: ${roleDescription}
 
 
 async function generateResumeHtml({ resume, selfDescription, jobDescription, plan = "free" }) {
+    return tracer.startActiveSpan('kivi.resume.generate', {
+        attributes: {
+            'kivi.operation.type': 'resume_generate',
+            'kivi.user.plan': plan || 'free'
+        }
+    }, async (span) => {
+        try {
     const systemPrompt = `You are an expert resume writer and ATS optimization specialist. You MUST respond ONLY with valid JSON — no markdown code fences, no commentary. The JSON must have exactly two top-level keys:
 1. "html": a complete HTML string for a professional, single-column A4 resume. Always use your strong reasoning and capabilities to generate ATS-optimized resume content matching key points from the Job Description with proof of work in project bullets and experience sections.
 2. "skills": a clean array of strings containing all key technical skills, programming languages, frameworks, databases, cloud platforms, and developer tools derived for the candidate's resume (e.g. ["JavaScript", "TypeScript", "React", "Node.js", "Docker", "AWS", "PostgreSQL", "REST APIs", "Git"]).`
@@ -1192,7 +1258,16 @@ Job Description: ${jobDescription || 'None provided'}
         toString() { return this.html; }
     }
 
-    return result
+    span.setStatus({ code: SpanStatusCode.OK });
+    return result;
+        } catch (err) {
+            span.recordException(err);
+            span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+            throw err;
+        } finally {
+            span.end();
+        }
+    });
 }
 
 async function generateResumePfd({ resume, selfDescription, jobDescription }) {
@@ -1214,6 +1289,12 @@ async function scrapeCompanyCulture(companyName) {
 
 // Add the helper function and export it
 async function generateCoverLetter({ resume, selfDescription, jobDescription, companyName, roleName }) {
+    return tracer.startActiveSpan('kivi.cover_letter.generate', {
+        attributes: {
+            'kivi.operation.type': 'cover_letter_generate'
+        }
+    }, async (span) => {
+        try {
     let scrapedCulture = null;
     if (companyName && companyName.trim()) {
         scrapedCulture = await scrapeCompanyCulture(companyName);
@@ -1281,7 +1362,16 @@ Job Description: ${jobDescription}
             .trim();
     }
 
-    return htmlContent;
+    span.setStatus({ code: SpanStatusCode.OK });
+            return htmlContent;
+        } catch (err) {
+            span.recordException(err);
+            span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+            throw err;
+        } finally {
+            span.end();
+        }
+    });
 }
 
 function stripHtmlToCleanText(html = '') {
@@ -1307,6 +1397,14 @@ function stripHtmlToCleanText(html = '') {
  * AI Resume Chat Copilot & Section Rewriter
  */
 async function rewriteResumeSection({ selectedText = "", instruction = "", action = "enhance", message = "", plan = "free", currentResumeHtml = "", jobDescription = "", jobRole = "" }) {
+    return tracer.startActiveSpan('kivi.resume.rewrite', {
+        attributes: {
+            'kivi.operation.type': 'resume_rewrite',
+            'kivi.action': action || 'enhance',
+            'kivi.user.plan': plan || 'free'
+        }
+    }, async (span) => {
+        try {
     const promptText = message.trim() || instruction.trim();
 
     const systemPrompt = `You are an elite, executive-level AI Resume Copilot & Career Coach (KIVI AI). You help candidates refine their resume content, align with Job Descriptions (JD), and answer career questions with high precision and corporate professionalism.
@@ -1407,13 +1505,25 @@ Generate response JSON with "replyText", "targetText", and "suggestedSnippet":
             targetText: snippetResult ? targetTextResult : null,
             suggestedSnippet: snippetResult
         };
+        span.setStatus({ code: SpanStatusCode.OK });
+        return {
+            replyText: parsed.replyText || "Here is information to assist you.",
+            targetText: snippetResult ? targetTextResult : null,
+            suggestedSnippet: snippetResult
+        };
     } catch (err) {
+        span.recordException(err);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
         return {
             replyText: "Here is information to assist you.",
             targetText: selectedText ? selectedText.trim() : null,
             suggestedSnippet: selectedText ? selectedText.trim() : null
         };
     }
+        } finally {
+            span.end();
+        }
+    });
 }
 
 function getAIStatus() {

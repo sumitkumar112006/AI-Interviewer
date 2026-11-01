@@ -1,4 +1,20 @@
 const { getRedisClient } = require('../config/redis');
+const { recordCacheAccess } = require('../telemetry/metrics');
+
+function extractCacheNamespace(key = '') {
+    if (typeof key !== 'string') return 'default';
+    const parts = key.split(':');
+    if (parts[0] === 'cache' && parts.length > 1) {
+        return parts[1] || 'default';
+    }
+    if (parts[0] === 'ratelimit') {
+        return 'ratelimit';
+    }
+    if (parts[0] === 'embed') {
+        return 'embeddings';
+    }
+    return parts[0] || 'default';
+}
 
 // In-Memory Fallback Cache (Active when Redis is offline or disconnected)
 const memoryStore = new Map();
@@ -149,10 +165,18 @@ async function isTokenBlacklistedInRedis(token) {
 async function getCache(key) {
     const client = getClientSafely();
     if (!client) return null;
+    const namespace = extractCacheNamespace(key);
     try {
         const data = await client.get(key);
-        return data ? JSON.parse(data) : null;
+        if (data) {
+            recordCacheAccess({ namespace, hit: true });
+            return JSON.parse(data);
+        } else {
+            recordCacheAccess({ namespace, hit: false });
+            return null;
+        }
     } catch (err) {
+        recordCacheAccess({ namespace, hit: false });
         console.error(`Redis getCache error for key ${key}:`, err.message);
         return null;
     }
