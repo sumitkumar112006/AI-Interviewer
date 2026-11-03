@@ -757,8 +757,14 @@ export function KiviAiAssistant() {
         // Start smooth rendering loop
         startSmoothStreamDrain(aiMsgId);
 
-        // Capture live HTML from the TipTap viewport so real-time modifications are preserved
-        const currentResumeHtml = typeof window.__KIVI_GET_CURRENT_RESUME_HTML__ === 'function' 
+        // Data Minimization: Capture live HTML only when the user prompt or action targets resume editing
+        const isResumeAction = Boolean(
+            actionPreset ||
+            activeSnippet ||
+            /(?:resume|rewrite|rephrase|bullet|experience|summary|skills|ats|tailor|update|edit)/i.test(messageToSend)
+        );
+
+        const currentResumeHtml = isResumeAction && typeof window.__KIVI_GET_CURRENT_RESUME_HTML__ === 'function' 
             ? window.__KIVI_GET_CURRENT_RESUME_HTML__() 
             : '';
 
@@ -784,7 +790,7 @@ export function KiviAiAssistant() {
                     streamQueueRef.current += token;
                 },
                 onDone: (data) => {
-                    console.log('%c[KIVI AI Assistant Done Event]', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;', data);
+                    if (import.meta.env.DEV) { console.log('%c[KIVI AI Assistant Done Event]', 'background: #2563eb; color: #fff; font-weight: bold; padding: 4px 8px; border-radius: 4px;', data); }
                     pendingDoneDataRef.current = data;
                     isStreamingDoneRef.current = true;
                     if (fetchUsage) fetchUsage();
@@ -821,7 +827,7 @@ export function KiviAiAssistant() {
                 },
                 onError: (err) => {
                     if (err.name === 'AbortError') return;
-                    console.error("KIVI Chat Streaming error:", err);
+                    if (import.meta.env.DEV) { console.error("KIVI Chat Streaming error:", err.message || err); }
                     if (streamTimerRef.current) {
                         cancelAnimationFrame(streamTimerRef.current);
                         streamTimerRef.current = null;
@@ -841,7 +847,7 @@ export function KiviAiAssistant() {
             });
         } catch (err) {
             if (err.name !== 'AbortError') {
-                console.error("KIVI Chat error:", err);
+                if (import.meta.env.DEV) { console.error("KIVI Chat error:", err.message || err); }
                 if (streamTimerRef.current) {
                     cancelAnimationFrame(streamTimerRef.current);
                     streamTimerRef.current = null;

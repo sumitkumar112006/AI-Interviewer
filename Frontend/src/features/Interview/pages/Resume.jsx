@@ -102,28 +102,14 @@ const Resume = () => {
             setError('')
             setHtmlContent('')
 
-            // 1. Instant check: Do we have a healthy draft in localStorage from recent edits?
-            let cachedDraft = null
+            // Clean up any legacy unencrypted plaintext resume drafts from browser storage
             try {
-                const stored = localStorage.getItem(`resume_draft_${interviewId}`)
-                if (isHealthyResumeHtml(stored)) {
-                    cachedDraft = stored
-                    setHtmlContent(sanitizeResumeHtml(stored))
-                    setDbLoading(false)
-                }
-            } catch (e) {
-                console.warn('[Resume] Local draft read notice:', e)
-            }
-
-            // Load stored skills from local cache
-            let cachedSkills = []
-            try {
-                const storedSkills = localStorage.getItem(`resume_skills_${interviewId}`)
-                if (storedSkills) {
-                    const parsed = JSON.parse(storedSkills)
-                    if (Array.isArray(parsed) && parsed.length > 0) cachedSkills = parsed
-                }
+                localStorage.removeItem(`resume_draft_${interviewId}`);
+                localStorage.removeItem(`resume_skills_${interviewId}`);
             } catch {}
+
+            let cachedDraft = null;
+            let cachedSkills = [];
 
             try {
                 // 2. Fetch current report from database
@@ -153,9 +139,7 @@ const Resume = () => {
 
                 if (mounted && currentSkills.length > 0) {
                     setResumeSkills(currentSkills)
-                    try {
-                        localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(currentSkills))
-                    } catch {}
+
                 }
 
                 // Extract older / original resume skills from report
@@ -202,9 +186,7 @@ const Resume = () => {
                 if (isHealthyResumeHtml(fetched?.generatedResumeHtml)) {
                     const sanitized = sanitizeResumeHtml(fetched.generatedResumeHtml)
                     setHtmlContent(sanitized)
-                    try {
-                        localStorage.setItem(`resume_draft_${interviewId}`, sanitized)
-                    } catch {}
+                    
                     setDbLoading(false)
                     return
                 }
@@ -236,13 +218,9 @@ const Resume = () => {
                                 : parseSkillsFromHtml(reportWithHtml.generatedResumeHtml)
                             if (polledSkills.length > 0) {
                                 setResumeSkills(polledSkills)
-                                try {
-                                    localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(polledSkills))
-                                } catch {}
+                                
                             }
-                            try {
-                                localStorage.setItem(`resume_draft_${interviewId}`, sanitized)
-                            } catch {}
+                            
                             if (fetchUsage) fetchUsage()
                         }
                         if (mounted) setAiGenerating(false)
@@ -265,13 +243,9 @@ const Resume = () => {
                         : parseSkillsFromHtml(freshReport.generatedResumeHtml)
                     if (freshSkills.length > 0) {
                         setResumeSkills(freshSkills)
-                        try {
-                            localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(freshSkills))
-                        } catch {}
+                        
                     }
-                    try {
-                        localStorage.setItem(`resume_draft_${interviewId}`, sanitized)
-                    } catch {}
+                    
                     if (fetchUsage) fetchUsage()
                 }
                 if (mounted) setAiGenerating(false)
@@ -436,9 +410,7 @@ const Resume = () => {
             setIsDirty(true)
             setResumeSkills(prev => {
                 const next = mergeSkills(prev, [cleanKw])
-                try {
-                    localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(next))
-                } catch {}
+                
                 return next
             })
 
@@ -467,14 +439,6 @@ const Resume = () => {
             setSaveLoading(true)
         }
         setError('')
-
-        // Immediately persist to localStorage
-        try {
-            localStorage.setItem(`resume_draft_${interviewId}`, html)
-            localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(resumeSkills))
-        } catch (e) {
-            console.warn('[Resume] LocalStorage draft save warning:', e)
-        }
 
         try {
             const res = await updateResumeHtml(interviewId, { 
@@ -529,9 +493,7 @@ const Resume = () => {
         setIsDirty(true)
         const html = updatedHtml || editorRef.current?.getHtml()
         if (isHealthyResumeHtml(html)) {
-            try {
-                localStorage.setItem(`resume_draft_${interviewId}`, html)
-            } catch {}
+            
 
             // Detect any new skills added/typed in the editor at runtime
             const detected = parseSkillsFromHtml(html)
@@ -539,9 +501,7 @@ const Resume = () => {
                 setResumeSkills(prev => {
                     const next = mergeSkills(prev, detected)
                     if (JSON.stringify(next) !== JSON.stringify(prev)) {
-                        try {
-                            localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(next))
-                        } catch {}
+                        
                         return next
                     }
                     return prev
@@ -701,9 +661,7 @@ const Resume = () => {
                     if (detected && detected.length > 0) {
                         setResumeSkills(prev => {
                             const next = mergeSkills(prev, detected)
-                            try {
-                                localStorage.setItem(`resume_skills_${interviewId}`, JSON.stringify(next))
-                            } catch {}
+                            
                             return next
                         })
                     }

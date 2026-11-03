@@ -17,6 +17,7 @@ import {
   Check,
   AlertCircle
 } from 'lucide-react';
+import { submitSupportTicket } from '../services/support.api';
 import '../styles/helpsupport.scss';
 
 const FAQ_DATA = [
@@ -88,43 +89,24 @@ const HelpSupport = () => {
     setErrorMessage('');
 
     try {
-      const accessKey = import.meta.env.VITE_WEB3FORMS_ACCESS_KEY || '9dc879dd-9127-4c85-bb04-97a3a368be54';
-      const generatedTicketId = `KIVI-SUP-${Math.floor(100000 + Math.random() * 900000)}`;
-
-      const payload = {
-        access_key: accessKey,
+      const result = await submitSupportTicket({
         name: formData.name.trim(),
         email: formData.email.trim(),
-        subject: `[Support Ticket ${generatedTicketId}] [${formData.priority}] ${formData.category}: ${formData.subject || 'Support Request'}`,
         category: formData.category,
         priority: formData.priority,
-        ticket_id: generatedTicketId,
-        user_id: user?._id || user?.id || 'N/A',
-        user_plan: user?.plan || 'Free',
-        message: formData.message.trim(),
-        from_name: 'KIVI-AI Support Portal'
-      };
-
-      const response = await fetch('https://api.web3forms.com/submit', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(payload)
+        subject: formData.subject.trim(),
+        message: formData.message.trim()
       });
 
-      const result = await response.json();
-
       if (result.success) {
-        setTicketId(generatedTicketId);
+        setTicketId(result.ticketId || `KIVI-SUP-${Math.floor(100000 + Math.random() * 900000)}`);
         setSubmitted(true);
       } else {
         setErrorMessage(result.message || 'Unable to submit ticket right now. Please try again or email us directly.');
       }
     } catch (err) {
-      console.error('Web3Forms support ticket error:', err);
-      setErrorMessage('Network connection error. Please check your internet and try again.');
+      const errorMsg = err.response?.data?.message || err.message || 'Network error occurred. Please try again.';
+      setErrorMessage(errorMsg);
     } finally {
       setSubmitting(false);
     }
@@ -216,7 +198,7 @@ const HelpSupport = () => {
       {/* ===== MAIN TWO-COLUMN GRID ===== */}
       <div className="help-main-grid">
         
-        {/* Left: Support Ticket Form (Web3Forms) */}
+        {/* Left: Support Ticket Form */}
         <div className="ticket-form-panel">
           
           {submitted ? (

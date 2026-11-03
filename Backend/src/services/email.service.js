@@ -115,10 +115,14 @@ class BrevoApiProvider extends EmailProvider {
 // 4. Console Fallback Provider (Dev/Local fallback)
 class ConsoleFallbackProvider extends EmailProvider {
     async sendOtp(toEmail, otp) {
-        console.log(`\n==============================================`);
-        console.log(`[DEV MODE - CONSOLE] VERIFICATION OTP FOR ${toEmail}: ${otp}`);
-        console.log(`==============================================\n`);
-        return { success: false, fallbackOtp: otp, reason: "No email credentials configured. Console print." };
+        if (process.env.NODE_ENV !== 'production') {
+            console.log(`\n==============================================`);
+            console.log(`[DEV MODE - CONSOLE] VERIFICATION OTP FOR ${toEmail}: ${otp}`);
+            console.log(`==============================================\n`);
+            return { success: false, fallbackOtp: otp, reason: "No email credentials configured. Console print." };
+        }
+        console.warn(`[EMAIL SERVICE] No email credentials configured. Email delivery skipped in production.`);
+        return { success: false, reason: "No email credentials configured." };
     }
 }
 

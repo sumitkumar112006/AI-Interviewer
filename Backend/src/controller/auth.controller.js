@@ -111,7 +111,7 @@ async function registerUserController(req, res) {
                 await otpModel.deleteMany({ email: normalizedEmail });
                 await otpModel.create({ email: normalizedEmail, otp });
 
-                let sendResult = { success: false, fallbackOtp: otp };
+                let sendResult = { success: false, fallbackOtp: process.env.NODE_ENV !== 'production' ? otp : undefined };
                 try {
                     sendResult = await sendOtpEmail(normalizedEmail, otp);
                 } catch (emailErr) {
@@ -167,7 +167,7 @@ async function registerUserController(req, res) {
         await otpModel.create({ email: normalizedEmail, otp });
 
         // Send Email
-        let sendResult = { success: false, fallbackOtp: otp };
+        let sendResult = { success: false, fallbackOtp: process.env.NODE_ENV !== 'production' ? otp : undefined };
         try {
             sendResult = await sendOtpEmail(normalizedEmail, otp);
         } catch (emailErr) {
@@ -294,7 +294,7 @@ async function resendOtpController(req, res) {
         await otpModel.deleteMany({ email: normalizedEmail });
         await otpModel.create({ email: normalizedEmail, otp });
 
-        let sendResult = { success: false, fallbackOtp: otp };
+        let sendResult = { success: false, fallbackOtp: process.env.NODE_ENV !== 'production' ? otp : undefined };
         try {
             sendResult = await sendOtpEmail(normalizedEmail, otp);
         } catch (emailErr) {
@@ -356,17 +356,19 @@ async function loginController(req, res) {
                 console.error("Email delivery warning:", emailErr.message);
             }
 
-            let message = "Your email is not verified yet. A new verification OTP code has been sent to your email.";
-            if (!sendResult?.success && sendResult?.fallbackOtp) {
-                message = `Your email is not verified yet. Verification code: ${sendResult.fallbackOtp}`;
-            }
-
-            return res.status(403).json({
+            const message = "Your email is not verified yet. A new verification OTP code has been sent to your email.";
+            const responsePayload = {
                 message,
                 requiresOtp: true,
-                email: user.email,
-                fallbackOtp: sendResult?.fallbackOtp
-            });
+                email: user.email
+            };
+
+            // In local development or test environments without SMTP, provide fallbackOtp safely
+            if (process.env.NODE_ENV !== 'production' && !sendResult?.success && sendResult?.fallbackOtp) {
+                responsePayload.fallbackOtp = sendResult.fallbackOtp;
+            }
+
+            return res.status(403).json(responsePayload);
         }
 
         const token = JWT.sign(
@@ -547,7 +549,7 @@ async function forgotPasswordController(req, res) {
         await otpModel.deleteMany({ email: normalizedEmail });
         await otpModel.create({ email: normalizedEmail, otp });
 
-        let sendResult = { success: false, fallbackOtp: otp };
+        let sendResult = { success: false, fallbackOtp: process.env.NODE_ENV !== 'production' ? otp : undefined };
         try {
             sendResult = await sendOtpEmail(normalizedEmail, otp);
         } catch (emailErr) {

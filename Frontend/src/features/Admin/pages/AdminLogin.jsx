@@ -84,7 +84,7 @@ export default function AdminLogin() {
             if (err?.response?.status === 403 && err?.response?.data?.requiresOtp) {
                 const data = err.response.data;
                 setInfoMessage(data.message || 'Security verification required. A 6-digit OTP has been sent to your email.');
-                if (data.fallbackOtp) setOtp(data.fallbackOtp);
+                setOtp('');
                 setResendCooldown(60);
                 setStep(2);
             } else {
@@ -141,7 +141,7 @@ export default function AdminLogin() {
             const cleanEmail = email.trim().toLowerCase();
             const res = await handleResendOtp({ email: cleanEmail });
             setInfoMessage(res?.message || 'A new verification OTP has been sent to your email.');
-            if (res?.fallbackOtp) setOtp(res.fallbackOtp);
+            setOtp('');
             setResendCooldown(60);
         } catch (err) {
             setError(err?.response?.data?.message || 'Failed to resend verification OTP. Please try again.');

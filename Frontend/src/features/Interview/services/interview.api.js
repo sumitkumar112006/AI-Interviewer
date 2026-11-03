@@ -178,7 +178,7 @@ export async function updateResumeHtml(interviewReportId, payload) {
 
     const clean = (generatedResumeHtml || '').replace(/<[^>]*>/g, '').trim();
     if (/^[a-f0-9]{24}$/i.test(clean) || clean.length < 30) {
-        console.warn('[updateResumeHtml] Attempted to send invalid or ObjectId resume HTML. Request blocked.', { interviewReportId, clean });
+        if (import.meta.env.DEV) { console.warn('[updateResumeHtml] Attempted to send invalid resume HTML. Request blocked.'); }
         throw new Error('Invalid resume content: cannot save empty text or system IDs.');
     }
 
@@ -236,6 +236,44 @@ export async function rewriteResumeSection({ selectedText, instruction, action, 
     return response.data
 }
 
+/**
+ * Data Minimization Helper:
+ * Evaluates whether currentResumeHtml is actually required by the backend assistant.
+ * Omit full resume HTML for ordinary conversational messages to prevent unnecessary token consumption and data exposure.
+ */
+function shouldIncludeResumeHtml({ action, selectedText, message, instruction, currentResumeHtml }) {
+    if (!currentResumeHtml || typeof currentResumeHtml !== 'string' || !currentResumeHtml.trim()) {
+        return false;
+    }
+
+    const explicitActions = ['enhance', 'shorten', 'fix_grammar', 'rephrase', 'make_ats', 'rewrite', 'edit', 'tailor'];
+    if (action && explicitActions.includes(action.toLowerCase())) {
+        return true;
+    }
+
+    if (selectedText && selectedText.trim().length > 0) {
+        return true;
+    }
+
+    const text = `${message || ''} ${instruction || ''}`.toLowerCase();
+    const resumePatterns = [
+        /resume/,
+        /rewrite/,
+        /rephrase/,
+        /bullet\s*point/,
+        /work\s*experience/,
+        /summary\s*section/,
+        /optimize\s*for\s*ats/,
+        /tailor\s*to\s*jd/,
+        /add\s*to\s*(my\s*)?resume/,
+        /update\s*(my\s*)?resume/,
+        /edit\s*(my\s*)?resume/,
+        /ats\s*score/
+    ];
+
+    return resumePatterns.some(pattern => pattern.test(text));
+}
+
 export async function streamAssistantChatApi({
     reportId = null,
     message = '',
@@ -255,6 +293,10 @@ export async function streamAssistantChatApi({
     const url = `${baseUrl}/api/assistant/chat`;
 
     try {
+        const scopedResumeHtml = shouldIncludeResumeHtml({ action, selectedText, message, instruction, currentResumeHtml })
+            ? currentResumeHtml
+            : '';
+
         const response = await fetch(url, {
             method: 'POST',
             headers: {
@@ -270,7 +312,7 @@ export async function streamAssistantChatApi({
                 instruction,
                 activeTab,
                 currentRoute,
-                currentResumeHtml,
+                currentResumeHtml: scopedResumeHtml,
                 stream: true
             }),
             signal
@@ -346,7 +388,7 @@ export async function streamAssistantChatApi({
         return finalResult;
     } catch (err) {
         if (err.name === 'AbortError') {
-            console.log('[SSE] Stream aborted by client.');
+            if (import.meta.env.DEV) console.log('[SSE] Stream aborted by client.');
             return null;
         }
         onError(err);
@@ -374,7 +416,7 @@ export async function getAssistantHistoryApi() {
         const response = await api.get('/api/assistant/history');
         return response.data;
     } catch (err) {
-        console.warn('Failed to fetch assistant history:', err);
+        if (import.meta.env.DEV) console.warn('Failed to fetch assistant history:', err.message || err);
         return { history: [] };
     }
 }
@@ -384,7 +426,7 @@ export async function clearAssistantHistoryApi() {
         const response = await api.delete('/api/assistant/history');
         return response.data;
     } catch (err) {
-        console.warn('Failed to clear assistant history:', err);
+        if (import.meta.env.DEV) console.warn('Failed to clear assistant history:', err.message || err);
         return { message: 'Failed to clear history' };
     }
 }
@@ -396,7 +438,7 @@ export async function calculateResumeAtsScore(interviewReportId, resumeHtml = nu
         });
         return response.data;
     } catch (err) {
-        console.warn('Failed to calculate dynamic ATS score:', err);
+        if (import.meta.env.DEV) console.warn('Failed to calculate dynamic ATS score:', err.message || err);
         return null;
     }
 }
@@ -411,7 +453,7 @@ export async function calculateAtsScoreApi({ interviewId, resumeHtml, jobDescrip
         });
         return response.data;
     } catch (err) {
-        console.warn('Failed to calculate grounded ATS score:', err);
+        if (import.meta.env.DEV) console.warn('Failed to calculate grounded ATS score:', err.message || err);
         return null;
     }
 }

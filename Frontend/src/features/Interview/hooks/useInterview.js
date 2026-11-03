@@ -57,7 +57,7 @@ export const useInterview = () => {
             setReport(response.interviewReport)
             return response.interviewReport
         } catch (error) {
-            console.log(error)
+            if (import.meta.env.DEV) console.warn('[useInterview] getReportById notice:', error.message || error);
         } finally {
             setLoading(false)
         }
@@ -70,7 +70,7 @@ export const useInterview = () => {
             setReports(response.interviewReports)
             return response
         } catch (error) {
-            console.log(error)
+            if (import.meta.env.DEV) console.warn('[useInterview] Notice:', error.message || error)
         } finally {
             setLoading(false)
         }
@@ -81,7 +81,7 @@ export const useInterview = () => {
             const response = await getSkillAnalytics()
             return response.skillAnalytics
         } catch (error) {
-            console.log(error)
+            if (import.meta.env.DEV) console.warn('[useInterview] getSkillsStats notice:', error.message || error);
             return null
         }
     }
@@ -94,7 +94,7 @@ export const useInterview = () => {
             if (fetchUsage) fetchUsage()
             return response
         } catch (error) {
-            console.log(error)
+            if (import.meta.env.DEV) console.warn('[useInterview] Notice:', error.message || error)
         } finally {
             setLoading(false)
         }
@@ -114,7 +114,7 @@ export const useInterview = () => {
             )
             return response
         } catch (error) {
-            console.log(error)
+            if (import.meta.env.DEV) console.warn('[useInterview] Notice:', error.message || error)
         } finally {
             setLoading(false)
         }
@@ -131,7 +131,7 @@ export const useInterview = () => {
 
         const clean = htmlContent.replace(/<[^>]*>/g, '').trim()
         if (/^[a-f0-9]{24}$/i.test(clean) || clean.length < 30) {
-            console.warn('[useInterview] Rejecting update with invalid resume content')
+            if (import.meta.env.DEV) console.warn('[useInterview] Rejecting update with invalid resume content')
             return
         }
 
@@ -143,7 +143,7 @@ export const useInterview = () => {
             }
             return res.interviewReport
         } catch (error) {
-            console.error("Error updating centralized resume:", error)
+            if (import.meta.env.DEV) console.error("Error updating centralized resume:", error.message || error)
             throw error
         } finally {
             setLoading(false)

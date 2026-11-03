@@ -1,6 +1,60 @@
 import React, { useState, useEffect } from 'react';
 import { ErrorModal } from '../../../components/ErrorModal';
 
+/**
+ * Sanitize error message to prevent leaking internal stack traces,
+ * file paths, or backend implementation details in production.
+ */
+function sanitizeErrorMessage(rawMessage) {
+    if (!rawMessage || typeof rawMessage !== 'string') {
+        return 'An unexpected error occurred. Please try again or refresh the page.';
+    }
+
+    const trimmed = rawMessage.trim();
+
+    // AI formatting errors
+    if (trimmed.startsWith('[') || trimmed.startsWith('{') || trimmed.includes('too_small') || trimmed.includes('validation failed')) {
+        return "The AI response was not structured properly. Please click 'Generate' again.";
+    }
+
+    // High demand / busy AI
+    if (
+        trimmed.includes('503') ||
+        trimmed.includes('high demand') ||
+        trimmed.includes('AI service') ||
+        trimmed.includes('UNAVAILABLE') ||
+        trimmed.includes('RESOURCE_EXHAUSTED') ||
+        trimmed.includes('quota')
+    ) {
+        return 'Our AI service is experiencing high demand. Please wait a few seconds and try again.';
+    }
+
+    // In production, sanitize internal runtime errors, stack traces, and URLs
+    if (!import.meta.env.DEV) {
+        const isTechnical =
+            trimmed.includes('TypeError') ||
+            trimmed.includes('SyntaxError') ||
+            trimmed.includes('ReferenceError') ||
+            trimmed.includes('RangeError') ||
+            trimmed.includes('AxiosError') ||
+            trimmed.includes('Network Error') ||
+            trimmed.includes('at ') ||
+            trimmed.includes('.jsx') ||
+            trimmed.includes('.js:') ||
+            trimmed.includes('node_modules') ||
+            trimmed.includes('webpack') ||
+            trimmed.includes('http://') ||
+            trimmed.includes('https://') ||
+            trimmed.includes('failed with status code');
+
+        if (isTechnical) {
+            return 'An unexpected error occurred. Please try again or refresh the page.';
+        }
+    }
+
+    return trimmed;
+}
+
 // A global error boundary component to catch React rendering crashes
 export class ErrorBoundary extends React.Component {
     constructor(props) {
@@ -13,12 +67,18 @@ export class ErrorBoundary extends React.Component {
     }
 
     componentDidCatch(error, errorInfo) {
-        console.error("ErrorBoundary caught a React render crash:", error, errorInfo);
+        if (import.meta.env.DEV) {
+            console.error("ErrorBoundary caught a React render crash:", error, errorInfo);
+        } else {
+            console.error("ErrorBoundary caught an application render error.");
+        }
         this.setState({ errorInfo });
     }
 
     render() {
         if (this.state.hasError) {
+            const isDev = Boolean(import.meta.env.DEV);
+
             return (
                 <div style={{
                     position: 'fixed',
@@ -50,22 +110,27 @@ export class ErrorBoundary extends React.Component {
                     }}>
                         <span style={{ fontSize: '3.5rem', display: 'block', marginBottom: '1.25rem' }}>⚠️</span>
                         <h2 style={{ fontSize: '1.5rem', fontWeight: '800', margin: '0 0 1rem 0', color: '#f87171', letterSpacing: '-0.02em' }}>
-                            Application Crash Detected
+                            {isDev ? "Application Crash Detected" : "Something Went Wrong"}
                         </h2>
                         <p style={{ fontSize: '0.95rem', color: '#9ca3af', lineHeight: '1.6', margin: '0 0 2rem 0' }}>
-                            A critical error occurred while rendering the page. Don't worry, your session data is safe.
+                            {isDev
+                                ? "A critical error occurred while rendering the page. Don't worry, your session data is safe."
+                                : "An unexpected error occurred while loading this view. Please reload the application to continue."}
                         </p>
 
-                        <div style={{ textAlign: 'left', background: 'rgba(0, 0, 0, 0.3)', padding: '1.2rem', borderRadius: '0.75rem', marginBottom: '2rem', border: '1px solid rgba(255, 255, 255, 0.05)', overflow: 'auto', maxHeight: '180px' }}>
-                            <p style={{ margin: '0 0 0.75rem 0', fontWeight: 'bold', fontSize: '0.85rem', color: '#ef4444', fontFamily: 'monospace' }}>
-                                Error: {this.state.error?.message || String(this.state.error)}
-                            </p>
-                            {this.state.errorInfo?.componentStack && (
-                                <pre style={{ margin: 0, fontSize: '0.7rem', fontFamily: 'monospace', color: '#9ca3af', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
-                                    {this.state.errorInfo.componentStack}
-                                </pre>
-                            )}
-                        </div>
+                        {/* Diagnostic log is strictly restricted to development mode */}
+                        {isDev && (
+                            <div style={{ textAlign: 'left', background: 'rgba(0, 0, 0, 0.3)', padding: '1.2rem', borderRadius: '0.75rem', marginBottom: '2rem', border: '1px solid rgba(255, 255, 255, 0.05)', overflow: 'auto', maxHeight: '180px' }}>
+                                <p style={{ margin: '0 0 0.75rem 0', fontWeight: 'bold', fontSize: '0.85rem', color: '#ef4444', fontFamily: 'monospace' }}>
+                                    Error: {this.state.error?.message || String(this.state.error)}
+                                </p>
+                                {this.state.errorInfo?.componentStack && (
+                                    <pre style={{ margin: 0, fontSize: '0.7rem', fontFamily: 'monospace', color: '#9ca3af', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
+                                        {this.state.errorInfo.componentStack}
+                                    </pre>
+                                )}
+                            </div>
+                        )}
 
                         <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
                             <button
@@ -126,13 +191,15 @@ export const GlobalErrorOverlay = () => {
     useEffect(() => {
         // Expose trigger function globally
         window.triggerGlobalError = (message, details = '', isLlmBusy = false, modalTitle = null) => {
-            let cleanMsg = message;
-            if (typeof cleanMsg === 'string' && (cleanMsg.trim().startsWith('[') || cleanMsg.trim().startsWith('{') || cleanMsg.includes('too_small') || cleanMsg.includes('validation failed'))) {
-                cleanMsg = "The AI response was not structured properly. Please click 'Generate' again.";
-            }
+            const cleanMsg = sanitizeErrorMessage(message);
             const llmBusy = isLlmBusy || checkIsLlmBusy(cleanMsg);
-            const title = modalTitle || (llmBusy ? "AI Service Busy" : "Generation Failed");
-            setError({ message: cleanMsg, details, isLlmBusy: true, title });
+            const title = modalTitle || (llmBusy ? "AI Service Busy" : (import.meta.env.DEV ? "Generation Failed" : "Notice"));
+            setError({
+                message: cleanMsg,
+                details: import.meta.env.DEV ? details : '',
+                isLlmBusy: llmBusy,
+                title
+            });
         };
 
         // Listen for uncaught JavaScript exceptions
@@ -144,40 +211,38 @@ export const GlobalErrorOverlay = () => {
                 return;
             }
 
-            let msg = event.message || "An unexpected runtime error occurred";
-            if (typeof msg === 'string' && (msg.trim().startsWith('[') || msg.trim().startsWith('{'))) {
-                msg = "The AI response was not structured properly. Please click 'Generate' again.";
-            }
+            const rawMsg = event.message || "An unexpected runtime error occurred";
+            const cleanMsg = sanitizeErrorMessage(rawMsg);
+            const isBusy = checkIsLlmBusy(rawMsg);
+
             setError({
-                message: msg,
-                details: event.error?.stack || `${event.filename || 'unknown'}:${event.lineno || 0}:${event.colno || 0}`,
-                isLlmBusy: true,
-                title: checkIsLlmBusy(msg) ? "AI Service Busy" : "Generation Failed"
+                message: cleanMsg,
+                details: import.meta.env.DEV ? (event.error?.stack || `${event.filename || 'unknown'}:${event.lineno || 0}:${event.colno || 0}`) : '',
+                isLlmBusy: isBusy,
+                title: isBusy ? "AI Service Busy" : (import.meta.env.DEV ? "Runtime Error Encountered" : "Notice")
             });
         };
 
         // Listen for unhandled Promise rejections (e.g. failed Axios requests without catch block)
         const handlePromiseRejection = (event) => {
             const reason = event.reason;
-            let message = "Asynchronous request failed";
+            let rawMsg = "Asynchronous request failed";
             let details = "";
             let status = reason?.response?.status || 0;
 
             if (reason) {
-                message = reason.response?.data?.message || reason.message || message;
+                rawMsg = reason.response?.data?.message || reason.message || rawMsg;
                 details = reason.stack || String(reason);
             }
 
-            if (typeof message === 'string' && (message.trim().startsWith('[') || message.trim().startsWith('{') || message.includes('too_small') || message.includes('validation failed'))) {
-                message = "The AI response was not structured properly. Please click 'Generate' again.";
-            }
+            const cleanMsg = sanitizeErrorMessage(rawMsg);
+            const isBusy = checkIsLlmBusy(rawMsg, status);
 
-            const isBusy = checkIsLlmBusy(message, status);
             setError({
-                message,
-                details,
-                isLlmBusy: true,
-                title: isBusy ? "AI Service Busy" : "Generation Failed"
+                message: cleanMsg,
+                details: import.meta.env.DEV ? details : '',
+                isLlmBusy: isBusy,
+                title: isBusy ? "AI Service Busy" : (import.meta.env.DEV ? "Request Error" : "Notice")
             });
         };
 
@@ -205,6 +270,8 @@ export const GlobalErrorOverlay = () => {
             />
         );
     }
+
+    const isDev = Boolean(import.meta.env.DEV);
 
     return (
         <div style={{
@@ -271,10 +338,12 @@ export const GlobalErrorOverlay = () => {
                     </div>
                     <div>
                         <h3 style={{ fontSize: '1.2rem', fontWeight: '800', margin: 0, color: '#f87171', letterSpacing: '-0.01em' }}>
-                            System Error Encountered
+                            {isDev ? "System Error Encountered" : "Something Went Wrong"}
                         </h3>
                         <p style={{ fontSize: '0.85rem', color: '#9ca3af', margin: '0.2rem 0 0 0' }}>
-                            A critical operation failed or crashed in the background.
+                            {isDev
+                                ? "A critical operation failed or crashed in the background."
+                                : "An unexpected issue occurred while processing your request."}
                         </p>
                     </div>
                 </div>
@@ -289,7 +358,7 @@ export const GlobalErrorOverlay = () => {
                     <p style={{ margin: 0, fontSize: '0.9rem', color: '#ffffff', fontWeight: '600', lineHeight: '1.5' }}>
                         {error.message}
                     </p>
-                    {error.details && (
+                    {isDev && error.details && (
                         <details style={{ marginTop: '0.75rem' }}>
                             <summary style={{ fontSize: '0.75rem', color: '#6366f1', cursor: 'pointer', outline: 'none', userSelect: 'none', fontWeight: '600' }}>
                                 View Diagnostic Log

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Mail, MessageSquare, MapPin, Send, CheckCircle2, Clock } from 'lucide-react';
+import { submitContactForm } from '../../HelpSupport/services/support.api';
 import '../footer.pages.scss';
 
 const ContactUs = () => {
@@ -27,26 +28,12 @@ const ContactUs = () => {
     setErrorMessage('');
 
     try {
-      const accessKey = import.meta.env.VITE_WEB3FORMS_ACCESS_KEY || '734fa59f-467a-47f3-82bd-ad9851e2d3d9';
-
-      const response = await fetch('https://api.web3forms.com/submit', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          access_key: accessKey,
-          name: formData.name,
-          email: formData.email,
-          subject: `[KIVI-AI Contact] ${formData.category} from ${formData.name}`,
-          category: formData.category,
-          message: formData.message,
-          from_name: 'KIVI-AI Contact Form'
-        })
+      const res = await submitContactForm({
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        category: formData.category,
+        message: formData.message.trim()
       });
-
-      const res = await response.json();
 
       if (res.success) {
         setSubmitted(true);
@@ -54,8 +41,8 @@ const ContactUs = () => {
         setErrorMessage(res.message || 'Something went wrong. Please try again later.');
       }
     } catch (err) {
-      console.error('Web3Forms submission error:', err);
-      setErrorMessage('Failed to send message. Please check your internet connection.');
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to send message. Please try again later.';
+      setErrorMessage(errorMsg);
     } finally {
       setSubmitting(false);
     }

@@ -73,7 +73,7 @@ const Login = () => {
             if (err?.response?.status === 403 && err?.response?.data?.requiresOtp) {
                 const data = err.response.data
                 setInfoMessage(data.message || 'Your email is not verified. A code has been sent to your inbox.')
-                if (data.fallbackOtp) setOtp(data.fallbackOtp)
+                setOtp('')
                 setStep(2)
             } else {
                 setError(err?.response?.data?.message || err?.message || 'Login failed. Please check your credentials.')
@@ -103,7 +103,7 @@ const Login = () => {
         try {
             const res = await handleResendOtp({ email })
             setInfoMessage(res?.message || 'Verification code resent to your email.')
-            if (res?.fallbackOtp) setOtp(res.fallbackOtp)
+            setOtp('')
         } catch (err) {
             setError(err?.response?.data?.message || 'Failed to resend OTP.')
         }

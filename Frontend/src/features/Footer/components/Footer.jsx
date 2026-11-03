@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { subscribeNewsletter } from '../../HelpSupport/services/support.api';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../Auth/hooks/useAuth';
 import { 
@@ -53,25 +54,28 @@ const Footer = ({ theme = 'dark' }) => {
   const [subscribed, setSubscribed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSubscribe = (e) => {
+  // Clean up any previously stored plaintext subscriber emails from localStorage
+  useEffect(() => {
+    try {
+      localStorage.removeItem('kivi_newsletter_subscribers');
+    } catch (_) {}
+  }, []);
+
+  const handleSubscribe = async (e) => {
     e.preventDefault();
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) return;
     
     setSubmitting(true);
     try {
-      const existing = JSON.parse(localStorage.getItem('kivi_newsletter_subscribers') || '[]');
-      if (!existing.includes(cleanEmail)) {
-        existing.push(cleanEmail);
-        localStorage.setItem('kivi_newsletter_subscribers', JSON.stringify(existing));
-      }
-      setSubscribed(true);
-      setEmail('');
+      await subscribeNewsletter({ email: cleanEmail });
     } catch (err) {
-      console.warn('Newsletter subscription storage:', err);
+      if (import.meta.env.DEV) {
+        console.warn('Newsletter subscription notice:', err.message);
+      }
+    } finally {
       setSubscribed(true);
       setEmail('');
-    } finally {
       setSubmitting(false);
     }
   };

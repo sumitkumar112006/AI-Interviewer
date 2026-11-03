@@ -69,7 +69,7 @@ const Register = () => {
         try {
             const data = await handleRegister({ username, email, password })
             setInfoMessage(data?.message || 'Registration initiated! Check your email for the OTP.')
-            if (data?.fallbackOtp) setOtp(data.fallbackOtp)
+            setOtp('')
             setStep(2)
         } catch (err) {
             console.error('Registration error:', err)
@@ -96,7 +96,7 @@ const Register = () => {
         try {
             const res = await handleResendOtp({ email })
             setInfoMessage(res?.message || 'Verification code resent to your email.')
-            if (res?.fallbackOtp) setOtp(res.fallbackOtp)
+            setOtp('')
         } catch (err) {
             setError(err?.response?.data?.message || 'Failed to resend OTP.')
         }

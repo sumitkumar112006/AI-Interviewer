@@ -103,6 +103,7 @@ const jobRouter = require('./routes/job.route');
 const assistantRouter = require('./routes/assistant.route');
 const speechRouter = require('./routes/speech.route');
 const resumeLinkRouter = require('./routes/resumeLink.route');
+const supportRouter = require('./routes/support.route');
 
 // Mount routes
 app.use("/api/auth", authRouter);
@@ -117,6 +118,8 @@ app.use('/api/orders', orderRouter);
 app.use('/api/subscriptions', subscriptionRouter);
 app.use('/api/invoices', invoiceRouter);
 app.use('/api/resume', resumeLinkRouter);
+app.use('/api/support', supportRouter);
+app.use('/api/contact', supportRouter);
 
 
 app.use((err, req, res, next) => {
