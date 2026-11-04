@@ -18,11 +18,12 @@ const {
 } = require('../services/ai.service');
 
 let aiWorkerInstance = null;
+let workerConnection = null;
 
 function initAiWorker() {
     if (aiWorkerInstance) return aiWorkerInstance;
 
-    const workerConnection = createBullRedisConnection();
+    workerConnection = createBullRedisConnection();
 
     aiWorkerInstance = new Worker('ai-generation', async (bullJob) => {
         const { jobId } = bullJob.data || {};
@@ -427,6 +428,44 @@ function initAiWorker() {
     return aiWorkerInstance;
 }
 
+async function closeAiWorker(force = false) {
+    if (!aiWorkerInstance) {
+        if (workerConnection) {
+            try {
+                await workerConnection.quit();
+            } catch {
+                workerConnection.disconnect();
+            } finally {
+                workerConnection = null;
+            }
+        }
+        return;
+    }
+
+    const worker = aiWorkerInstance;
+    aiWorkerInstance = null;
+
+    try {
+        await worker.close(force);
+    } finally {
+        if (workerConnection) {
+            try {
+                await workerConnection.quit();
+            } catch {
+                workerConnection.disconnect();
+            } finally {
+                workerConnection = null;
+            }
+        }
+    }
+}
+
+function getAiWorker() {
+    return aiWorkerInstance;
+}
+
 module.exports = {
-    initAiWorker
+    initAiWorker,
+    closeAiWorker,
+    getAiWorker
 };

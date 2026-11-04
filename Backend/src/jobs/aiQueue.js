@@ -70,7 +70,24 @@ async function enqueueAiJob(type, data = {}) {
     });
 }
 
+async function closeAiQueue() {
+    try {
+        if (aiQueue) {
+            await aiQueue.close();
+        }
+    } finally {
+        if (queueConnection) {
+            try {
+                await queueConnection.quit();
+            } catch {
+                queueConnection.disconnect();
+            }
+        }
+    }
+}
+
 module.exports = {
     aiQueue,
-    enqueueAiJob
+    enqueueAiJob,
+    closeAiQueue
 };

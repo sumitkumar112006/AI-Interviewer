@@ -27,7 +27,11 @@ async function connectToDB() {
     }
 
     try {
-        await mongoose.connect(process.env.MONGO_URI)
+        await mongoose.connect(process.env.MONGO_URI, {
+            maxPoolSize: 20,
+            minPoolSize: 5,
+            serverSelectionTimeoutMS: 5000
+        });
         await removeLegacyUserIndexes();
         console.log("connected to database")
     } catch (err) {
@@ -36,4 +40,13 @@ async function connectToDB() {
     }
 }
 
+async function closeDB(force = false) {
+    if (mongoose.connection && mongoose.connection.readyState !== 0) {
+        await mongoose.connection.close(force);
+    }
+}
+
+connectToDB.closeDB = closeDB;
 module.exports = connectToDB;
+module.exports.connectToDB = connectToDB;
+module.exports.closeDB = closeDB;

@@ -124,17 +124,32 @@ class ReconciliationService {
    * Start recurring background timer in long-running Node process
    */
   startBackgroundCron() {
+    if (this.orderExpiryInterval || this.reconciliationInterval) {
+      return;
+    }
     console.log('⏱️ [PaymentCron] Starting scheduled order expiry & reconciliation background jobs.');
     
     // Run order expiry every 15 minutes
-    setInterval(() => {
+    this.orderExpiryInterval = setInterval(() => {
       this.expireStaleOrders().catch(() => {});
     }, 15 * 60 * 1000);
 
     // Run reconciliation every 10 minutes
-    setInterval(() => {
+    this.reconciliationInterval = setInterval(() => {
       this.reconcilePendingOrders().catch(() => {});
     }, 10 * 60 * 1000);
+  }
+
+  stopBackgroundCron() {
+    if (this.orderExpiryInterval) {
+      clearInterval(this.orderExpiryInterval);
+      this.orderExpiryInterval = null;
+    }
+    if (this.reconciliationInterval) {
+      clearInterval(this.reconciliationInterval);
+      this.reconciliationInterval = null;
+    }
+    console.log('⏱️ [PaymentCron] Stopped scheduled order expiry & reconciliation background jobs.');
   }
 }
 

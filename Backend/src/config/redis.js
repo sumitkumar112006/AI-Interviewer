@@ -81,6 +81,23 @@ function getRedisClient() {
     return redisClient;
 }
 
-module.exports = { connectToRedis, getRedisClient };
+async function closeRedis() {
+    if (!redisClient) return;
+    const client = redisClient;
+    redisClient = null;
+    try {
+        if (client.status === 'ready' || client.status === 'connecting') {
+            await client.quit();
+        } else {
+            client.disconnect();
+        }
+    } catch {
+        try {
+            client.disconnect();
+        } catch {}
+    }
+}
+
+module.exports = { connectToRedis, getRedisClient, closeRedis };
 
 
