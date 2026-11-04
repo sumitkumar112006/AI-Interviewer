@@ -11,6 +11,7 @@ export const ConfirmModal = ({
     details = null,
     confirmText = 'Confirm',
     cancelText = 'Cancel',
+    showCancel = true,
     type = 'warning', // 'warning' | 'danger' | 'info' | 'success'
     loading = false
 }) => {
@@ -92,18 +93,20 @@ export const ConfirmModal = ({
                 )}
 
                 <div className="confirm-modal-actions">
-                    <button
-                        type="button"
-                        className="btn-confirm-cancel"
-                        onClick={onClose}
-                        disabled={loading}
-                    >
-                        {cancelText}
-                    </button>
+                    {showCancel && cancelText && (
+                        <button
+                            type="button"
+                            className="btn-confirm-cancel"
+                            onClick={onClose}
+                            disabled={loading}
+                        >
+                            {cancelText}
+                        </button>
+                    )}
                     <button
                         type="button"
                         className={`btn-confirm-action ${type}`}
-                        onClick={onConfirm}
+                        onClick={onConfirm || onClose}
                         disabled={loading}
                     >
                         {loading ? (

@@ -272,3 +272,64 @@ export function parseAndSanitizeSnippet(snippet) {
     return sanitized
 }
 
+
+
+/**
+ * Checks whether the given resume HTML contains any meaningful, non-whitespace content across all pages.
+ * Handles empty paragraphs, whitespace-only content, blank pages, and HTML tags without text.
+ *
+ * @param {string} html
+ * @returns {boolean} True if the resume is empty, false otherwise
+ */
+export function isResumeEmpty(html) {
+    if (!html || typeof html !== 'string') {
+        return true;
+    }
+
+    if (typeof window !== 'undefined' && typeof window.DOMParser !== 'undefined') {
+        try {
+            const parser = new window.DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+
+            // Strip non-content tags
+            doc.querySelectorAll('script, style, meta, link, noscript').forEach(el => el.remove());
+
+            // Check if there are any visual elements with meaningful content (e.g. images)
+            const images = doc.querySelectorAll('img[src]');
+            for (const img of images) {
+                if (img.getAttribute('src')?.trim()) {
+                    return false;
+                }
+            }
+
+            // Extract all text content across all pages/nodes
+            const textContent = (doc.body ? (doc.body.textContent || doc.body.innerText || '') : '');
+            // Normalize non-breaking spaces (\u00a0), zero-width characters, and whitespace
+            const cleanText = textContent
+                .replace(/[\s\u00a0\u200b\u200c\u200d\ufeff]+/g, ' ')
+                .trim();
+
+            return cleanText.length === 0;
+        } catch {
+            // Fall through to regex-based approach below
+        }
+    }
+
+    // Fallback: robust regex-based stripping
+    let text = html
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&#160;/gi, ' ')
+        .replace(/&zwnj;/gi, '')
+        .replace(/&#8204;/gi, '')
+        .replace(/&zwj;/gi, '')
+        .replace(/&#8205;/gi, '')
+        .replace(/&ZeroWidthSpace;/gi, '')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/[\s\u00a0\u200b\u200c\u200d\ufeff]+/g, ' ')
+        .trim();
+
+    return text.length === 0;
+}

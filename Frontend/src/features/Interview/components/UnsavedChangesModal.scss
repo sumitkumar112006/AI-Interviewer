@@ -1,0 +1,97 @@
+/* ================================================================
+   Unsaved Changes Protection Modal — UnsavedChangesModal.scss
+   Matches KIVI-AI Editorial Glassmorphism Design
+   ================================================================ */
+
+.unsaved-changes-card {
+    max-width: 530px !important;
+}
+
+.unsaved-modal-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.65rem;
+    margin-top: 0.5rem;
+    flex-wrap: wrap;
+
+    button {
+        padding: 0.62rem 1.15rem;
+        border-radius: 4px;
+        font-family: var(--font-mono, 'JetBrains Mono', monospace);
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.45rem;
+    }
+
+    .btn-unsaved-stay {
+        background: transparent;
+        border: 1px solid var(--modal-border, rgba(243, 240, 233, 0.14));
+        color: var(--modal-muted, #bac1b8);
+
+        &:hover:not(:disabled) {
+            background: var(--modal-box, #222922);
+            color: var(--modal-text, #f3f0e9);
+            border-color: var(--modal-text, #f3f0e9);
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    }
+
+    .btn-unsaved-discard {
+        background: rgba(239, 123, 93, 0.1);
+        border: 1px solid rgba(239, 123, 93, 0.25);
+        color: var(--danger, #ef7b5d);
+
+        &:hover:not(:disabled) {
+            background: var(--danger, #ef7b5d);
+            color: #ffffff;
+            border-color: var(--danger, #ef7b5d);
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    }
+
+    .btn-unsaved-save {
+        background: var(--accent, #ef7b5d);
+        border: 1px solid var(--accent, #ef7b5d);
+        color: #ffffff;
+        box-shadow: 0 4px 12px rgba(239, 123, 93, 0.3);
+
+        &:hover:not(:disabled) {
+            filter: brightness(1.1);
+            transform: translateY(-1px);
+        }
+
+        &:disabled {
+            opacity: 0.65;
+            cursor: not-allowed;
+            transform: none;
+        }
+    }
+}
+
+@media (max-width: 540px) {
+    .unsaved-modal-actions {
+        flex-direction: column-reverse;
+        width: 100%;
+
+        button {
+            width: 100%;
+        }
+    }
+}
+

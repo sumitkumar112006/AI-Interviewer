@@ -18,7 +18,7 @@ import {
     ExternalLink, Trash2, X, Search, Volume2, VolumeX, Play, Pause, Square, Sparkles,
     PaintRoller
 } from 'lucide-react'
-import { parseAndSanitizeSnippet } from '../utils/sanitizeResumeHtml'
+import { parseAndSanitizeSnippet, isResumeEmpty } from '../utils/sanitizeResumeHtml'
 import '../style/editor.scss'
 
 // ── Custom TipTap Marks for Google Docs-style Diff Preview ───────────────────
@@ -572,13 +572,14 @@ const ResumeEditor = forwardRef(function ResumeEditor(
     // Expose methods to parent via ref
     useImperativeHandle(ref, () => ({
         getHtml: () => editor?.getHTML() ?? '',
+        getText: () => editor?.getText() ?? '',
         setContent: (html) => editor?.commands.setContent(html, false),
         insertContent: (html) => {
             const clean = parseAndSanitizeSnippet(html) || html
             return editor?.commands.insertContent(clean)
         },
         focus: () => editor?.commands.focus(),
-        isEmpty: () => editor?.isEmpty ?? true,
+        isEmpty: () => isResumeEmpty(editor?.getHTML() ?? ''),
         isFocused: () => editor?.isFocused ?? false,
         getLastSelection: () => lastSelectionRef.current,
         showDiff,

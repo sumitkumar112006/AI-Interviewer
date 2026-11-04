@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useBlocker } from 'react-router-dom'
 import { generateResumePdf, getInterviewReportById, updateResumeHtml, rewriteResumeSection, getActiveJob, getResumeSkillsComparison, calculateResumeAtsScore } from '../services/interview.api'
 import { useInterview } from '../hooks/useInterview'
 import { useAuth } from '../../Auth/hooks/useAuth'
@@ -8,7 +8,9 @@ import Loading from '../Loading'
 import ResumeEditor from '../components/ResumeEditor'
 import ResumeSkillsWindow from '../components/ResumeSkillsWindow'
 import { exportElementToPdf } from '../utils/exportToPdf'
-import { sanitizeResumeHtml, parseAndSanitizeSnippet } from '../utils/sanitizeResumeHtml'
+import { sanitizeResumeHtml, parseAndSanitizeSnippet, isResumeEmpty } from '../utils/sanitizeResumeHtml'
+import ConfirmModal from '../../Shared/components/ConfirmModal'
+import UnsavedChangesModal from '../components/UnsavedChangesModal'
 import { 
     parseSkillsFromHtml, 
     mergeSkills,
@@ -51,6 +53,7 @@ const Resume = () => {
     const [saveLoading, setSaveLoading] = useState(false)
     const [printLoading, setPrintLoading] = useState(false)
     const [saveNotification, setSaveNotification] = useState(null) // { message: string, type: 'manual' | 'auto' }
+    const [showEmptyModal, setShowEmptyModal] = useState(false)
 
     // ATS Score & Side Window state
     const [matchScore, setMatchScore] = useState(() => report?.matchScore ?? 85)
@@ -93,6 +96,7 @@ const Resume = () => {
     const editorRef  = useRef(null)
     const chatEndRef = useRef(null)
     const atsDebounceTimerRef = useRef(null)
+    const savedHtmlRef = useRef(null)
 
     // ── Load resume HTML with health validation & DB fallback ─────────────
     useEffect(() => {
@@ -186,14 +190,18 @@ const Resume = () => {
                 if (isHealthyResumeHtml(fetched?.generatedResumeHtml)) {
                     const sanitized = sanitizeResumeHtml(fetched.generatedResumeHtml)
                     setHtmlContent(sanitized)
-                    
+                    savedHtmlRef.current = sanitized
+                    setIsDirty(false)
                     setDbLoading(false)
                     return
                 }
 
                 // 4. If DB generatedResumeHtml is missing or corrupted, but we have a healthy local draft:
                 if (cachedDraft) {
-                    setHtmlContent(sanitizeResumeHtml(cachedDraft))
+                    const sanitizedDraft = sanitizeResumeHtml(cachedDraft)
+                    setHtmlContent(sanitizedDraft)
+                    savedHtmlRef.current = sanitizedDraft
+                    setIsDirty(false)
                     setDbLoading(false)
                     // Sync this draft to the database
                     updateResumeHtml(interviewId, { generatedResumeHtml: cachedDraft, resumeSkills: currentSkills }).catch(err => {
@@ -427,9 +435,15 @@ const Resume = () => {
 
     // ── Unified Save & Auto-Save Function ──────────────────────────────────
     const saveResumeChanges = useCallback(async (isAuto = false) => {
-        if (!editorRef.current) return
+        if (!editorRef.current) return false
         const html = editorRef.current.getHtml()
-        if (!isHealthyResumeHtml(html)) return
+        if (isResumeEmpty(html)) {
+            if (!isAuto) {
+                setShowEmptyModal(true)
+            }
+            return false
+        }
+        if (!isHealthyResumeHtml(html)) return false
 
         if (atsDebounceTimerRef.current) {
             clearTimeout(atsDebounceTimerRef.current)
@@ -459,6 +473,7 @@ const Resume = () => {
                 setAtsBreakdown(res.interviewReport.atsScoreBreakdown)
             }
             setHtmlContent(sanitizeResumeHtml(html))
+            savedHtmlRef.current = html
             setIsDirty(false)
             if (fetchUsage) fetchUsage()
 
@@ -475,12 +490,14 @@ const Resume = () => {
             setTimeout(() => {
                 setSaveNotification(null)
             }, 4500)
+            return true
         } catch (err) {
             if (!isAuto) {
                 setError(err?.response?.data?.message || err?.message || 'Failed to save resume.')
             } else {
                 console.warn('[Auto-Save] Error saving draft:', err.message)
             }
+            return false
         } finally {
             if (!isAuto) {
                 setSaveLoading(false)
@@ -490,8 +507,12 @@ const Resume = () => {
 
     // ── Editor OnChange: Persist Draft Instantly & Update Skills & ATS Score at Runtime ──
     const handleEditorChange = useCallback((updatedHtml) => {
-        setIsDirty(true)
         const html = updatedHtml || editorRef.current?.getHtml()
+        if (savedHtmlRef.current !== null && savedHtmlRef.current !== undefined) {
+            setIsDirty(html !== savedHtmlRef.current)
+        } else {
+            setIsDirty(true)
+        }
         if (isHealthyResumeHtml(html)) {
             
 
@@ -525,13 +546,77 @@ const Resume = () => {
         return () => clearInterval(timer)
     }, [isDirty, saveResumeChanges])
 
+// ── Navigation Guard with useBlocker ───────────────────────────────────
+    const blocker = useBlocker(
+        useCallback(
+            ({ currentLocation, nextLocation }) =>
+                isDirty && currentLocation.pathname !== nextLocation.pathname,
+            [isDirty]
+        )
+    )
+
+    // ── Browser Refresh / Close Tab Protection ─────────────────────────────
+    useEffect(() => {
+        const handleBeforeUnload = (e) => {
+            if (isDirty) {
+                e.preventDefault()
+                e.returnValue = ''
+                return ''
+            }
+        }
+
+        window.addEventListener('beforeunload', handleBeforeUnload)
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload)
+        }
+    }, [isDirty])
+
+    // ── Modal Actions: Stay, Discard, Save & Leave ─────────────────────────
+    const handleStayOnPage = useCallback(() => {
+        if (blocker?.state === 'blocked') {
+            blocker.reset()
+        }
+    }, [blocker])
+
+    const handleDiscardChanges = useCallback(() => {
+        setIsDirty(false)
+        if (blocker?.state === 'blocked') {
+            blocker.proceed()
+        }
+    }, [blocker])
+
+    const handleSaveAndLeave = useCallback(async () => {
+        setSaveLoading(true)
+        try {
+            const saved = await saveResumeChanges(false)
+            if (saved) {
+                setIsDirty(false)
+                if (blocker?.state === 'blocked') {
+                    blocker.proceed()
+                }
+            }
+        } catch {
+            // Save failed, stay on page
+        } finally {
+            setSaveLoading(false)
+        }
+    }, [saveResumeChanges, blocker])
+
     // ── Manual Save Button Click ──────────────────────────────────────────
     const handleSave = useCallback(() => {
+        if (editorRef.current && isResumeEmpty(editorRef.current.getHtml())) {
+            setShowEmptyModal(true)
+            return
+        }
         saveResumeChanges(false)
     }, [saveResumeChanges])
 
     // ── Direct 1-Click PDF Export ─────────────────────────────────────────
     const handlePrint = useCallback(async () => {
+        if (editorRef.current && isResumeEmpty(editorRef.current.getHtml())) {
+            setShowEmptyModal(true)
+            return
+        }
         setPrintLoading(true)
         setError('')
         try {
@@ -565,6 +650,7 @@ const Resume = () => {
             if (newReport?.generatedResumeHtml) {
                 const sanitized = sanitizeResumeHtml(newReport.generatedResumeHtml)
                 setHtmlContent(sanitized)
+                savedHtmlRef.current = sanitized
                 if (editorRef.current) {
                     editorRef.current.setContent(sanitized)
                 }
@@ -968,6 +1054,27 @@ const Resume = () => {
                     </button>
                 </div>
             )}
+
+            {/* ── Empty Resume Validation Popup Modal ───────── */}
+            <ConfirmModal
+                isOpen={showEmptyModal}
+                onClose={() => setShowEmptyModal(false)}
+                onConfirm={() => setShowEmptyModal(false)}
+                title="Resume Is Empty"
+                message="Your resume is empty. You cannot save a blank resume. Please add some content before saving."
+                confirmText="OK"
+                showCancel={false}
+                type="warning"
+            />
+
+            {/* ── Unsaved Changes Protection Modal ───────────── */}
+            <UnsavedChangesModal
+                isOpen={blocker?.state === 'blocked'}
+                onStay={handleStayOnPage}
+                onDiscard={handleDiscardChanges}
+                onSaveAndLeave={handleSaveAndLeave}
+                saveLoading={saveLoading}
+            />
         </div>
     )
 }
