@@ -284,7 +284,7 @@ function findTextRange(charToPos, plainText, target) {
 
 // ── Main ResumeEditor component ────────────────────────────────────────────
 const ResumeEditor = forwardRef(function ResumeEditor(
-    { initialHtml = '', placeholder = 'Start editing...', onChange },
+    { initialHtml = '', placeholder = 'Start editing...', onChange, onReady },
     ref
 ) {
     const [isFontDropdownOpen, setIsFontDropdownOpen] = useState(false)
@@ -390,6 +390,9 @@ const ResumeEditor = forwardRef(function ResumeEditor(
                     return false
                 }
             }
+        },
+        onCreate: ({ editor: ed }) => {
+            onReady?.(ed.getHTML())
         },
         onSelectionUpdate: ({ editor: ed }) => {
             const { from, to } = ed.state.selection
@@ -524,9 +527,10 @@ const ResumeEditor = forwardRef(function ResumeEditor(
             const currentHtml = editor.getHTML()
             if (editor.isEmpty || (currentHtml !== initialHtml && !editor.isFocused)) {
                 editor.commands.setContent(initialHtml, false)
+                onReady?.(editor.getHTML())
             }
         }
-    }, [initialHtml, editor])
+    }, [initialHtml, editor, onReady])
 
     // Position the in-place diff action pill directly where changes are occurring
     const updateDiffPillPosition = useCallback(() => {

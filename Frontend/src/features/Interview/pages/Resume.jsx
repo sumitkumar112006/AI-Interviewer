@@ -8,7 +8,7 @@ import Loading from '../Loading'
 import ResumeEditor from '../components/ResumeEditor'
 import ResumeSkillsWindow from '../components/ResumeSkillsWindow'
 import { exportElementToPdf } from '../utils/exportToPdf'
-import { sanitizeResumeHtml, parseAndSanitizeSnippet, isResumeEmpty } from '../utils/sanitizeResumeHtml'
+import { sanitizeResumeHtml, parseAndSanitizeSnippet, isResumeEmpty, areHtmlContentsEqual } from '../utils/sanitizeResumeHtml'
 import ConfirmModal from '../../Shared/components/ConfirmModal'
 import UnsavedChangesModal from '../components/UnsavedChangesModal'
 import { 
@@ -66,12 +66,6 @@ const Resume = () => {
         }
     }, [interviewId, updateReportInList]);
 
-    // Ensure recent reports sidebar reflects current score in real-time
-    useEffect(() => {
-        if (typeof matchScore === 'number' && interviewId && updateReportInList) {
-            updateReportInList(interviewId, { matchScore });
-        }
-    }, [interviewId, matchScore, updateReportInList]);
     const [atsBreakdown, setAtsBreakdown] = useState(() => report?.atsScoreBreakdown || null)
     const [atsLoading, setAtsLoading] = useState(false)
     const [isSkillsWindowOpen, setIsSkillsWindowOpen] = useState(() => {
@@ -97,6 +91,19 @@ const Resume = () => {
     const chatEndRef = useRef(null)
     const atsDebounceTimerRef = useRef(null)
     const savedHtmlRef = useRef(null)
+    const isDirtyRef = useRef(false)
+
+    const setDirtyState = useCallback((dirty) => {
+        isDirtyRef.current = dirty
+        setIsDirty(dirty)
+    }, [])
+
+    const handleEditorReady = useCallback((normalizedInitialHtml) => {
+        if (normalizedInitialHtml) {
+            savedHtmlRef.current = normalizedInitialHtml
+            setDirtyState(false)
+        }
+    }, [setDirtyState])
 
     // ── Load resume HTML with health validation & DB fallback ─────────────
     useEffect(() => {
@@ -191,7 +198,7 @@ const Resume = () => {
                     const sanitized = sanitizeResumeHtml(fetched.generatedResumeHtml)
                     setHtmlContent(sanitized)
                     savedHtmlRef.current = sanitized
-                    setIsDirty(false)
+                    setDirtyState(false)
                     setDbLoading(false)
                     return
                 }
@@ -201,7 +208,7 @@ const Resume = () => {
                     const sanitizedDraft = sanitizeResumeHtml(cachedDraft)
                     setHtmlContent(sanitizedDraft)
                     savedHtmlRef.current = sanitizedDraft
-                    setIsDirty(false)
+                    setDirtyState(false)
                     setDbLoading(false)
                     // Sync this draft to the database
                     updateResumeHtml(interviewId, { generatedResumeHtml: cachedDraft, resumeSkills: currentSkills }).catch(err => {
@@ -283,7 +290,7 @@ const Resume = () => {
                 setSelectedText(sel.toString().trim())
             }
         }
-        document.addEventListener('mouseup', onMouseUp)
+        document.addEventListener('mouseup', onMouseUp, { passive: true })
         return () => document.removeEventListener('mouseup', onMouseUp)
     }, [])
 
@@ -327,8 +334,8 @@ const Resume = () => {
             clearTimeout(atsDebounceTimerRef.current)
         }
 
-        setAtsLoading(true)
         atsDebounceTimerRef.current = setTimeout(async () => {
+            setAtsLoading(true)
             try {
                 const atsRes = await calculateResumeAtsScore(interviewId, html)
                 if (typeof atsRes?.matchScore === 'number') {
@@ -343,7 +350,7 @@ const Resume = () => {
                 setAtsLoading(false)
             }
         }, 750) // Responsive 750ms debounce
-    }, [interviewId])
+    }, [interviewId, handleScoreUpdate])
 
     // ── Missing ATS Keywords from JD Breakdown ─────────────────────────────
     const missingKeywords = useMemo(() => {
@@ -415,7 +422,7 @@ const Resume = () => {
         }
 
         if (inserted) {
-            setIsDirty(true)
+            setDirtyState(true)
             setResumeSkills(prev => {
                 const next = mergeSkills(prev, [cleanKw])
                 
@@ -434,7 +441,7 @@ const Resume = () => {
     }, [htmlContent, interviewId, triggerAtsRecalculation])
 
     // ── Unified Save & Auto-Save Function ──────────────────────────────────
-    const saveResumeChanges = useCallback(async (isAuto = false) => {
+    const saveResumeChanges = useCallback(async (isAuto = false, isLeaving = false) => {
         if (!editorRef.current) return false
         const html = editorRef.current.getHtml()
         if (isResumeEmpty(html)) {
@@ -472,9 +479,17 @@ const Resume = () => {
             } else if (res?.interviewReport?.atsScoreBreakdown) {
                 setAtsBreakdown(res.interviewReport.atsScoreBreakdown)
             }
+
+            // When navigating away after saving, skip domestic re-sanitization and ATS recalculation
+            if (isLeaving) {
+                savedHtmlRef.current = html
+                setDirtyState(false)
+                return true
+            }
+
             setHtmlContent(sanitizeResumeHtml(html))
             savedHtmlRef.current = html
-            setIsDirty(false)
+            setDirtyState(false)
             if (fetchUsage) fetchUsage()
 
             setSaveNotification({
@@ -503,26 +518,24 @@ const Resume = () => {
                 setSaveLoading(false)
             }
         }
-    }, [interviewId, resumeSkills, setReport, fetchUsage, triggerAtsRecalculation])
+    }, [interviewId, resumeSkills, setReport, fetchUsage, triggerAtsRecalculation, handleScoreUpdate, setDirtyState])
 
     // ── Editor OnChange: Persist Draft Instantly & Update Skills & ATS Score at Runtime ──
     const handleEditorChange = useCallback((updatedHtml) => {
-        const html = updatedHtml || editorRef.current?.getHtml()
+        const html = updatedHtml || editorRef.current?.getHtml() || ''
         if (savedHtmlRef.current !== null && savedHtmlRef.current !== undefined) {
-            setIsDirty(html !== savedHtmlRef.current)
+            const hasChanged = !areHtmlContentsEqual(html, savedHtmlRef.current)
+            setDirtyState(hasChanged)
         } else {
-            setIsDirty(true)
+            setDirtyState(true)
         }
         if (isHealthyResumeHtml(html)) {
-            
-
             // Detect any new skills added/typed in the editor at runtime
             const detected = parseSkillsFromHtml(html)
             if (detected && detected.length > 0) {
                 setResumeSkills(prev => {
                     const next = mergeSkills(prev, detected)
                     if (JSON.stringify(next) !== JSON.stringify(prev)) {
-                        
                         return next
                     }
                     return prev
@@ -532,33 +545,33 @@ const Resume = () => {
             // Immediately schedule debounced ATS recalculation as candidate updates resume
             triggerAtsRecalculation(html)
         }
-    }, [interviewId, triggerAtsRecalculation])
+    }, [triggerAtsRecalculation, setDirtyState])
 
     // ── 1-Minute Auto-Save Timer ──────────────────────────────────────────
     useEffect(() => {
         const AUTO_SAVE_INTERVAL = 60 * 1000 // 1 minute
         const timer = setInterval(() => {
-            if (isDirty) {
+            if (isDirtyRef.current) {
                 saveResumeChanges(true)
             }
         }, AUTO_SAVE_INTERVAL)
 
         return () => clearInterval(timer)
-    }, [isDirty, saveResumeChanges])
+    }, [saveResumeChanges])
 
-// ── Navigation Guard with useBlocker ───────────────────────────────────
+    // ── Navigation Guard with useBlocker ───────────────────────────────────
     const blocker = useBlocker(
         useCallback(
             ({ currentLocation, nextLocation }) =>
-                isDirty && currentLocation.pathname !== nextLocation.pathname,
-            [isDirty]
+                Boolean(isDirtyRef.current && currentLocation.pathname !== nextLocation.pathname),
+            []
         )
     )
 
     // ── Browser Refresh / Close Tab Protection ─────────────────────────────
     useEffect(() => {
         const handleBeforeUnload = (e) => {
-            if (isDirty) {
+            if (isDirtyRef.current) {
                 e.preventDefault()
                 e.returnValue = ''
                 return ''
@@ -569,7 +582,7 @@ const Resume = () => {
         return () => {
             window.removeEventListener('beforeunload', handleBeforeUnload)
         }
-    }, [isDirty])
+    }, [])
 
     // ── Modal Actions: Stay, Discard, Save & Leave ─────────────────────────
     const handleStayOnPage = useCallback(() => {
@@ -579,18 +592,18 @@ const Resume = () => {
     }, [blocker])
 
     const handleDiscardChanges = useCallback(() => {
-        setIsDirty(false)
+        setDirtyState(false)
         if (blocker?.state === 'blocked') {
             blocker.proceed()
         }
-    }, [blocker])
+    }, [blocker, setDirtyState])
 
     const handleSaveAndLeave = useCallback(async () => {
         setSaveLoading(true)
         try {
-            const saved = await saveResumeChanges(false)
+            const saved = await saveResumeChanges(false, true)
             if (saved) {
-                setIsDirty(false)
+                setDirtyState(false)
                 if (blocker?.state === 'blocked') {
                     blocker.proceed()
                 }
@@ -600,7 +613,7 @@ const Resume = () => {
         } finally {
             setSaveLoading(false)
         }
-    }, [saveResumeChanges, blocker])
+    }, [saveResumeChanges, blocker, setDirtyState])
 
     // ── Manual Save Button Click ──────────────────────────────────────────
     const handleSave = useCallback(() => {
@@ -654,7 +667,7 @@ const Resume = () => {
                 if (editorRef.current) {
                     editorRef.current.setContent(sanitized)
                 }
-                setIsDirty(false)
+                setDirtyState(false)
                 if (fetchUsage) fetchUsage()
             } else {
                 throw new Error('Failed to generate fresh resume content.')
@@ -730,10 +743,10 @@ const Resume = () => {
             changed = true
         }
         if (changed) {
-            setIsDirty(true)
+            setDirtyState(true)
             triggerAtsRecalculation(editorRef.current?.getHtml())
         }
-    }, [triggerAtsRecalculation])
+    }, [triggerAtsRecalculation, setDirtyState])
 
     // ── Listen for in-place replacement & diff preview events from KIVI AI Assistant ───────
     useEffect(() => {
@@ -765,7 +778,7 @@ const Resume = () => {
                 if (editorRef.current.replaceExactText) {
                     const replaced = editorRef.current.replaceExactText(targetText, cleanSnippet)
                     if (replaced) {
-                        setIsDirty(true)
+                        setDirtyState(true)
                         syncSkillsFromLiveDom()
                         if (typeof e.preventDefault === 'function') e.preventDefault()
                         return
@@ -773,7 +786,7 @@ const Resume = () => {
                 }
                 if (editorRef.current.isFocused && editorRef.current.isFocused()) {
                     editorRef.current.insertContent(cleanSnippet)
-                    setIsDirty(true)
+                    setDirtyState(true)
                     syncSkillsFromLiveDom()
                     if (typeof e.preventDefault === 'function') e.preventDefault()
                 }
@@ -789,7 +802,7 @@ const Resume = () => {
                 const fullContent = mergedFullResumeHtml || newFullHtml
                 if (fullContent && fullContent.trim().length > 50) {
                     editorRef.current.setContent(fullContent)
-                    setIsDirty(true)
+                    setDirtyState(true)
                     syncSkillsFromLiveDom()
                     return
                 }
@@ -815,7 +828,7 @@ const Resume = () => {
             }
 
             if (applied) {
-                setIsDirty(true)
+                setDirtyState(true)
                 syncSkillsFromLiveDom()
             }
         }
@@ -836,7 +849,7 @@ const Resume = () => {
         const onKiviAcceptDiff = () => {
             if (editorRef.current?.acceptDiff) {
                 editorRef.current.acceptDiff()
-                setIsDirty(true)
+                setDirtyState(true)
                 syncSkillsFromLiveDom()
             }
         }
@@ -907,7 +920,7 @@ const Resume = () => {
                     <button
                         type="button"
                         className="rp-btn rp-btn-ghost"
-                        onClick={() => navigate(`/interview/${interviewId}`, { state: { interviewReport: report } })}
+                        onClick={() => navigate(`/interview/${interviewId}`)}
                     >
                         ← Back
                     </button>
@@ -1022,6 +1035,7 @@ const Resume = () => {
                             initialHtml={htmlContent}
                             placeholder="Your resume content will appear here. Start editing!"
                             onChange={handleEditorChange}
+                            onReady={handleEditorReady}
                         />
                     ) : (
                         <Loading

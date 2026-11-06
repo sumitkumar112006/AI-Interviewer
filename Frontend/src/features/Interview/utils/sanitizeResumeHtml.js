@@ -333,3 +333,50 @@ export function isResumeEmpty(html) {
 
     return text.length === 0;
 }
+
+/**
+ * Normalizes HTML for comparison to prevent false positives when checking for dirty state.
+ * Standardizes whitespace, collapses tags, and strips inconsequential formatting differences.
+ *
+ * @param {string} html
+ * @returns {string} Normalized HTML string
+ */
+export function normalizeHtmlForComparison(html) {
+    if (!html || typeof html !== 'string') return '';
+
+    if (typeof window !== 'undefined' && typeof window.DOMParser !== 'undefined') {
+        try {
+            const parser = new window.DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+
+            // Strip non-content tags
+            doc.querySelectorAll('script, style, meta, link, noscript').forEach(el => el.remove());
+
+            return (doc.body.innerHTML || '')
+                .replace(/[\s\u00a0\u200b\u200c\u200d\ufeff]+/g, ' ')
+                .replace(/>\s+</g, '><')
+                .trim();
+        } catch {
+            // Fallback below
+        }
+    }
+
+    return html
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/[\s\u00a0\u200b\u200c\u200d\ufeff]+/g, ' ')
+        .replace(/>\s+</g, '><')
+        .trim();
+}
+
+/**
+ * Checks whether two HTML strings are semantically identical.
+ *
+ * @param {string} html1
+ * @param {string} html2
+ * @returns {boolean} True if HTML contents are equivalent
+ */
+export function areHtmlContentsEqual(html1, html2) {
+    if (html1 === html2) return true;
+    if (!html1 && !html2) return true;
+    return normalizeHtmlForComparison(html1) === normalizeHtmlForComparison(html2);
+}
