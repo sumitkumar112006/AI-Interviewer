@@ -1015,8 +1015,8 @@
 .layout-sub-tabs {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.55rem 2rem;
+  justify-content: center;
+  padding: 0.15rem 1rem 0.35rem 1rem;
   background: var(--panel-strong, #171b18);
   border-top: 1px solid var(--border-color, rgba(243, 240, 233, 0.1));
   border-bottom: 1px solid var(--border-color, rgba(243, 240, 233, 0.08));
@@ -1024,6 +1024,7 @@
   transition: all 0.3s ease;
   position: relative;
   z-index: 10;
+  overflow: visible;
 }
 
 .sub-tab-link {
