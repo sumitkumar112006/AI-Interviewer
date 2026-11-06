@@ -962,6 +962,25 @@ async function streamLlmWithFallback({ messages, systemPrompt, userPrompt, plan 
     throw new Error('All streaming AI providers failed or are unavailable.');
 }
 
+function extractPlainTextFromResume(content) {
+    if (!content || typeof content !== 'string') return '';
+    if (/<[a-z][\s\S]*>/i.test(content)) {
+        return content
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<li[^>]*>/gi, '\n• ')
+            .replace(/<\/p>|<\/div>|<\/li>|<br\s*\/?>|<\/h[1-6]>/gi, '\n')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/[ \t]+/g, ' ')
+            .replace(/\n\s*\n+/g, '\n\n')
+            .trim();
+    }
+    return content.trim();
+}
 
 async function generateInterviewReport({
     resume,
@@ -969,7 +988,8 @@ async function generateInterviewReport({
     jobDescription,
     selfDescribe,
     jobDescribe,
-    plan = "free"
+    plan = "free",
+    generatedResume = ""
 }) {
     return tracer.startActiveSpan('kivi.ai.generate', {
         attributes: {
@@ -980,6 +1000,7 @@ async function generateInterviewReport({
         try {
     const candidateSummary = selfDescription ?? selfDescribe
     const roleDescription = jobDescription ?? jobDescribe
+    const tailoredResumeText = generatedResume ? extractPlainTextFromResume(generatedResume) : ''
 
     const systemPrompt = `You are an expert AI interview coach, You have 10+ years of experience as HR Manager in IT/Management/Medical industry.You MUST respond ONLY with valid JSON — no markdown, no explanation, no commentary. Never wrap the JSON in code fences.`
 
@@ -1071,9 +1092,10 @@ Expected format:
   - should reflect both the job description and the candidate background
   - examples: "Front-End Developer", "React Developer", "Full-Stack Developer"
 
-Resume: ${resume}
+Original Candidate Resume: ${resume}
 Self Description: ${candidateSummary}
-Job Description: ${roleDescription}
+Target Job Description: ${roleDescription}
+${tailoredResumeText ? `Newly Generated Tailored ATS Resume:\n${tailoredResumeText}\n` : ''}
 `
 
     const rawText = await callGroq(systemPrompt, userPrompt, plan)

@@ -2,10 +2,10 @@ import React, { useEffect, useState } from 'react';
 import '../style/reportLoading.scss';
 
 const STEPS = [
-    { id: 1, label: 'Extracting candidate resume & self-description...' },
-    { id: 2, label: 'Analyzing target job requirements & skill match...' },
-    { id: 3, label: 'Evaluating technical competencies & skill gaps...' },
-    { id: 4, label: 'Synthesizing customized interview questions & roadmap...' }
+    { id: 1, label: 'Analyzing Job Description...' },
+    { id: 2, label: 'Generating ATS-Optimized Resume...' },
+    { id: 3, label: 'Generating Interview Questions and Preparation Roadmap...' },
+    { id: 4, label: 'Saving and Finalizing Results...' }
 ];
 
 const TIPS = [
@@ -52,8 +52,8 @@ const ReportGenerationLoading = () => {
                             <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
                         </svg>
                     </div>
-                    <h2>Generating Interview Report</h2>
-                    <p className="subtitle">AI is analyzing your profile & generating custom interview questions</p>
+                    <h2>Generating ATS Resume & Report</h2>
+                    <p className="subtitle">AI is crafting your tailored ATS resume and customized interview preparation</p>
                 </div>
 
                 {/* Progress Bar */}

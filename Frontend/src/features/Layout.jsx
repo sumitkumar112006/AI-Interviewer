@@ -156,12 +156,12 @@ const Layout = ({ children }) => {
     setHoverPos(null);
 
     const currentPath = location.pathname;
-    if (currentPath.startsWith('/resume/')) {
-      navigate(`/resume/${rId}`);
+    if (currentPath.startsWith('/interview/')) {
+      navigate(`/interview/${rId}`);
     } else if (currentPath.startsWith('/cover-letter/')) {
       navigate(`/cover-letter/${rId}`);
     } else {
-      navigate(`/interview/${rId}`);
+      navigate(`/resume/${rId}`);
     }
 
     setIsSidebarOpen(false);
@@ -396,20 +396,20 @@ const Layout = ({ children }) => {
   // Navigation options for Interview, Resume, and Cover Letter views
   const navOptions = useMemo(() => [
     {
-      id: 'plan',
-      label: 'Preparation Plan',
-      desc: 'Interview questions & AI analysis',
-      target: activeReportId ? `/interview/${activeReportId}` : '/',
-      match: (p) => p.startsWith('/interview/'),
-      icon: '/report.png'
-    },
-    {
       id: 'resume',
       label: 'Generate Resume',
       desc: 'Tailored ATS-optimized resume',
       target: activeReportId ? `/resume/${activeReportId}` : '/',
       match: (p) => p.startsWith('/resume/'),
       icon: '/resume.png'
+    },
+    {
+      id: 'plan',
+      label: 'Preparation Plan',
+      desc: 'Interview questions & AI analysis',
+      target: activeReportId ? `/interview/${activeReportId}` : '/',
+      match: (p) => p.startsWith('/interview/'),
+      icon: '/report.png'
     },
     {
       id: 'cover',

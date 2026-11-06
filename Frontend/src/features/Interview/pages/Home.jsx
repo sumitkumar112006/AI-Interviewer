@@ -111,7 +111,7 @@ const Home = () => {
                         setLoading(false);
                         const interviewId = extractObjectId(data?._id);
                         if (interviewId) {
-                            navigate(`/interview/${interviewId}`, { state: { interviewReport: data } });
+                            navigate(`/resume/${interviewId}`, { state: { interviewReport: data } });
                         }
                     }
                 }).catch(err => {
@@ -225,7 +225,7 @@ const Home = () => {
 
             const interviewId = extractObjectId(data?._id)
             if (interviewId) {
-                navigate(`/interview/${interviewId}`, { state: { interviewReport: data } })
+                navigate(`/resume/${interviewId}`, { state: { interviewReport: data } })
             }
         } catch (error) {
             console.error('Generate report error:', error)

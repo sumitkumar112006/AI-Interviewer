@@ -74,34 +74,95 @@ function initAiWorker() {
 
                 try {
                     switch (jobDoc.type) {
-                // 1. MOCK INTERVIEW & REPORT GENERATION
+                // 1. MOCK INTERVIEW & REPORT GENERATION (STAGE 1: Resume First, STAGE 2: Report Second)
                 case 'interview_report': {
                     const { resumeText, selfDescription, jobDescription, userPlan, extractedLinks } = jobDoc.input;
 
-                    // Concurrently generate the interview report and the structured ATS resume HTML
-                    const [reportResult, resumeResult] = await Promise.allSettled([
-                        generateInterviewReport({
-                            resume: resumeText,
-                            selfDescription,
-                            jobDescription,
-                            plan: userPlan || 'free'
-                        }),
-                        generateResumeHtml({
+                    const userIdStr = jobDoc.userId?.toString();
+                    const userObjectId = mongoose.Types.ObjectId.isValid(userIdStr)
+                        ? new mongoose.Types.ObjectId(userIdStr)
+                        : jobDoc.userId;
+
+                    // 1. Check if an InterviewReport document already exists for this job (e.g. on BullMQ retry)
+                    let interviewReport = null;
+                    if (jobDoc.resourceId && mongoose.isValidObjectId(jobDoc.resourceId)) {
+                        interviewReport = await interviewReportModel.findById(jobDoc.resourceId);
+                    }
+
+                    // ── STAGE 1: Generate ATS-Optimized Resume (First Priority) ──
+                    let generatedResumeHtml = interviewReport?.generatedResumeHtml || '';
+                    let resumeSkills = Array.isArray(interviewReport?.resumeSkills) && interviewReport.resumeSkills.length > 0 
+                        ? interviewReport.resumeSkills 
+                        : [];
+
+                    // Only generate resume if not already generated & saved (retry-safe & idempotent)
+                    if (!generatedResumeHtml || generatedResumeHtml.trim().length < 30) {
+                        logger.info(`[AI Worker] Job ${jobId}: Stage 1 - Generating ATS-optimized resume first...`);
+                        const resumeValue = await generateResumeHtml({
                             resume: resumeText || selfDescription || jobDescription,
                             selfDescription,
                             jobDescription,
                             plan: userPlan || 'free'
-                        })
-                    ]);
+                        });
 
-                    if (reportResult.status === 'rejected') {
-                        throw reportResult.reason;
+                        generatedResumeHtml = typeof resumeValue === 'object' && resumeValue?.html ? resumeValue.html : (resumeValue || '');
+                        resumeSkills = typeof resumeValue === 'object' && Array.isArray(resumeValue?.skills) ? resumeValue.skills : [];
+                    } else {
+                        logger.info(`[AI Worker] Job ${jobId}: Stage 1 - Reusing existing saved ATS resume for retry.`);
                     }
 
-                    const interviewReportByAI = reportResult.value;
-                    const resumeValue = resumeResult.status === 'fulfilled' ? resumeResult.value : null;
-                    const generatedResumeHtml = typeof resumeValue === 'object' && resumeValue?.html ? resumeValue.html : (resumeValue || '');
-                    const resumeSkills = typeof resumeValue === 'object' && Array.isArray(resumeValue?.skills) ? resumeValue.skills : [];
+                    // Save Stage 1 generated resume immediately to InterviewReport document
+                    if (!interviewReport) {
+                        const stage1Comparison = compareResumeSkillsDiff({
+                            originalResumeText: resumeText || '',
+                            currentResumeHtml: generatedResumeHtml || '',
+                            currentResumeSkills: resumeSkills,
+                            detectedSkills: []
+                        });
+
+                        interviewReport = await interviewReportModel.create({
+                            user: userObjectId,
+                            resume: resumeText,
+                            selfDescription,
+                            jobDescription,
+                            detectedSkills: [],
+                            resumeSkills: resumeSkills.length > 0 ? resumeSkills : (stage1Comparison.currentSkills?.all || []).map(s => s.name),
+                            resumeLinks: extractedLinks || null,
+                            older: stage1Comparison.originalSkills || [],
+                            olderSkills: stage1Comparison.originalSkills || [],
+                            originalSkills: stage1Comparison.originalSkills || [],
+                            current: stage1Comparison.currentSkills || { all: [], newSkills: [], previousSkills: [] },
+                            currentSkills: stage1Comparison.currentSkills || { all: [], newSkills: [], previousSkills: [] },
+                            generatedResumeHtml,
+                            developerTitle: 'ATS Tailored Resume',
+                            matchScore: 0,
+                            technicalQuestions: [],
+                            behavioralQuestion: [],
+                            skillGaps: [],
+                            preparationPlan: []
+                        });
+                        jobDoc.resourceId = interviewReport._id;
+                        jobDoc.resourceModel = 'InterviewReport';
+                        await jobDoc.save();
+                    } else if (generatedResumeHtml && interviewReport.generatedResumeHtml !== generatedResumeHtml) {
+                        interviewReport.generatedResumeHtml = generatedResumeHtml;
+                        if (resumeSkills.length > 0) interviewReport.resumeSkills = resumeSkills;
+                        await interviewReport.save();
+                    }
+
+                    // Invalidate reports list cache so the initial report document is visible
+                    await deleteCache(`cache:reports:user:${userIdStr}`);
+
+                    // ── STAGE 2: Generate Interview Report + Questions + Roadmap (Second Priority) ──
+                    // Pass: Original Resume + Newly Generated Resume + Job Description + Candidate Info
+                    logger.info(`[AI Worker] Job ${jobId}: Stage 2 - Generating Interview Report with newly generated resume context...`);
+                    const interviewReportByAI = await generateInterviewReport({
+                        resume: resumeText,
+                        selfDescription,
+                        jobDescription,
+                        plan: userPlan || 'free',
+                        generatedResume: generatedResumeHtml
+                    });
 
                     const detectedSkills = processReportSkills({
                         resume: resumeText,
@@ -110,11 +171,6 @@ function initAiWorker() {
                         ...interviewReportByAI
                     });
 
-                    const userIdStr = jobDoc.userId?.toString();
-                    const userObjectId = mongoose.Types.ObjectId.isValid(userIdStr)
-                        ? new mongoose.Types.ObjectId(userIdStr)
-                        : jobDoc.userId;
-
                     const comparison = compareResumeSkillsDiff({
                         originalResumeText: resumeText || '',
                         currentResumeHtml: generatedResumeHtml || '',
@@ -122,24 +178,33 @@ function initAiWorker() {
                         detectedSkills
                     });
 
-                    const interviewReport = await interviewReportModel.create({
-                        user: userObjectId,
-                        resume: resumeText,
-                        selfDescription,
-                        jobDescription,
-                        detectedSkills,
-                        resumeSkills: resumeSkills.length > 0 ? resumeSkills : (comparison.currentSkills?.all || []).map(s => s.name),
-                        resumeLinks: extractedLinks || null,
-                        older: comparison.originalSkills,
-                        olderSkills: comparison.originalSkills,
-                        originalSkills: comparison.originalSkills,
-                        current: comparison.currentSkills,
-                        currentSkills: comparison.currentSkills,
-                        generatedResumeHtml,
-                        ...interviewReportByAI
-                    });
+                    const finalResumeSkills = resumeSkills.length > 0 ? resumeSkills : (comparison.currentSkills?.all || []).map(s => s.name);
 
-                    // Invalidate reports list cache
+                    // Idempotently update the existing InterviewReport document with complete Stage 2 data
+                    interviewReport = await interviewReportModel.findByIdAndUpdate(
+                        interviewReport._id,
+                        {
+                            $set: {
+                                developerTitle: interviewReportByAI.developerTitle || 'Assessment Report',
+                                matchScore: interviewReportByAI.matchScore ?? 0,
+                                technicalQuestions: interviewReportByAI.technicalQuestions || [],
+                                behavioralQuestion: interviewReportByAI.behavioralQuestion || [],
+                                skillGaps: interviewReportByAI.skillGaps || [],
+                                preparationPlan: interviewReportByAI.preparationPlan || [],
+                                detectedSkills,
+                                resumeSkills: finalResumeSkills,
+                                older: comparison.originalSkills,
+                                olderSkills: comparison.originalSkills,
+                                originalSkills: comparison.originalSkills,
+                                current: comparison.currentSkills,
+                                currentSkills: comparison.currentSkills,
+                                generatedResumeHtml
+                            }
+                        },
+                        { new: true }
+                    );
+
+                    // Invalidate cache with final report data
                     await deleteCache(`cache:reports:user:${userIdStr}`);
 
                     // Non-blocking background chunk & embedding pre-warming for Roadmap, JD, and Resume RAG
