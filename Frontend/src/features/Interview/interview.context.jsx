@@ -28,6 +28,11 @@ export const InterviewProvider = ({ children }) => {
             });
             return hasChanged ? next : prev;
         });
+
+        // Notify subscribers (like the recent reports sidebar) of real-time update
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('kivi:report-updated', { detail: { reportId, updates } }));
+        }
     }, []);
 
     const previousResume = report?.resume || ""

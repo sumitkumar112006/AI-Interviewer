@@ -1,15 +1,15 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useAuth } from "./Auth/hooks/useAuth";
 import { useInterview } from "./Interview/hooks/useInterview";
 import { getAiModelInfo } from "./Interview/services/interview.api";
 import { KiviAiAssistant } from "./Shared/components/KiviAiAssistant";
 import NotificationBell from "./Shared/components/NotificationBell";
 import { Outlet, useNavigate, Link, useLocation } from "react-router-dom";
-import { Zap, Bot } from "lucide-react";
+import { Zap, Bot, User, HelpCircle, LogOut, ChevronDown } from "lucide-react";
 import Footer from "./Footer/components/Footer";
 import UserCreditsPopup from "../components/userCreditsPopup";
 import ConfirmModal from "./Shared/components/ConfirmModal";
-import LiquidBulgeTabBar from "./Interview/components/LiquidBulgeTabBar";
+import { useSidebarReports } from "./Interview/hooks/useSidebarReports";
 import "./layout.scss";
 
 
@@ -52,8 +52,87 @@ function getReportTitle(reportItem) {
 
 const Layout = ({ children }) => {
   const { user, usage, fetchUsage, handleLogout } = useAuth();
-  const { reports, getReports, deleteReport, setReport } = useInterview();
-  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
+  const { reports, deleteReport, setReport, report } = useInterview();
+
+  // Dynamic server-side pagination & infinite scroll for recent reports
+  const {
+    reports: sidebarReports,
+    totalCount: totalReportsCount,
+    totalMatching,
+    hasMore,
+    isLoadingInitial,
+    isLoadingMore,
+    error: reportsError,
+    searchQuery: sidebarSearchQuery,
+    setSearchQuery: setSidebarSearchQuery,
+    loadMore,
+    retry,
+    prependReport,
+    removeReport
+  } = useSidebarReports();
+
+  const observerTargetRef = useRef(null);
+  const listContainerRef = useRef(null);
+
+  // IntersectionObserver to auto-fetch next 10 reports when scrolling near bottom
+  useEffect(() => {
+    const sentinel = observerTargetRef.current;
+    const container = listContainerRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasMore && !isLoadingInitial && !isLoadingMore) {
+          loadMore();
+        }
+      },
+      {
+        root: container || null,
+        rootMargin: '140px 0px 140px 0px',
+        threshold: 0.01
+      }
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasMore, isLoadingInitial, isLoadingMore, loadMore]);
+
+  // Robust scroll listeners: handles both container and sidebar scrolling
+  const handleListScroll = useCallback(
+    (e) => {
+      const el = e.currentTarget;
+      if (!el || isLoadingInitial || isLoadingMore || !hasMore) return;
+      if (el.scrollHeight - el.scrollTop - el.clientHeight < 140) {
+        loadMore();
+      }
+    },
+    [isLoadingInitial, isLoadingMore, hasMore, loadMore]
+  );
+
+  const handleSidebarScroll = useCallback(
+    (e) => {
+      const el = e.currentTarget;
+      if (!el || isLoadingInitial || isLoadingMore || !hasMore) return;
+      if (el.scrollHeight - el.scrollTop - el.clientHeight < 160) {
+        loadMore();
+      }
+    },
+    [isLoadingInitial, isLoadingMore, hasMore, loadMore]
+  );
+
+  // Keep newly created active report prepended
+  const prevReportIdRef = useRef(null);
+  useEffect(() => {
+    const currentId = extractObjectId(report?._id || report?.id);
+    if (currentId && currentId !== prevReportIdRef.current) {
+      prevReportIdRef.current = currentId;
+      prependReport(report);
+    }
+  }, [report, prependReport]);
+
   const [deleteModal, setDeleteModal] = useState({
     isOpen: false,
     interviewId: null,
@@ -127,6 +206,7 @@ const Layout = ({ children }) => {
         await deleteReport(deleteModal.interviewId);
       }
       const deletedId = deleteModal.interviewId;
+      removeReport(deletedId);
       setDeleteModal({ isOpen: false, interviewId: null, title: '', loading: false });
       if (activeReportId === deletedId) {
         navigate('/');
@@ -137,14 +217,93 @@ const Layout = ({ children }) => {
     }
   };
 
-  const recentReportsList = Array.isArray(reports) ? reports : [];
-  const filteredSidebarReports = recentReportsList.filter(r =>
-    getReportTitle(r).toLowerCase().includes(sidebarSearchQuery.toLowerCase())
-  );
   const navigate = useNavigate();
   const location = useLocation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Click outside to close user profile dropdown
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setDropdownOpen(false);
+      }
+    };
+    if (dropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [dropdownOpen]);
+
+  // Sidebar Width Drag & Resize
+  const DEFAULT_SIDEBAR_WIDTH = 260;
+  const MIN_SIDEBAR_WIDTH = 200;
+  const MAX_SIDEBAR_WIDTH = 480;
+
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("kivi_sidebar_width");
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed) && parsed >= MIN_SIDEBAR_WIDTH && parsed <= MAX_SIDEBAR_WIDTH) {
+        return parsed;
+      }
+    }
+    return DEFAULT_SIDEBAR_WIDTH;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  const isResizingRef = useRef(false);
+
+  const startResizing = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isResizingRef.current = true;
+    setIsResizing(true);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+  }, []);
+
+  const resetSidebarWidth = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSidebarWidth(DEFAULT_SIDEBAR_WIDTH);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("kivi_sidebar_width", String(DEFAULT_SIDEBAR_WIDTH));
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isResizingRef.current) return;
+      const clampedWidth = Math.min(Math.max(e.clientX, MIN_SIDEBAR_WIDTH), MAX_SIDEBAR_WIDTH);
+      setSidebarWidth(clampedWidth);
+    };
+
+    const handleMouseUp = () => {
+      if (!isResizingRef.current) return;
+      isResizingRef.current = false;
+      setIsResizing(false);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      setSidebarWidth((current) => {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("kivi_sidebar_width", String(current));
+        }
+        return current;
+      });
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('kivi_theme') || 'dark';
   });
@@ -201,18 +360,14 @@ const Layout = ({ children }) => {
     }
   }, [location.pathname, fetchUsage]);
 
-  useEffect(() => {
-    if (reports === null) {
-      void getReports();
-    }
-  }, [reports, getReports]);
-
   const onlogout = async () => {
     await handleLogout();
     navigate("/landing");
   };
 
-  const recentReportId = reports && reports.length > 0 ? (reports[0]._id?.$oid || reports[0]._id) : null;
+  const recentReportId = sidebarReports && sidebarReports.length > 0
+    ? extractObjectId(sidebarReports[0]._id || sidebarReports[0].id)
+    : (reports && reports.length > 0 ? extractObjectId(reports[0]._id || reports[0].id) : null);
 
   // Determine active item and breadcrumb based on current pathname
   const path = location.pathname;
@@ -238,6 +393,59 @@ const Layout = ({ children }) => {
 
   const showResumeAndCoverLetter = path.startsWith("/resume/") || path.startsWith("/cover-letter/");
 
+  // Navigation options for Interview, Resume, and Cover Letter views
+  const navOptions = useMemo(() => [
+    {
+      id: 'plan',
+      label: 'Preparation Plan',
+      desc: 'Interview questions & AI analysis',
+      target: activeReportId ? `/interview/${activeReportId}` : '/',
+      match: (p) => p.startsWith('/interview/'),
+      icon: '/report.png'
+    },
+    {
+      id: 'resume',
+      label: 'Generate Resume',
+      desc: 'Tailored ATS-optimized resume',
+      target: activeReportId ? `/resume/${activeReportId}` : '/',
+      match: (p) => p.startsWith('/resume/'),
+      icon: '/resume.png'
+    },
+    {
+      id: 'cover',
+      label: 'Cover Letter Builder',
+      desc: 'Role-aligned custom cover letter',
+      target: activeReportId ? `/cover-letter/${activeReportId}` : '/',
+      match: (p) => p.startsWith('/cover-letter/'),
+      icon: '/cv.png'
+    }
+  ], [activeReportId]);
+
+  const currentNavOption = useMemo(() => {
+    return navOptions.find(o => o.match(path)) || navOptions[0];
+  }, [navOptions, path]);
+
+  const [navDropdownOpen, setNavDropdownOpen] = useState(false);
+  const navDropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (navDropdownRef.current && !navDropdownRef.current.contains(e.target)) {
+        setNavDropdownOpen(false);
+      }
+    };
+    if (navDropdownOpen) {
+      document.addEventListener("mousedown", handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, [navDropdownOpen]);
+
+  useEffect(() => {
+    setNavDropdownOpen(false);
+  }, [location.pathname]);
+
   if (path === "/" || path === "") {
     activeMenu = "dashboard";
     breadcrumb = "Dashboard";
@@ -258,7 +466,7 @@ const Layout = ({ children }) => {
     breadcrumb = "Subscription > Pricing & Plans";
   } else if (path === "/profile") {
     activeMenu = "profile";
-    breadcrumb = "Settings > Profile";
+    breadcrumb = "Account > Profile";
   } else if (path === "/privacy-policy") {
     activeMenu = "privacy-policy";
     breadcrumb = "Legal > Privacy Policy";
@@ -282,14 +490,17 @@ const Layout = ({ children }) => {
   }
 
   return (
-    <div className={`app-shell ${theme === 'light' ? 'light-theme' : 'dark-theme'}`}>
+    <div
+      className={`app-shell ${theme === 'light' ? 'light-theme' : 'dark-theme'}`}
+      style={{ '--sidebar-width': `${sidebarWidth}px` }}
+    >
       {/* Sidebar Backdrop Overlay on Mobile */}
       {isSidebarOpen && (
         <div className="sidebar-backdrop" onClick={() => setIsSidebarOpen(false)} />
       )}
 
       {/* LEFT SIDEBAR */}
-      <aside className={`app-sidebar ${isSidebarOpen ? "open" : ""}`}>
+      <aside className={`app-sidebar ${isSidebarOpen ? "open" : ""}`} onScroll={handleSidebarScroll}>
         {/* Close button for Mobile drawer view */}
         <button 
           type="button" 
@@ -337,65 +548,19 @@ const Layout = ({ children }) => {
               </svg>
               <span>Find Jobs</span>
             </Link>
-
-            <Link to="/coming-soon?feature=my-activity" className={`sidebar-link ${activeMenu === "my-activity" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
-              <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-              </svg>
-              <span>My Activity</span>
-            </Link>
           </nav>
         </div>
 
-<div className="sidebar-section">
-          <p className="sidebar-section-title">SETTINGS</p>
-          <nav className="sidebar-nav">
-            <Link to="/profile" className={`sidebar-link ${activeMenu === "profile" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
-              <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                <circle cx="12" cy="7" r="4" />
-              </svg>
-              <span>Profile</span>
-            </Link>
-
-            <Link to="/coming-soon?feature=preferences" className={`sidebar-link ${activeMenu === "preferences" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
-              <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
-              <span>Preferences</span>
-            </Link>
-
-            <Link to="/help-support" className={`sidebar-link ${activeMenu === "help-support" ? "active" : ""}`} onClick={() => setIsSidebarOpen(false)}>
-              <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-              <span>Help & Support</span>
-            </Link>
-
-            <button onClick={() => { onlogout(); setIsSidebarOpen(false); }} className="sidebar-link logout-btn">
-              <svg className="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
-              <span>Logout</span>
-            </button>
-          </nav>
-        </div>
-
-{/* RECENT REPORTS SECTION */}
+        {/* RECENT REPORTS SECTION */}
         <div className="sidebar-section sidebar-recent-section">
           <div className="sidebar-section-header">
             <p className="sidebar-section-title">RECENT REPORTS</p>
-            {recentReportsList.length > 0 && (
-              <span className="sidebar-reports-count">{recentReportsList.length}</span>
+            {totalReportsCount > 0 && (
+              <span className="sidebar-reports-count">{totalReportsCount}</span>
             )}
           </div>
 
-          {recentReportsList.length > 3 && (
+          {(totalReportsCount > 3 || sidebarSearchQuery) && (
             <div className="sidebar-search-box">
               <svg className="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="11" cy="11" r="8" />
@@ -421,81 +586,137 @@ const Layout = ({ children }) => {
             </div>
           )}
 
-          <div className="sidebar-reports-list">
-            {filteredSidebarReports.length === 0 ? (
+          <div className="sidebar-reports-list" ref={listContainerRef} onScroll={handleListScroll}>
+            {isLoadingInitial ? (
+              <div className="sidebar-reports-skeleton-list">
+                {[1, 2, 3, 4, 5].map((idx) => (
+                  <div key={idx} className="sidebar-report-skeleton">
+                    <div className="skeleton-icon" />
+                    <div className="skeleton-text">
+                      <div className="skeleton-line-title" />
+                      <div className="skeleton-line-date" />
+                    </div>
+                    <div className="skeleton-pill" />
+                  </div>
+                ))}
+              </div>
+            ) : sidebarReports.length === 0 ? (
               <div className="sidebar-reports-empty">
-                {sidebarSearchQuery ? 'No matching reports' : 'No reports yet.'}
+                {sidebarSearchQuery ? (
+                  <>
+                    <p>No reports match "{sidebarSearchQuery}"</p>
+                    <button
+                      type="button"
+                      className="sidebar-empty-clear-btn"
+                      onClick={() => setSidebarSearchQuery('')}
+                    >
+                      Clear Search
+                    </button>
+                  </>
+                ) : (
+                  <p>No reports yet.</p>
+                )}
               </div>
             ) : (
-              filteredSidebarReports.slice(0, 8).map((r, idx) => {
-                const rId = extractObjectId(r?._id || r?.id || r?.interviewId);
-                const title = getReportTitle(r);
-                const dateStr = formatDate(r?.createdAt ?? r?.updatedAt);
-                const scoreColor = getMatchScoreColor(r?.matchScore);
-                const isActive = activeReportId === rId;
+              <>
+                {sidebarReports.map((r, idx) => {
+                  const rId = extractObjectId(r?._id || r?.id || r?.interviewId);
+                  const title = getReportTitle(r);
+                  const dateStr = formatDate(r?.createdAt ?? r?.updatedAt);
+                  const scoreColor = getMatchScoreColor(r?.matchScore);
+                  const isActive = activeReportId === rId;
 
-                return (
-                  <div
-                    key={rId || idx}
-                    className={`sidebar-report-item ${isActive ? 'active' : ''}`}
-                    onClick={() => handleOpenReport(r)}
-                    onMouseEnter={(e) => handleReportMouseEnter(r, e)}
-                    onMouseLeave={handleReportMouseLeave}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleOpenReport(r);
-                      }
-                    }}
-                    title=""
-                  >
-                    <div className="sidebar-report-left">
-                      <svg className="sidebar-report-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                        <polyline points="14 2 14 8 20 8" />
-                      </svg>
-                      <div className="sidebar-report-meta">
-                        <span className="sidebar-report-title">{title}</span>
-                        {dateStr && <span className="sidebar-report-date">{dateStr}</span>}
+                  return (
+                    <div
+                      key={rId || idx}
+                      className={`sidebar-report-item ${isActive ? 'active' : ''}`}
+                      onClick={() => handleOpenReport(r)}
+                      onMouseEnter={(e) => handleReportMouseEnter(r, e)}
+                      onMouseLeave={handleReportMouseLeave}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleOpenReport(r);
+                        }
+                      }}
+                      title=""
+                    >
+                      <div className="sidebar-report-left">
+                        <svg className="sidebar-report-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                        </svg>
+                        <div className="sidebar-report-meta">
+                          <span className="sidebar-report-title">{title}</span>
+                          {dateStr && <span className="sidebar-report-date">{dateStr}</span>}
+                        </div>
+                      </div>
+
+                      <div className="sidebar-report-right">
+                        {r?.matchScore !== undefined && r?.matchScore !== null && (
+                          <span
+                            className="sidebar-report-score"
+                            style={{
+                              color: scoreColor,
+                              borderColor: `${scoreColor}40`,
+                              background: `${scoreColor}18`
+                            }}
+                          >
+                            {r.matchScore}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          className="sidebar-report-delete"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteSidebarReport(rId, title);
+                          }}
+                          title="Delete report"
+                          aria-label="Delete report"
+                        >
+                          <img src="/bin.png" alt="Delete" style={{ width: '11px', height: '11px', objectFit: 'contain', opacity: 0.7 }} />
+                        </button>
                       </div>
                     </div>
+                  );
+                })}
 
-                    <div className="sidebar-report-right">
-                      {r?.matchScore && (
-                        <span
-                          className="sidebar-report-score"
-                          style={{
-                            color: scoreColor,
-                            borderColor: `${scoreColor}40`,
-                            background: `${scoreColor}18`
-                          }}
-                        >
-                          {r.matchScore}
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        className="sidebar-report-delete"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteSidebarReport(rId, title);
-                        }}
-                        title="Delete report"
-                        aria-label="Delete report"
-                      >
-                        <img src="/bin.png" alt="Delete" style={{ width: '11px', height: '11px', objectFit: 'contain', opacity: 0.7 }} />
-                      </button>
-                    </div>
+                {/* Sentinel for IntersectionObserver to trigger infinite scroll */}
+                <div ref={observerTargetRef} className="sidebar-scroll-sentinel" />
+
+                {/* Bottom Loading More Indicator */}
+                {isLoadingMore && (
+                  <div className="sidebar-reports-loading-more">
+                    <span className="mini-pulse-dot" />
+                    <span>Loading next reports...</span>
                   </div>
-                );
-              })
+                )}
+
+                {/* Error state with Retry button */}
+                {reportsError && (
+                  <div className="sidebar-reports-error">
+                    <span>{reportsError}</span>
+                    <button type="button" onClick={retry} className="sidebar-retry-btn">
+                      Retry
+                    </button>
+                  </div>
+                )}
+
+                {/* End of list marker */}
+                {!hasMore && sidebarReports.length > 0 && !isLoadingMore && (
+                  <div className="sidebar-reports-end">
+                    <span>All {totalMatching} reports loaded</span>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
         </div>
 
-        {recentReportsList.length > 0 && (
+        {totalReportsCount > 0 && (
           <div className="sidebar-footer">
             <Link
               to="/reports"
@@ -503,7 +724,7 @@ const Layout = ({ children }) => {
               onClick={() => setIsSidebarOpen(false)}
               title="View all interview reports"
             >
-              <span>View All Reports ({recentReportsList.length})</span>
+              <span>View All Reports ({totalReportsCount})</span>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="5" y1="12" x2="19" y2="12" />
                 <polyline points="12 5 19 12 12 19" />
@@ -511,6 +732,15 @@ const Layout = ({ children }) => {
             </Link>
           </div>
         )}
+
+        {/* Draggable sidebar border to resize width */}
+        <div
+          className={`sidebar-resizer ${isResizing ? "resizing" : ""}`}
+          onMouseDown={startResizing}
+          onDoubleClick={resetSidebarWidth}
+          title="Drag border to resize sidebar (double-click to reset)"
+          aria-label="Resize sidebar width"
+        />
       </aside>
 
       {/* RIGHT CONTENT WRAPPER */}
@@ -531,7 +761,67 @@ const Layout = ({ children }) => {
               </svg>
             </button>
 
-            <div className="header-breadcrumb">{breadcrumb}</div>
+            {showSubTabs ? (
+              <div className="navbar-view-dropdown-container" ref={navDropdownRef}>
+                <button
+                  type="button"
+                  className={`navbar-view-dropdown-btn ${navDropdownOpen ? 'open' : ''}`}
+                  onClick={() => setNavDropdownOpen(prev => !prev)}
+                  aria-expanded={navDropdownOpen}
+                  aria-haspopup="true"
+                  title="Switch document view"
+                >
+                  <span className="navbar-view-category">
+                    {path.startsWith('/interview/') ? 'Interview Prep' : 'CV Generator'}
+                    <span className="navbar-view-separator">&gt;</span>
+                  </span>
+                  <span className="navbar-view-active-title">
+                    <img src={currentNavOption.icon} alt="" className="navbar-view-active-icon" />
+                    <span>{currentNavOption.label}</span>
+                  </span>
+                  <ChevronDown size={14} className={`navbar-view-arrow ${navDropdownOpen ? 'rotated' : ''}`} />
+                </button>
+
+                {navDropdownOpen && (
+                  <div className="navbar-view-dropdown-menu">
+                    <div className="navbar-view-menu-header">
+                      <span>DOCUMENT &amp; PREPARATION VIEWS</span>
+                    </div>
+                    <div className="navbar-view-menu-items">
+                      {navOptions.map((opt) => {
+                        const isActive = opt.id === currentNavOption.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            className={`navbar-view-menu-item ${isActive ? 'active' : ''}`}
+                            onClick={() => {
+                              setNavDropdownOpen(false);
+                              if (path !== opt.target) {
+                                navigate(opt.target);
+                              }
+                            }}
+                          >
+                            <div className="navbar-view-item-icon-box">
+                              <img src={opt.icon} alt={opt.label} />
+                            </div>
+                            <div className="navbar-view-item-content">
+                              <div className="navbar-view-item-main">
+                                <span className="navbar-view-item-name">{opt.label}</span>
+                                {isActive && <span className="navbar-view-current-pill">Active</span>}
+                              </div>
+                              <span className="navbar-view-item-sub">{opt.desc}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="header-breadcrumb">{breadcrumb}</div>
+            )}
             
             <div className="header-actions">
               {/* Search Input */}
@@ -599,7 +889,11 @@ const Layout = ({ children }) => {
               <NotificationBell />
 
               {/* User Profile Dropdown */}
-              <div className="user-profile-dropdown" onClick={() => setDropdownOpen(!dropdownOpen)}>
+              <div 
+                ref={dropdownRef}
+                className="user-profile-dropdown" 
+                onClick={() => setDropdownOpen(prev => !prev)}
+              >
                 <div className="user-avatar">
                   {(user?.username || "U")[0].toUpperCase()}
                 </div>
@@ -609,21 +903,31 @@ const Layout = ({ children }) => {
                 </svg>
 
                 {dropdownOpen && (
-                  <div className="profile-dropdown-menu">
-                    <Link to="/profile" className="dropdown-item">View Profile</Link>
-                    <button onClick={onlogout} className="dropdown-item logout">Logout</button>
+                  <div className="profile-dropdown-menu" onClick={(e) => e.stopPropagation()}>
+                    <Link to="/profile" className="dropdown-item" onClick={() => setDropdownOpen(false)}>
+                      <User size={15} className="dropdown-item-icon" />
+                      <span>View Profile</span>
+                    </Link>
+                    <Link to="/help-support" className="dropdown-item" onClick={() => setDropdownOpen(false)}>
+                      <HelpCircle size={15} className="dropdown-item-icon" />
+                      <span>Help & Support</span>
+                    </Link>
+                    <div className="profile-dropdown-divider" />
+                    <button 
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        onlogout();
+                      }} 
+                      className="dropdown-item logout"
+                    >
+                      <LogOut size={15} className="dropdown-item-icon" />
+                      <span>Logout</span>
+                    </button>
                   </div>
                 )}
               </div>
             </div>
           </div>
-
-          {/* Sub-tabs — Liquid Bulge Tab Bar in interview/resume/cover-letter context */}
-          {showSubTabs && (
-            <div className="layout-sub-tabs" role="tablist" aria-label="Interview Navigation">
-              <LiquidBulgeTabBar activeReportId={activeReportId} />
-            </div>
-          )}
         </header>
 
         <main className="app-main-content">

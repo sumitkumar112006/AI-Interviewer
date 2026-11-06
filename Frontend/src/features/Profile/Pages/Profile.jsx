@@ -4,7 +4,7 @@ import { useInterview } from '../../Interview/hooks/useInterview';
 import { updateCareerProfile, updateProfile } from '../../Auth/services/auth.api';
 import PageLoading from '../../Shared/components/PageLoading';
 import { Link, useNavigate } from 'react-router-dom';
-import { LogOut, User, Briefcase, Sparkles, Check, Trash2, Plus, AlertCircle, Edit3, X } from 'lucide-react';
+import { LogOut, User, Briefcase, Sparkles, Check, Trash2, Plus, AlertCircle, Edit3, X, HelpCircle } from 'lucide-react';
 import { InvoicesTable } from '../../Subscription/components/InvoicesTable';
 import '../style/profile.scss';
 
@@ -310,6 +310,16 @@ const Profile = () => {
                             <span>Edit Profile</span>
                         </button>
 
+                        <Link 
+                            to="/help-support" 
+                            className="profile-support-btn" 
+                            id="profile-support-btn"
+                            title="Visit Help & Support Hub"
+                        >
+                            <HelpCircle size={14} />
+                            <span>Help & Support</span>
+                        </Link>
+
                         <button 
                             type="button" 
                             onClick={onProfileLogout} 
@@ -578,6 +588,25 @@ const Profile = () => {
 
             {/* Invoices & Billing History Section */}
             <InvoicesTable />
+
+            {/* Help & Support Hub Section */}
+            <div className="profile-support-section">
+                <div className="support-banner-card">
+                    <div className="support-banner-info">
+                        <div className="support-icon-circle">
+                            <HelpCircle size={22} />
+                        </div>
+                        <div className="support-banner-text">
+                            <h4>Need Assistance or Have Questions?</h4>
+                            <p>Explore our FAQs, interview guides, technical documentation, or contact support anytime.</p>
+                        </div>
+                    </div>
+                    <Link to="/help-support" className="support-visit-link">
+                        <span>Help & Support Center</span>
+                        <span aria-hidden="true">→</span>
+                    </Link>
+                </div>
+            </div>
 
             {/* Edit Profile Modal */}
             {showEditProfileModal && (

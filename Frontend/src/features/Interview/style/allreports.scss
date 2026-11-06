@@ -562,6 +562,36 @@
 
     &::-webkit-scrollbar { width: 4px; }
     &::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .ar-timeline-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 3rem 1rem;
+        text-align: center;
+        color: var(--muted);
+        min-height: 180px;
+
+        .ar-empty-icon {
+            font-size: 1.75rem;
+            margin-bottom: 0.6rem;
+            opacity: 0.6;
+        }
+
+        .ar-empty-text {
+            font-size: 0.92rem;
+            font-weight: 600;
+            color: var(--text);
+            margin: 0 0 0.25rem 0;
+            letter-spacing: -0.01em;
+        }
+
+        .ar-empty-sub {
+            font-size: 0.74rem;
+            color: var(--muted);
+        }
+    }
 }
 
 .ar-timeline-month {

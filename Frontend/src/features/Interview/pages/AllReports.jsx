@@ -290,9 +290,12 @@ const AllReports = () => {
     /* ── group timeline by month ── */
     function groupByMonth(items) {
         const groups = {}
+        if (!Array.isArray(items)) return groups
         items.forEach(r => {
-            const dt = formatDateTime(r.createdAt)
+            const dt = formatDateTime(r.createdAt || r.updatedAt)
             const key = dt.raw ? new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric' }).format(dt.raw) : 'Unknown'
+            if (!groups[key]) groups[key] = []
+            groups[key].push(r)
         })
         return groups
     }
@@ -452,27 +455,35 @@ const AllReports = () => {
                         <h3>Reports Timeline</h3>
                     </div>
                     <div className="ar-timeline">
-                        {Object.entries(timelineGroups).map(([month, items]) => (
-                            <div key={month}>
-                                <div className="ar-timeline-month">{month}</div>
-                                {items.map(r => {
-                                    const dt = formatDateTime(r.createdAt)
-                                    const score = getScore(r)
-                                    const st = getStatus(score)
-                                    const id = extractObjectId(r._id)
-                                    return (
-                                        <div className="ar-timeline-row" key={id} onClick={() => navigate(`/interview/${id}`)}>
-                                            <div className="ar-tl-dot" style={{ background: getScoreColor(score) }} />
-                                            <div className="ar-tl-info">
-                                                <span className="ar-tl-title">{getTitle(r)}</span>
-                                                <span className="ar-tl-meta">{score !== null ? `${score}% • ${st.label}` : '—'}</span>
-                                            </div>
-                                            <div className="ar-tl-time">{dt.date ? `${dt.date.split(' ')[0]} ${dt.date.split(' ')[1]}` : ''}<br />{dt.time}</div>
-                                        </div>
-                                    )
-                                })}
+                        {Object.keys(timelineGroups).length === 0 ? (
+                            <div className="ar-timeline-empty">
+                                <span className="ar-empty-icon">📅</span>
+                                <p className="ar-empty-text">No data</p>
+                                <span className="ar-empty-sub">No report activity recorded yet</span>
                             </div>
-                        ))}
+                        ) : (
+                            Object.entries(timelineGroups).map(([month, items]) => (
+                                <div key={month}>
+                                    <div className="ar-timeline-month">{month}</div>
+                                    {items.map(r => {
+                                        const dt = formatDateTime(r.createdAt)
+                                        const score = getScore(r)
+                                        const st = getStatus(score)
+                                        const id = extractObjectId(r._id)
+                                        return (
+                                            <div className="ar-timeline-row" key={id} onClick={() => navigate(`/interview/${id}`)}>
+                                                <div className="ar-tl-dot" style={{ background: getScoreColor(score) }} />
+                                                <div className="ar-tl-info">
+                                                    <span className="ar-tl-title">{getTitle(r)}</span>
+                                                    <span className="ar-tl-meta">{score !== null ? `${score}% • ${st.label}` : '—'}</span>
+                                                </div>
+                                                <div className="ar-tl-time">{dt.date ? `${dt.date.split(' ')[0]} ${dt.date.split(' ')[1]}` : ''}<br />{dt.time}</div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
             </div>

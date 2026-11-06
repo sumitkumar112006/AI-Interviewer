@@ -40,9 +40,18 @@ export async function getInterviewReportById(interviewId) {
 }
 
 
-export async function getAllInterviewReport() {
-    const response = await api.get(`/api/interview`)
+export async function getAllInterviewReport(params = {}, options = {}) {
+    const response = await api.get(`/api/interview`, { params, ...options })
     return response.data
+}
+
+export async function getPaginatedInterviewReports({ limit = 10, cursor = null, page = null, search = '', signal = null } = {}) {
+    const params = { limit };
+    if (cursor) params.cursor = cursor;
+    if (page) params.page = page;
+    if (search && search.trim()) params.search = search.trim();
+    const response = await api.get('/api/interview', { params, signal });
+    return response.data;
 }
 
 export async function getSkillAnalytics() {

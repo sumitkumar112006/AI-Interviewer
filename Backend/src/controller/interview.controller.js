@@ -290,6 +290,129 @@ async function getAllInterviewReportController(req, res, next) {
         const cacheKey = `cache:reports:user:${userIdStr}`
         const forceRefresh = req.query.refresh === 'true'
 
+        // Check if server-side pagination or search is requested
+        const isPaginated = req.query.limit !== undefined || 
+                            req.query.page !== undefined || 
+                            req.query.cursor !== undefined || 
+                            (typeof req.query.search === 'string' && req.query.search.trim() !== '');
+
+        if (isPaginated) {
+            const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
+            const searchQuery = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+
+            const userFilter = {
+                $or: [
+                    { user: userObjectId },
+                    { user: userIdStr }
+                ]
+            };
+
+            let searchFilter = {};
+            if (searchQuery) {
+                const escapedSearch = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                searchFilter = {
+                    $or: [
+                        { developerTitle: { $regex: escapedSearch, $options: 'i' } }
+                    ]
+                };
+            }
+
+            const baseFilter = searchQuery ? { $and: [userFilter, searchFilter] } : userFilter;
+
+            const [totalMatching, totalUserReports] = await Promise.all([
+                interviewReportModle.countDocuments(baseFilter),
+                searchQuery ? interviewReportModle.countDocuments(userFilter) : Promise.resolve(null)
+            ]);
+
+            const finalTotalInterviews = searchQuery ? totalUserReports : totalMatching;
+
+            let query = interviewReportModle.find(baseFilter);
+            let page = parseInt(req.query.page, 10) || null;
+
+            if (req.query.cursor) {
+                let cursorDate = null;
+                let cursorId = null;
+                try {
+                    const decodedStr = Buffer.from(req.query.cursor, 'base64').toString('utf8');
+                    if (decodedStr.startsWith('{') && decodedStr.includes('createdAt')) {
+                        const decoded = JSON.parse(decodedStr);
+                        cursorDate = new Date(decoded.createdAt);
+                        cursorId = decoded.id;
+                    } else {
+                        cursorDate = new Date(req.query.cursor);
+                    }
+                } catch {
+                    cursorDate = new Date(req.query.cursor);
+                }
+
+                if (cursorDate && !isNaN(cursorDate.getTime())) {
+                    if (cursorId && mongoose.Types.ObjectId.isValid(cursorId)) {
+                        query = interviewReportModle.find({
+                            $and: [
+                                baseFilter,
+                                {
+                                    $or: [
+                                        { createdAt: { $lt: cursorDate } },
+                                        { createdAt: cursorDate, _id: { $lt: new mongoose.Types.ObjectId(cursorId) } }
+                                    ]
+                                }
+                            ]
+                        });
+                    } else {
+                        query = interviewReportModle.find({
+                            $and: [
+                                baseFilter,
+                                { createdAt: { $lt: cursorDate } }
+                            ]
+                        });
+                    }
+                }
+            } else if (page && page > 1) {
+                query = query.skip((page - 1) * limit);
+            }
+
+            // Fetch limit + 1 to reliably detect hasMore
+            const reports = await query
+                .select('_id developerTitle matchScore skillGaps createdAt updatedAt user atsScoreBreakdown')
+                .sort({ createdAt: -1, _id: -1 })
+                .limit(limit + 1);
+
+            let hasMore = false;
+            if (reports.length > limit) {
+                hasMore = true;
+                reports.pop();
+            }
+
+            const lastItem = reports.length > 0 ? reports[reports.length - 1] : null;
+            const nextCursor = hasMore && lastItem && lastItem.createdAt
+                ? Buffer.from(JSON.stringify({ createdAt: lastItem.createdAt, id: lastItem._id.toString() })).toString('base64')
+                : null;
+
+            const formattedReports = reports.map(report => {
+                const reportObj = report.toObject();
+                return {
+                    _id: reportObj._id,
+                    developerTitle: reportObj.developerTitle || 'Assessment Report',
+                    matchScore: reportObj.matchScore ?? null,
+                    skillGaps: Array.isArray(reportObj.skillGaps) ? reportObj.skillGaps : [],
+                    createdAt: reportObj.createdAt,
+                    updatedAt: reportObj.updatedAt,
+                    atsScoreBreakdown: reportObj.atsScoreBreakdown || null
+                };
+            });
+
+            return res.status(200).json({
+                totalInterviews: finalTotalInterviews,
+                total: totalMatching,
+                totalMatching,
+                page: page || 1,
+                limit,
+                hasMore,
+                nextCursor,
+                interviewReports: formattedReports
+            });
+        }
+
         if (!forceRefresh) {
             const cachedSummary = await getCache(cacheKey)
             if (cachedSummary && Array.isArray(cachedSummary.interviewReports) && cachedSummary.interviewReports.length > 0) {

@@ -37,6 +37,9 @@ export const useInterview = () => {
 
             // 2. UPDATE HISTORY LIST IN REAL-TIME (Add this line):
             setReports(prevReports => prevReports ? [response.interviewReport, ...prevReports] : [response.interviewReport])
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('kivi:report-created', { detail: { report: response.interviewReport } }));
+            }
             
             // 3. Refresh navbar credit limits in real-time
             if (fetchUsage) fetchUsage()
@@ -112,6 +115,9 @@ export const useInterview = () => {
                     })
                     : []
             )
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('kivi:report-deleted', { detail: { reportId: interviewReportId } }));
+            }
             return response
         } catch (error) {
             if (import.meta.env.DEV) console.warn('[useInterview] Notice:', error.message || error)
