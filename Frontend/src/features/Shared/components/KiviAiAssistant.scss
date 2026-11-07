@@ -316,6 +316,24 @@
                     font-weight: 700;
                     display: block;
                     margin-top: 0.1rem;
+
+                    .header-status-pill {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 0.35rem;
+
+                        .header-orb {
+                            flex-shrink: 0;
+                            display: inline-flex;
+                            color: var(--accent);
+
+                            &.idle { color: #10b981; }
+                            &.reasoning { color: #ef7b5d; }
+                            &.searching { color: #38bdf8; }
+                            &.compacting { color: #c084fc; }
+                            &.working { color: #f59e0b; }
+                        }
+                    }
                 }
             }
         }
@@ -484,6 +502,68 @@
 
                 &:nth-child(1) { animation-delay: -0.32s; }
                 &:nth-child(2) { animation-delay: -0.16s; }
+            }
+        }
+
+        .kivi-thinking-inline-row {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0;
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            animation: fadeIn 0.2s ease-out;
+
+            .thinking-status-orb {
+                flex-shrink: 0;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+
+                &.reasoning { color: #ef7b5d; }
+                &.searching { color: #38bdf8; }
+                &.synthesizing { color: #ef7b5d; }
+                &.compacting { color: #c084fc; }
+                &.working { color: #f59e0b; }
+            }
+
+            .thinking-title {
+                font-family: var(--font-heading, 'Plus Jakarta Sans', sans-serif);
+                font-weight: 600;
+                font-size: 0.82rem;
+                color: var(--text);
+                line-height: 1.25;
+            }
+        }
+
+        .searching-status-orb {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+
+            &.searching { color: #38bdf8; }
+            &.synthesizing { color: #ef7b5d; }
+        }
+
+        .kivi-streaming-footer-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            margin-top: 0.45rem;
+            padding: 0.2rem 0.5rem;
+            background: rgba(239, 123, 93, 0.12);
+            border: 1px solid rgba(239, 123, 93, 0.3);
+            border-radius: 9999px;
+            font-family: var(--font-mono, monospace);
+            font-size: 0.68rem;
+            font-weight: 600;
+            color: var(--accent);
+
+            .streaming-footer-orb {
+                color: var(--accent);
+                flex-shrink: 0;
             }
         }
 
@@ -1224,6 +1304,13 @@
                 border-top-color: #ffffff;
                 border-radius: 50%;
                 animation: spinSearch 0.8s linear infinite;
+            }
+
+            .send-button-orb {
+                color: #ffffff;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
             }
         }
     }

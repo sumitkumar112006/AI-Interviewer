@@ -12,6 +12,8 @@ import {
 import { parseAndSanitizeSnippet } from '../../Interview/utils/sanitizeResumeHtml';
 import { TrackUpdatePart } from '../../Interview/utils/trackUpdatePart';
 import { MultiToolStatusStrip, ToolResourceCard } from '../../../UI';
+import { Orb } from '@yogesharc/thinking-orbs';
+import { toast } from 'sonner';
 import './KiviAiAssistant.scss';
 
 // Configure marked options with custom link renderer for safe external links
@@ -131,43 +133,32 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({ msg }) {
                 {msg.sender === 'ai' ? (
                     msg.isStreaming && !msg.text ? (
                         msg.searchStatus ? (
-                            <div className="kivi-searching-card">
-                                <div className="searching-header">
-                                    <span className="searching-radar-icon">
-                                        <span className="radar-ping"></span>
-                                        <span className="radar-core">🔍</span>
-                                    </span>
-                                    <div className="searching-header-info">
-                                        <span className="searching-title">{msg.searchStatus.message || 'Searching web & developer resources...'}</span>
-                                        {msg.searchStatus.query && (
-                                            <span className="searching-query-tag">Query: {msg.searchStatus.query}</span>
-                                        )}
-                                    </div>
-                                </div>
-                                {Array.isArray(msg.searchStatus.sources) && msg.searchStatus.sources.length > 0 && (
-                                    <div className="searching-sources-pills">
-                                        {msg.searchStatus.sources.map((src, idx) => (
-                                            <span key={idx} className="searching-source-pill">
-                                                <span className="source-pill-icon">{src.icon || '🌐'}</span>
-                                                <span className="source-pill-name">{src.name || src}</span>
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-                                {Array.isArray(msg.searchStatus.scannedDomains) && msg.searchStatus.scannedDomains.length > 0 && (
-                                    <div className="searching-scanned-domains">
-                                        <span className="scanned-label">Scanning:</span>
-                                        {msg.searchStatus.scannedDomains.map((dom, dIdx) => (
-                                            <span key={dIdx} className="scanned-domain-tag">{dom}</span>
-                                        ))}
-                                    </div>
-                                )}
+                            <div className="kivi-thinking-inline-row">
+                                <Orb 
+                                    state={msg.searchStatus.status === 'synthesizing' ? 'reasoning' : 'searching'}
+                                    variant={msg.searchStatus.status === 'synthesizing' ? 'twins' : 'lighthouse'}
+                                    size={18}
+                                    className={`thinking-status-orb ${msg.searchStatus.status === 'synthesizing' ? 'synthesizing' : 'searching'}`}
+                                />
+                                <span className="thinking-title">
+                                    {msg.searchStatus.status === 'synthesizing' ? 'Planning...' : 'Searching...'}
+                                </span>
                             </div>
                         ) : (
-                            <div className="typing-dots-wrapper">
-                                <span className="dot"></span>
-                                <span className="dot"></span>
-                                <span className="dot"></span>
+                            <div className="kivi-thinking-inline-row">
+                                <Orb 
+                                    state={msg.actionPreset === 'shorten' ? 'compacting' : 'reasoning'}
+                                    variant={msg.actionPreset === 'shorten' ? 'squeeze' : 'twins'}
+                                    size={18}
+                                    className={`thinking-status-orb ${msg.actionPreset === 'shorten' ? 'compacting' : 'reasoning'}`}
+                                />
+                                <span className="thinking-title">
+                                    {msg.actionPreset === 'shorten' 
+                                        ? 'Compacting...' 
+                                        : (msg.actionPreset === 'enhance' || msg.actionPreset === 'make_ats')
+                                        ? 'Planning...'
+                                        : 'Thinking...'}
+                                </span>
                             </div>
                         )
                     ) : (
@@ -175,14 +166,19 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({ msg }) {
                             {msg.isStreaming && msg.searchStatus && (
                                 <MultiToolStatusStrip
                                     activeTools={msg.searchStatus.tools || []}
-                                    statusMessage={msg.searchStatus.message}
+                                    statusMessage={msg.searchStatus.status === 'synthesizing' ? 'Planning...' : 'Searching...'}
                                 />
                             )}
                             <div
                                 className="msg-markdown-content"
                                 dangerouslySetInnerHTML={{ __html: renderedHtml }}
                             />
-                            {msg.isStreaming && <span className="streaming-cursor" />}
+                            {msg.isStreaming && (
+                                <div className="kivi-streaming-footer-pill">
+                                    <Orb state="working" variant="gyro" size={13} className="streaming-footer-orb" />
+                                    <span>Thinking...</span>
+                                </div>
+                            )}
 
                             {/* Verified Resources & Links Panel */}
                             {Array.isArray(msg.resources) && msg.resources.length > 0 && (
@@ -475,8 +471,7 @@ export function KiviAiAssistant() {
             a.click();
             URL.revokeObjectURL(url);
 
-            setSaveToast(true);
-            setTimeout(() => setSaveToast(false), 3000);
+            toast('chat history exported.');
         } catch (err) {
             console.error('Failed to export chat history:', err);
         }
@@ -735,6 +730,7 @@ export function KiviAiAssistant() {
             sender: 'ai',
             text: '',
             isStreaming: true,
+            actionPreset: actionPreset || null,
             suggestedSnippet: null,
             targetText: activeSnippet || null,
             resources: []
@@ -981,6 +977,27 @@ export function KiviAiAssistant() {
         height: isMaximized ? 'min(850px, calc(100vh - 120px))' : `${drawerSize.height}px`
     };
 
+    // Dynamic Header Orb state based on what KIVI is currently doing
+    const activeHeaderOrb = useMemo(() => {
+        if (!chatLoading) {
+            return { state: 'idle', variant: 'blink', label: '' };
+        }
+        const lastMsg = chatMessages[chatMessages.length - 1];
+        if (lastMsg?.searchStatus?.status === 'searching') {
+            return { state: 'searching', variant: 'lighthouse', label: 'Searching...' };
+        }
+        if (lastMsg?.searchStatus?.status === 'synthesizing' || lastMsg?.actionPreset === 'enhance' || lastMsg?.actionPreset === 'make_ats') {
+            return { state: 'reasoning', variant: 'twins', label: 'Planning...' };
+        }
+        if (lastMsg?.actionPreset === 'shorten') {
+            return { state: 'compacting', variant: 'squeeze', label: 'Compacting...' };
+        }
+        if (lastMsg?.isStreaming && lastMsg?.text) {
+            return { state: 'working', variant: 'gyro', label: 'Thinking...' };
+        }
+        return { state: 'reasoning', variant: 'twins', label: 'Thinking...' };
+    }, [chatLoading, chatMessages]);
+
     return (
         <>
             {/* Floating Trigger Button */}
@@ -1046,7 +1063,15 @@ export function KiviAiAssistant() {
                                     {isAiBlocked ? (
                                         <span style={{ color: '#f87171', fontWeight: 800 }}>❌ Disabled by Admin</span>
                                     ) : (
-                                        <>● Online · Real-Time Streaming</>
+                                        <span className={`header-status-pill ${activeHeaderOrb.state}`}>
+                                            <Orb 
+                                                state={activeHeaderOrb.state} 
+                                                variant={activeHeaderOrb.variant} 
+                                                size={14} 
+                                                className={`header-orb ${activeHeaderOrb.state}`} 
+                                            />
+                                            {activeHeaderOrb.label ? <span>{activeHeaderOrb.label}</span> : null}
+                                        </span>
                                     )}
                                 </span>
                             </div>
@@ -1095,20 +1120,6 @@ export function KiviAiAssistant() {
                             </button>
                         </div>
                     </div>
-
-                    {saveToast && (
-                        <div style={{
-                            background: 'rgba(16, 185, 129, 0.15)',
-                            borderBottom: '1px solid rgba(16, 185, 129, 0.35)',
-                            color: '#34d399',
-                            padding: '0.45rem 0.8rem',
-                            fontSize: '0.78rem',
-                            fontWeight: 600,
-                            textAlign: 'center'
-                        }}>
-                            💾 Chat saved to history & downloaded as Markdown!
-                        </div>
-                    )}
 
                     {isAiBlocked && (
                         <div style={{
@@ -1207,7 +1218,7 @@ export function KiviAiAssistant() {
                             title="Send prompt"
                         >
                             {chatLoading ? (
-                                <span className="send-spinner"></span>
+                                <Orb state="working" variant="default" size={18} className="send-button-orb" />
                             ) : (
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                     <line x1="22" y1="2" x2="11" y2="13"></line>

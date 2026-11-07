@@ -1196,8 +1196,8 @@
 .ai-engine-pill {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.35rem 0.85rem;
+  justify-content: center;
+  padding: 0.35rem 0.55rem;
   background-color: rgba(110, 142, 104, 0.1);
   border: 1px solid rgba(110, 142, 104, 0.25);
   border-radius: 4px;
@@ -1206,6 +1206,13 @@
   font-size: 0.72rem;
   font-weight: 600;
   white-space: nowrap;
+
+  .ai-engine-status-orb {
+    color: var(--success-color, #10b981);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
 
   .pulse-dot {
     width: 6px;

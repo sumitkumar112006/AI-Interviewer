@@ -1,10 +1,11 @@
 import React from 'react';
+import { Orb } from '@yogesharc/thinking-orbs';
 import { ToolBadge } from './ToolBadge';
 import './ToolSymbols.scss';
 
 /**
  * Multi-Tool Status Strip Component
- * Displays real-time parallel execution of multiple AI assistant tools.
+ * Displays real-time parallel execution of multiple AI assistant tools with animated Thinking Orbs.
  * 
  * @param {Object} props
  * @param {Array<{tool: string, query?: string, label?: string}>} props.activeTools - Currently running tools
@@ -18,11 +19,20 @@ export function MultiToolStatusStrip({
 }) {
     if (!activeTools || activeTools.length === 0) return null;
 
+    const hasSearch = activeTools.some(t => t.tool === 'web' || t.tool === 'docs' || t.tool === 'github');
+    const orbState = hasSearch ? 'searching' : 'reasoning';
+    const orbVariant = hasSearch ? 'lighthouse' : 'twins';
+
     return (
         <div className={`kivi-multitool-status-strip ${className}`} role="status">
             <div className="strip-header">
-                <span className="live-pulse-dot" />
-                <span>{statusMessage || 'Executing Parallel AI Tools'}</span>
+                <Orb 
+                    state={orbState} 
+                    variant={orbVariant} 
+                    size={16} 
+                    className={`strip-header-orb ${orbState}`} 
+                />
+                <span>{statusMessage || (hasSearch ? 'Searching...' : 'Planning...')}</span>
             </div>
 
             <div className="strip-tools-list">

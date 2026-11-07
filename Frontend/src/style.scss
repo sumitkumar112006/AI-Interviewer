@@ -63,4 +63,50 @@ body,
     }
 }
 
+/* ── Minimal Bottom-Right Plain Text Toasts ───────────────────────── */
+[data-sonner-toaster] {
+    position: fixed !important;
+    right: 28px !important;
+    bottom: 28px !important;
+    z-index: 99999 !important;
+    pointer-events: none;
+}
+
+[data-sonner-toast] {
+    pointer-events: auto;
+    background: #141715 !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    color: #e2dfd7 !important;
+    font-family: var(--font-mono, 'JetBrains Mono', monospace) !important;
+    font-size: 0.76rem !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.015em !important;
+    border-radius: 4px !important;
+    padding: 7px 12px !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 320px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+
+    [data-content] {
+        display: inline-block !important;
+    }
+
+    [data-title],
+    [data-description] {
+        color: #e2dfd7 !important;
+        font-family: inherit !important;
+        font-size: inherit !important;
+        font-weight: inherit !important;
+        line-height: 1.3 !important;
+    }
+
+    /* Zero emojis, zero icons */
+    [data-icon] {
+        display: none !important;
+    }
+}
+
 

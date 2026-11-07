@@ -14,6 +14,7 @@ import ShimmerLoading from '../../Shared/components/ShimmerLoading'
 import ResumeEditor from '../components/ResumeEditor'
 import { exportElementToPdf } from '../utils/exportToPdf'
 import { sanitizeResumeHtml, htmlToPlainText, parseAndSanitizeSnippet } from '../utils/sanitizeResumeHtml'
+import { toast } from 'sonner'
 import '../style/coverletter.scss'
 
 const CoverLetter = () => {
@@ -112,8 +113,11 @@ const CoverLetter = () => {
             setCoverLetter(res.coverLetter)
             setHtmlContent(sanitizeResumeHtml(res.coverLetter.generatedContent))
             setIsDirty(false)
+            toast('cover letter saved.')
         } catch (err) {
-            setError(err?.response?.data?.message || err?.message || 'Failed to save.')
+            const errMsg = err?.response?.data?.message || err?.message || 'failed to save.'
+            setError(errMsg)
+            toast(errMsg)
         } finally {
             setSaveLoading(false)
         }

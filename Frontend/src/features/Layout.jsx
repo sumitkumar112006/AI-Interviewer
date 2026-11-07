@@ -10,6 +10,7 @@ import Footer from "./Footer/components/Footer";
 import UserCreditsPopup from "../components/userCreditsPopup";
 import ConfirmModal from "./Shared/components/ConfirmModal";
 import { useSidebarReports } from "./Interview/hooks/useSidebarReports";
+import { Orb } from "@yogesharc/thinking-orbs";
 import "./layout.scss";
 
 
@@ -835,8 +836,7 @@ const Layout = ({ children }) => {
 
               {/* AI Connected Pill */}
               <div className="ai-engine-pill" title={`Active AI Model: ${aiModelInfo.label} (Fallback: ${aiModelInfo.fallbackModel || 'OpenRouter'})`}>
-                <span className="pulse-dot"></span>
-                <span className="ai-engine-name">{aiModelInfo.label}</span>
+                <Orb state="idle" variant="blink" size={16} className="ai-engine-status-orb" />
               </div>
 
               {/* Remaining Attempts Pills */}

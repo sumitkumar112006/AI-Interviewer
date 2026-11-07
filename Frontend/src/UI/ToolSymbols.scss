@@ -171,6 +171,17 @@
         text-transform: uppercase;
         letter-spacing: 0.05em;
         color: #94a3b8;
+
+        .strip-header-orb {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            
+            &.searching { color: #38bdf8; }
+            &.reasoning { color: #ef7b5d; }
+            &.working { color: #f59e0b; }
+        }
     }
 
     .strip-tools-list {

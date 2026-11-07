@@ -11,6 +11,7 @@ import { exportElementToPdf } from '../utils/exportToPdf'
 import { sanitizeResumeHtml, parseAndSanitizeSnippet, isResumeEmpty, areHtmlContentsEqual } from '../utils/sanitizeResumeHtml'
 import ConfirmModal from '../../Shared/components/ConfirmModal'
 import UnsavedChangesModal from '../components/UnsavedChangesModal'
+import { toast } from 'sonner'
 import { 
     parseSkillsFromHtml, 
     mergeSkills,
@@ -52,7 +53,6 @@ const Resume = () => {
     const [isDirty, setIsDirty]       = useState(false)
     const [saveLoading, setSaveLoading] = useState(false)
     const [printLoading, setPrintLoading] = useState(false)
-    const [saveNotification, setSaveNotification] = useState(null) // { message: string, type: 'manual' | 'auto' }
     const [showEmptyModal, setShowEmptyModal] = useState(false)
 
     // ATS Score & Side Window state
@@ -492,23 +492,16 @@ const Resume = () => {
             setDirtyState(false)
             if (fetchUsage) fetchUsage()
 
-            setSaveNotification({
-                message: isAuto
-                    ? 'Auto-saved: Your latest resume changes and skills have been saved to the database.'
-                    : 'Saved: Your resume changes and skills have been saved to the database successfully!',
-                type: isAuto ? 'auto' : 'manual'
-            })
+            toast(isAuto ? 'resume auto-saved.' : 'resume updates saved.')
 
             // Automatically recalculate ATS score for latest saved edits
             triggerAtsRecalculation(html)
-
-            setTimeout(() => {
-                setSaveNotification(null)
-            }, 4500)
             return true
         } catch (err) {
             if (!isAuto) {
-                setError(err?.response?.data?.message || err?.message || 'Failed to save resume.')
+                const errMsg = err?.response?.data?.message || err?.message || 'failed to save resume.'
+                setError(errMsg)
+                toast(errMsg)
             } else {
                 console.warn('[Auto-Save] Error saving draft:', err.message)
             }
@@ -1052,22 +1045,6 @@ const Resume = () => {
                     )}
                 </main>
             </div>
-
-            {/* ── Floating Save & Auto-Save Notification Toast ───────── */}
-            {saveNotification && (
-                <div className={`rp-save-toast ${saveNotification.type}`} role="status" aria-live="polite">
-                    <span className="toast-icon">{saveNotification.type === 'auto' ? '💾' : '✅'}</span>
-                    <span className="toast-text">{saveNotification.message}</span>
-                    <button
-                        type="button"
-                        className="toast-close-btn"
-                        onClick={() => setSaveNotification(null)}
-                        aria-label="Dismiss notification"
-                    >
-                        ✕
-                    </button>
-                </div>
-            )}
 
             {/* ── Empty Resume Validation Popup Modal ───────── */}
             <ConfirmModal
