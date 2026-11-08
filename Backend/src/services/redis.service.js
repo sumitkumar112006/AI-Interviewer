@@ -1,5 +1,6 @@
 const { getRedisClient } = require('../config/redis');
 const { recordCacheAccess } = require('../telemetry/metrics');
+const { recordRedisCommand } = require('../telemetry/redisMonitor');
 
 function extractCacheNamespace(key = '') {
     if (typeof key !== 'string') return 'default';
@@ -68,6 +69,7 @@ async function setOtpInRedis(email, otp, ttlSeconds = 300) {
     const client = getClientSafely();
     if (client) {
         try {
+            recordRedisCommand('SET', 'auth:otp');
             await client.set(key, cleanOtp, 'EX', ttlSeconds);
         } catch (err) {
             console.error('Redis setOtp fallback error:', err.message);
@@ -85,6 +87,7 @@ async function getOtpFromRedis(email) {
 
     if (client) {
         try {
+            recordRedisCommand('GET', 'auth:otp');
             const redisVal = await client.get(key);
             if (redisVal) return redisVal;
         } catch (err) {
@@ -105,6 +108,7 @@ async function deleteOtpFromRedis(email) {
     const client = getClientSafely();
     if (client) {
         try {
+            recordRedisCommand('DEL', 'auth:otp');
             await client.del(key);
         } catch (err) {
             console.error('Redis deleteOtp fallback error:', err.message);
@@ -125,6 +129,7 @@ async function blacklistTokenInRedis(token, ttlSeconds = 86400) {
     const client = getClientSafely();
     if (client) {
         try {
+            recordRedisCommand('SET', 'auth:blacklist');
             await client.set(key, '1', 'EX', ttlSeconds);
         } catch (err) {
             console.error('Redis blacklistToken fallback error:', err.message);
@@ -142,6 +147,7 @@ async function isTokenBlacklistedInRedis(token) {
 
     if (client) {
         try {
+            recordRedisCommand('EXISTS', 'auth:blacklist');
             const exists = await client.exists(key);
             return exists === 1;
         } catch (err) {
@@ -167,6 +173,7 @@ async function getCache(key) {
     if (!client) return null;
     const namespace = extractCacheNamespace(key);
     try {
+        recordRedisCommand('GET', `cache:${namespace}`);
         const data = await client.get(key);
         if (data) {
             recordCacheAccess({ namespace, hit: true });
@@ -188,7 +195,9 @@ async function getCache(key) {
 async function setCache(key, data, ttlSeconds = 600) {
     const client = getClientSafely();
     if (!client) return false;
+    const namespace = extractCacheNamespace(key);
     try {
+        recordRedisCommand('SET', `cache:${namespace}`);
         await client.set(key, JSON.stringify(data), 'EX', ttlSeconds);
         return true;
     } catch (err) {
@@ -206,6 +215,7 @@ async function deleteCache(...keys) {
     try {
         const validKeys = keys.filter(Boolean);
         if (validKeys.length > 0) {
+            recordRedisCommand('DEL', 'cache');
             await client.del(...validKeys);
         }
         return true;
@@ -222,8 +232,10 @@ async function deleteCachePattern(pattern) {
     const client = getClientSafely();
     if (!client) return false;
     try {
+        recordRedisCommand('KEYS', 'cache');
         const keys = await client.keys(pattern);
         if (keys && keys.length > 0) {
+            recordRedisCommand('DEL', 'cache');
             await client.del(...keys);
         }
         return true;

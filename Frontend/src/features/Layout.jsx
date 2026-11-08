@@ -340,18 +340,20 @@ const Layout = ({ children }) => {
 
   useEffect(() => {
     let isMounted = true;
+    // Fetch AI model information once on component mount (avoids redundant 5s polling against Upstash Redis)
     const fetchInfo = () => {
       getAiModelInfo().then(data => {
         if (isMounted && data?.label) {
           setAiModelInfo(data);
         }
+      }).catch(() => {
+        // Fallback remains the default state
       });
     };
     fetchInfo();
-    const interval = setInterval(fetchInfo, 5000);
+
     return () => {
       isMounted = false;
-      clearInterval(interval);
     };
   }, []);
 

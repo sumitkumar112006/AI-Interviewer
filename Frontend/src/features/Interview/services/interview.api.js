@@ -76,10 +76,12 @@ export async function getActiveJob(params = {}) {
 export async function pollJobUntilComplete(jobId, onProgress = null, intervalMs = 2500) {
     return new Promise((resolve, reject) => {
         let isPolling = true;
+        let pollCount = 0;
 
         const check = async () => {
             if (!isPolling) return;
             try {
+                pollCount += 1;
                 const jobData = await getJobStatus(jobId);
                 if (onProgress && typeof onProgress === 'function') {
                     onProgress(jobData);
@@ -92,14 +94,18 @@ export async function pollJobUntilComplete(jobId, onProgress = null, intervalMs 
                     isPolling = false;
                     reject(new Error(jobData.error || 'AI generation failed.'));
                 } else {
-                    setTimeout(check, intervalMs);
+                    // Adaptive polling: 1500ms initially, smoothly shifting to 3500ms during long generation
+                    const nextInterval = (jobData.status === 'processing' && pollCount > 2)
+                        ? Math.max(intervalMs, 3500)
+                        : Math.min(intervalMs, 2000);
+                    setTimeout(check, nextInterval);
                 }
             } catch (err) {
                 if (err?.response?.status === 404) {
                     isPolling = false;
                     reject(new Error('Generation job not found.'));
                 } else {
-                    setTimeout(check, intervalMs);
+                    setTimeout(check, Math.max(intervalMs, 3000));
                 }
             }
         };

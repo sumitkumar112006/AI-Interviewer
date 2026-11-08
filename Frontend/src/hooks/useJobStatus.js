@@ -22,6 +22,7 @@ export function useJobStatus(initialJobId = null, options = {}) {
 
     const isMountedRef = useRef(true);
     const timerRef = useRef(null);
+    const pollCountRef = useRef(0);
 
     const checkStatus = useCallback(async (idToPoll) => {
         if (!idToPoll) return;
@@ -42,10 +43,15 @@ export function useJobStatus(initialJobId = null, options = {}) {
                 setError(errMsg);
                 if (onError) onError(new Error(errMsg), data);
             } else {
-                // Schedule next poll
+                // Adaptive polling: 2000ms while pending/early, then 3500ms while actively generating
+                pollCountRef.current += 1;
+                const nextInterval = (data.status === 'processing' && pollCountRef.current > 2)
+                    ? Math.max(pollingInterval, 3500)
+                    : Math.min(pollingInterval, 2000);
+
                 timerRef.current = setTimeout(() => {
                     checkStatus(idToPoll);
-                }, pollingInterval);
+                }, nextInterval);
             }
         } catch (err) {
             if (!isMountedRef.current) return;
@@ -55,10 +61,10 @@ export function useJobStatus(initialJobId = null, options = {}) {
                 setError('Job not found.');
                 if (onError) onError(err);
             } else {
-                // Non-fatal network error, retry
+                // Non-fatal network error, retry with gentle backoff
                 timerRef.current = setTimeout(() => {
                     checkStatus(idToPoll);
-                }, pollingInterval);
+                }, Math.max(pollingInterval, 3000));
             }
         }
     }, [pollingInterval, onSuccess, onError]);
@@ -76,6 +82,7 @@ export function useJobStatus(initialJobId = null, options = {}) {
 
     const trackJob = useCallback((newJobId) => {
         if (timerRef.current) clearTimeout(timerRef.current);
+        pollCountRef.current = 0;
         setActiveJobId(newJobId);
         setStatus('pending');
         setResult(null);
@@ -86,6 +93,7 @@ export function useJobStatus(initialJobId = null, options = {}) {
 
     const reset = useCallback(() => {
         if (timerRef.current) clearTimeout(timerRef.current);
+        pollCountRef.current = 0;
         setActiveJobId(null);
         setStatus('idle');
         setResult(null);

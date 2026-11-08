@@ -476,7 +476,15 @@ function initAiWorker() {
         });
     }, {
         connection: workerConnection,
-        concurrency: 5
+        concurrency: 5,
+        // Conservative BullMQ configuration tuned for Upstash Redis:
+        // 1. drainDelay: 15s wait on drained queue reduces empty-queue BLMOVE polling by 66% while preserving instant wakeup on LPUSH
+        drainDelay: 15,
+        // 2. stalledInterval: 120s (2 min) preserves full crash recovery while reducing watchdog Lua scripts from 2,880/day to 720/day
+        stalledInterval: 120000,
+        // 3. lockDuration: 60s ensures long-running AI generation jobs (20-45s) never trigger false-positive stalled recovery
+        lockDuration: 60000,
+        maxStalledCount: 2
     });
 
     aiWorkerInstance.on('completed', (job) => {

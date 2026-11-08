@@ -632,8 +632,10 @@ async function deleteReportById(req, res, next) {
             })
         }
 
-        await deleteCache(`cache:report:${interviewReportId}:${req.user.id}`);
-        await deleteCache(`cache:reports:user:${req.user.id}`);
+        await deleteCache(
+            `cache:report:${interviewReportId}:${req.user.id}`,
+            `cache:reports:user:${req.user.id}`
+        );
 
         return res.status(200).json({
             message: "Report deleted successfully!",
@@ -730,8 +732,7 @@ async function updateResumeHtmlController(req, res, next) {
 
         // Invalidate report detail cache, user recent reports list cache & RAG chunk cache
         const cacheKey = `cache:report:${interviewReportId}:${userIdStr}`
-        await deleteCache(cacheKey)
-        await deleteCache(`cache:reports:user:${userIdStr}`)
+        await deleteCache(cacheKey, `cache:reports:user:${userIdStr}`)
         await invalidateChunkCache(interviewReportId)
 
         res.status(200).json({
@@ -997,10 +998,9 @@ async function calculateResumeAtsScoreController(req, res, next) {
             updateDoc
         );
 
-        // Invalidate both report detail cache and user recent reports list cache
+        // Invalidate both report detail cache and user recent reports list cache in a single atomic DEL
         const cacheKey = `cache:report:${interviewReportId}:${userIdStr}`;
-        await deleteCache(cacheKey);
-        await deleteCache(`cache:reports:user:${userIdStr}`);
+        await deleteCache(cacheKey, `cache:reports:user:${userIdStr}`);
 
         return res.status(200).json({
             success: true,

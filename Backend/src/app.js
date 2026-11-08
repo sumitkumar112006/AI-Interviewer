@@ -70,10 +70,7 @@ app.use(express.json({
 }));
 app.use(cookieParser());
 
-// Global Rate Limiter
-app.use(globalLimiter);
-
-// Health check routes (for Render & cron-job.org keep-alive)
+// Health check routes (for Render & cron-job.org keep-alive — excluded from Redis rate limiting)
 app.get('/', (req, res) => {
     res.status(200).json({
         status: 'success',
@@ -89,6 +86,9 @@ app.get('/health', (req, res) => {
         timestamp: new Date().toISOString()
     });
 });
+
+// Global Rate Limiter (Protects all application and business API routes)
+app.use(globalLimiter);
 
 // Require all routes
 const { authRouter } = require('./routes/auth.route');

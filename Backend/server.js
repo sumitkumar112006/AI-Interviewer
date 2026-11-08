@@ -7,6 +7,7 @@ const { connectToRedis, closeRedis } = require('./src/config/redis');
 const { initAiWorker, closeAiWorker } = require('./src/jobs/aiWorker');
 const { closeAiQueue } = require('./src/jobs/aiQueue');
 const reconciliationService = require('./src/services/reconciliation.service');
+const { redisMonitor } = require('./src/telemetry/redisMonitor');
 const { setupGracefulShutdown } = require('./src/utils/gracefulShutdown');
 
 const PORT = process.env.PORT || 3000;
@@ -21,6 +22,9 @@ async function startServer() {
 
         // Start payment background jobs (Order expiry & Missed webhook reconciliation)
         reconciliationService.startBackgroundCron();
+
+        // Start zero-overhead in-memory Redis command monitor
+        redisMonitor.startPeriodicLogging();
 
         const server = app.listen(PORT, () => {
             console.log(`Server is running on port ${PORT}`);

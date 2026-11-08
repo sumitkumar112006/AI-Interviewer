@@ -12,10 +12,23 @@ async function authUser(req, res, next) {
         });
     }
 
-    // 1. Check Redis / in-memory store for instant token blacklist lookup (~1ms)
+    // 1. Validate JWT signature and expiration first (zero-cost in-memory crypto check)
+    // Avoids querying Redis for expired, corrupted, or forged tokens
+    let decoded;
+    try {
+        decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (jwtErr) {
+        return res.status(401).json({
+            message: jwtErr.name === 'TokenExpiredError' 
+                ? "Token has expired, please login again" 
+                : "Unauthorized, invalid token"
+        });
+    }
+
+    // 2. Check Redis / in-memory store for instant token revocation/blacklist lookup
     let isBlacklisted = await isTokenBlacklistedInRedis(token);
 
-    // 2. Fallback to MongoDB ONLY if Redis / in-memory store was unavailable (null)
+    // 3. Fallback to MongoDB ONLY if Redis / in-memory store was unavailable (null)
     if (isBlacklisted === null) {
         const mongoBlacklist = await blacklistModel.findOne({ token });
         if (mongoBlacklist) {
@@ -30,8 +43,6 @@ async function authUser(req, res, next) {
     }
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        
         const account = await userModel.findById(decoded.id).select("username email plan role isBlocked customBonusCredits customAiBonusCredits blockedFeatures careerProfile");
 
         if (!account) {

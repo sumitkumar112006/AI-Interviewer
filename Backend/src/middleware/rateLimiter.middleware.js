@@ -1,4 +1,5 @@
 const { getRedisClient } = require('../config/redis');
+const { recordRedisCommand } = require('../telemetry/redisMonitor');
 
 // In-memory store for rate limiting when Redis is offline or disconnected
 const memoryRateLimitStore = new Map();
@@ -45,11 +46,12 @@ function createRateLimiter(options = {}) {
             try {
                 const redis = getRedisClient();
                 if (redis && (redis.status === 'ready' || redis.status === 'connect')) {
+                    recordRedisCommand('INCR', prefix);
                     currentCount = await redis.incr(key);
                     if (currentCount === 1) {
+                        recordRedisCommand('EXPIRE', prefix);
                         await redis.expire(key, windowSeconds);
                     }
-                    ttl = await redis.ttl(key);
                     isRedisWorking = true;
                 }
             } catch (rErr) {
@@ -66,11 +68,27 @@ function createRateLimiter(options = {}) {
             res.setHeader('X-RateLimit-Remaining', Math.max(0, maxRequests - currentCount));
 
             if (currentCount > maxRequests) {
-                res.setHeader('Retry-After', ttl > 0 ? ttl : windowSeconds);
+                // Fetch TTL only on limit breach (429) to set Retry-After, avoiding unnecessary Redis command on happy path
+                if (isRedisWorking) {
+                    try {
+                        const redis = getRedisClient();
+                        recordRedisCommand('TTL', prefix);
+                        ttl = await redis.ttl(key);
+                        if (ttl === -1) {
+                            recordRedisCommand('EXPIRE', prefix);
+                            await redis.expire(key, windowSeconds);
+                            ttl = windowSeconds;
+                        }
+                    } catch {
+                        ttl = windowSeconds;
+                    }
+                }
+                const retrySec = ttl > 0 ? ttl : windowSeconds;
+                res.setHeader('Retry-After', retrySec);
 
                 return res.status(429).json({
                     message,
-                    retryAfterSeconds: ttl > 0 ? ttl : windowSeconds
+                    retryAfterSeconds: retrySec
                 });
             }
 
@@ -129,11 +147,12 @@ function createTieredRateLimiter(options = {}) {
                 try {
                     const redis = getRedisClient();
                     if (redis && (redis.status === 'ready' || redis.status === 'connect')) {
+                        recordRedisCommand('INCR', prefix);
                         currentCount = await redis.incr(key);
                         if (currentCount === 1) {
+                            recordRedisCommand('EXPIRE', prefix);
                             await redis.expire(key, windowSeconds);
                         }
-                        ttl = await redis.ttl(key);
                         isRedisWorking = true;
                     }
                 } catch (rErr) {
@@ -152,14 +171,30 @@ function createTieredRateLimiter(options = {}) {
                 res.setHeader('X-User-Plan', userPlan);
 
                 if (currentCount > maxRequests) {
-                    res.setHeader('Retry-After', ttl > 0 ? ttl : windowSeconds);
+                    // Fetch TTL only on 429 breach
+                    if (isRedisWorking) {
+                        try {
+                            const redis = getRedisClient();
+                            recordRedisCommand('TTL', prefix);
+                            ttl = await redis.ttl(key);
+                            if (ttl === -1) {
+                                recordRedisCommand('EXPIRE', prefix);
+                                await redis.expire(key, windowSeconds);
+                                ttl = windowSeconds;
+                            }
+                        } catch {
+                            ttl = windowSeconds;
+                        }
+                    }
+                    const retrySec = ttl > 0 ? ttl : windowSeconds;
+                    res.setHeader('Retry-After', retrySec);
                     return res.status(429).json({
                         message: `${message} (${userPlan.toUpperCase()} Plan limit: ${maxRequests} per day).`,
                         userPlan,
                         limit: maxRequests,
                         used: currentCount - 1,
                         remaining: 0,
-                        retryAfterSeconds: ttl > 0 ? ttl : windowSeconds
+                        retryAfterSeconds: retrySec
                     });
                 }
 
