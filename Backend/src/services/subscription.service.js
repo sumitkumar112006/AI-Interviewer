@@ -124,11 +124,25 @@ class SubscriptionService {
       }
       await order.save({ session: sess });
 
+      // Finalize coupon redemption if coupon was applied to this order
+      if (order.couponCode) {
+        try {
+          const couponService = require('./coupon.service');
+          await couponService.finalizeCouponRedemption({
+            orderId: order._id,
+            paymentId: payment._id,
+            session: sess
+          });
+        } catch (couponFinalizeErr) {
+          console.warn('[SUBSCRIPTION] Non-fatal coupon finalization warning:', couponFinalizeErr.message);
+        }
+      }
+
       // 4. Cancel any previous ACTIVE or GRACE_PERIOD subscriptions for this user
-      // (Enforces the rule: strictly one active subscription per user)
+      // (Enforces the rule: strictly one active subscription per user, handling legacy case inconsistencies)
       const findActiveSubsQ = Subscription.find({
         userId: order.userId,
-        status: { $in: ['ACTIVE', 'GRACE_PERIOD'] }
+        status: { $in: ['ACTIVE', 'active', 'GRACE_PERIOD'] }
       });
       if (sess) findActiveSubsQ.session(sess);
       const previousActiveSubs = await findActiveSubsQ;
@@ -346,7 +360,7 @@ class SubscriptionService {
   async getUserSubscriptionAndUsage(userId) {
     const activeSub = await Subscription.findOne({
       userId,
-      status: 'ACTIVE'
+      status: { $in: ['ACTIVE', 'active', 'GRACE_PERIOD'] }
     }).populate('planId');
 
     const user = await userModel.findById(userId).select('plan customBonusCredits customAiBonusCredits generationsUsed generationsResetAt');

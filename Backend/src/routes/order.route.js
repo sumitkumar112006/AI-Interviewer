@@ -12,6 +12,11 @@ const orderCreationLimiter = createRateLimiter({
   message: 'Too many order requests. Please wait a minute before creating a new order.'
 });
 
+// POST /api/orders/validate-coupon - Validate a coupon code before payment
+router.post('/validate-coupon', authUser, (req, res, next) => {
+  orderController.validateCoupon(req, res, next);
+});
+
 // POST /api/orders - Create idempotent payment order (Auth + Rate Limited)
 router.post('/', authUser, orderCreationLimiter, (req, res, next) => {
   orderController.createOrder(req, res, next);

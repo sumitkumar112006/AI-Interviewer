@@ -6,6 +6,7 @@ import PageLoading from '../../Shared/components/PageLoading';
 import { Link, useNavigate } from 'react-router-dom';
 import { LogOut, User, Briefcase, Sparkles, Check, Trash2, Plus, AlertCircle, Edit3, X, HelpCircle } from 'lucide-react';
 import { InvoicesTable } from '../../Subscription/components/InvoicesTable';
+import { ActiveSessionsSection } from '../components/ActiveSessionsSection';
 import '../style/profile.scss';
 
 // Helper functions
@@ -588,6 +589,9 @@ const Profile = () => {
 
             {/* Invoices & Billing History Section */}
             <InvoicesTable />
+
+            {/* Active Sessions & Devices Security Section */}
+            <ActiveSessionsSection onSessionRevoked={handleLogout} />
 
             {/* Help & Support Hub Section */}
             <div className="profile-support-section">

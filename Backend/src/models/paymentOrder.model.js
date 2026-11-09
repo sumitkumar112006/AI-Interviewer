@@ -32,6 +32,25 @@ const paymentOrderSchema = new Schema({
     required: true, 
     min: 1 
   }, // minor currency units (paise, e.g., 19900 = ₹199.00, 34900 = ₹349.00)
+  originalAmount: {
+    type: Number,
+    default: null
+  },
+  discountAmount: {
+    type: Number,
+    default: 0
+  },
+  couponCode: {
+    type: String,
+    uppercase: true,
+    trim: true,
+    default: null
+  },
+  couponId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Coupon',
+    default: null
+  },
   currency: { 
     type: String, 
     required: true, 

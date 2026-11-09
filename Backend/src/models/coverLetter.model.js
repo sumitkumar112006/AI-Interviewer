@@ -9,6 +9,12 @@ const coverLetterSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "InterviewReports"
     },
+    organization: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Organization",
+        default: null,
+        index: true
+    },
     resume: {
         type: String,
         required: true
@@ -35,5 +41,9 @@ const coverLetterSchema = new mongoose.Schema({
 }, {
     timestamps: true
 });
+
+coverLetterSchema.index({ user: 1, createdAt: -1 });
+coverLetterSchema.index({ organization: 1, createdAt: -1 });
+
 const coverLetterModel = mongoose.model("CoverLetters", coverLetterSchema);
 module.exports = coverLetterModel;

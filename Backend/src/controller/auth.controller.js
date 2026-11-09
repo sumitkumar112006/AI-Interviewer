@@ -13,6 +13,17 @@ const {
     blacklistTokenInRedis,
     isTokenBlacklistedInRedis
 } = require("../services/redis.service");
+const {
+    checkAccountLockout,
+    recordFailedLoginAttempt,
+    recordSuccessfulLogin,
+    checkOtpLockout,
+    recordFailedOtpAttempt,
+    recordSuccessfulOtp
+} = require("../services/adminSecurity.service");
+const { recordUserActivity } = require("../services/userActivity.service");
+const appSettingsService = require("../services/appSettings.service");
+const { createSession, revokeSession, isSessionRevoked } = require("../services/session.service");
 
 const cookieOptions = {
     httpOnly: true,
@@ -20,6 +31,41 @@ const cookieOptions = {
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     maxAge: 24 * 60 * 60 * 1000
 };
+
+/**
+ * Helper to issue JWT with embedded session ID and persist session record
+ */
+async function issueUserTokenAndSession(user, req, res) {
+    const sessionId = `sess_${crypto.randomUUID()}`;
+    const token = JWT.sign(
+        {
+            id: user._id,
+            username: user.username,
+            plan: user.plan || 'free',
+            role: user.role || 'user',
+            isAdmin: ['admin', 'super_admin'].includes(user.role),
+            sid: sessionId
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: "1d" }
+    );
+
+    res.cookie("token", token, cookieOptions);
+
+    try {
+        await createSession({
+            userId: user._id,
+            req,
+            token,
+            sessionId,
+            expiresInMs: 24 * 60 * 60 * 1000
+        });
+    } catch (sessionErr) {
+        console.error('Session creation error in auth controller:', sessionErr.message);
+    }
+
+    return token;
+}
 
 function handleAuthControllerError(res, err) {
     if (!err) {
@@ -63,6 +109,15 @@ function handleAuthControllerError(res, err) {
 async function registerUserController(req, res) {
     const { username, email, password } = req.body;
     try {
+        // Enforce global platform registration gate
+        const appSettings = await appSettingsService.getAppSettings();
+        if (appSettings?.newRegistrationEnabled === false) {
+            return res.status(403).json({
+                success: false,
+                message: "New user registrations are currently disabled by system administrators."
+            });
+        }
+
         if (!username || !email || !password) {
             return res.status(400).json({
                 message: "Provide all details carefully"
@@ -152,8 +207,9 @@ async function registerUserController(req, res) {
             { userId: user._id },
             {
                 plan: 'free',
-                status: 'active',
+                status: 'ACTIVE',
                 startedAt: now,
+                currentPeriodStart: now,
                 currentPeriodEnd: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
             },
             { upsert: true, returnDocument: 'after' }
@@ -201,6 +257,17 @@ async function verifyOtpController(req, res) {
         const normalizedEmail = email.trim().toLowerCase();
         const trimmedOtp = String(otp).trim();
 
+        // Check if OTP verification is temporarily locked out
+        const otpLock = await checkOtpLockout(normalizedEmail);
+        if (otpLock.isLocked) {
+            const minutesLeft = Math.ceil(otpLock.remainingSeconds / 60);
+            return res.status(423).json({
+                message: `OTP verification is temporarily locked due to too many failed attempts. Please try again in ${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}.`,
+                locked: true,
+                retryAfterSeconds: otpLock.remainingSeconds
+            });
+        }
+
         // Check MongoDB for active OTP
         let isValidOtp = false;
         const validOtpRecord = await otpModel.findOne({ email: normalizedEmail, otp: trimmedOtp });
@@ -213,10 +280,21 @@ async function verifyOtpController(req, res) {
         }
 
         if (!isValidOtp) {
+            const failResult = await recordFailedOtpAttempt(normalizedEmail, req.ip, req);
+            if (failResult.isLocked) {
+                return res.status(423).json({
+                    message: "Account OTP verification has been temporarily locked for 15 minutes due to multiple failed attempts.",
+                    locked: true,
+                    retryAfterSeconds: failResult.lockoutSeconds
+                });
+            }
             return res.status(400).json({
                 message: "Invalid or expired verification OTP code"
             });
         }
+
+        // Clear failed OTP attempts upon success
+        await recordSuccessfulOtp(normalizedEmail);
 
         const user = await userModel.findOneAndUpdate(
             { email: normalizedEmail },
@@ -233,14 +311,28 @@ async function verifyOtpController(req, res) {
         // Delete used OTP from DB
         await otpModel.deleteMany({ email: normalizedEmail });
 
-        // Generate JWT token & login automatically
-        const token = JWT.sign(
-            { id: user._id, username: user.username, plan: user.plan || 'free', role: user.role || 'user', isAdmin: ['admin', 'super_admin'].includes(user.role) },
-            process.env.JWT_SECRET,
-            { expiresIn: "1d" }
-        );
+        // Generate JWT token & track active session
+        const token = await issueUserTokenAndSession(user, req, res);
 
-        res.cookie("token", token, cookieOptions);
+        // Record immediate authenticated activity
+        recordUserActivity(user._id, { force: true }).catch(() => {});
+
+        if (['admin', 'super_admin'].includes(user.role)) {
+            try {
+                const { recordAdminAudit } = require('../services/auditLog.service');
+                recordAdminAudit({
+                    req: { ...req, user: { _id: user._id, role: user.role } },
+                    action: 'ADMIN_LOGIN',
+                    category: 'AUTH',
+                    severity: 'INFO',
+                    targetId: user._id,
+                    targetType: 'AdminAccount',
+                    targetIdentifier: `${user.username} (${user.email})`,
+                    after: { role: user.role, email: user.email },
+                    changeSummary: `Administrator "${user.username}" logged in.`
+                });
+            } catch (_) {}
+        }
 
         return res.status(200).json({
             message: "Email verified and logged in successfully!",
@@ -326,10 +418,29 @@ async function loginController(req, res) {
 
         const normalizedEmail = email.trim().toLowerCase();
 
+        // Check if account is temporarily locked out from brute-force attempts
+        const lockoutStatus = await checkAccountLockout(normalizedEmail);
+        if (lockoutStatus.isLocked) {
+            const minutesLeft = Math.ceil(lockoutStatus.remainingSeconds / 60);
+            return res.status(423).json({
+                message: `Account is temporarily locked due to consecutive failed login attempts. Please try again in ${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}.`,
+                locked: true,
+                retryAfterSeconds: lockoutStatus.remainingSeconds
+            });
+        }
+
         // Check userModel for user login
         const user = await userModel.findOne({ email: normalizedEmail });
 
-        if (!user) {
+        if (!user || user.isDeleted) {
+            const failResult = await recordFailedLoginAttempt(normalizedEmail, req.ip, req);
+            if (failResult.isLocked) {
+                return res.status(423).json({
+                    message: "Account has been temporarily locked for 15 minutes due to multiple failed login attempts.",
+                    locked: true,
+                    retryAfterSeconds: failResult.lockoutSeconds
+                });
+            }
             return res.status(400).json({
                 message: "Invalid email or password"
             });
@@ -338,10 +449,21 @@ async function loginController(req, res) {
         const isPasswordValid = await bcrypt.compare(password, user.password);
 
         if (!isPasswordValid) {
+            const failResult = await recordFailedLoginAttempt(normalizedEmail, req.ip, req);
+            if (failResult.isLocked) {
+                return res.status(423).json({
+                    message: "Account has been temporarily locked for 15 minutes due to multiple failed login attempts.",
+                    locked: true,
+                    retryAfterSeconds: failResult.lockoutSeconds
+                });
+            }
             return res.status(400).json({
                 message: "Please enter a valid password"
             });
         }
+
+        // Authentication succeeded: clear failed attempt tracker
+        await recordSuccessfulLogin(normalizedEmail);
 
         if (!user.isVerified) {
             // Send a fresh OTP to the unverified user
@@ -371,13 +493,28 @@ async function loginController(req, res) {
             return res.status(403).json(responsePayload);
         }
 
-        const token = JWT.sign(
-            { id: user._id, username: user.username, plan: user.plan || 'free', role: user.role || 'user', isAdmin: ['admin', 'super_admin'].includes(user.role) },
-            process.env.JWT_SECRET,
-            { expiresIn: "1d" }
-        );
+        // Generate JWT token & track active session
+        const token = await issueUserTokenAndSession(user, req, res);
 
-        res.cookie("token", token, cookieOptions);
+        // Record immediate authenticated activity
+        recordUserActivity(user._id, { force: true }).catch(() => {});
+
+        if (['admin', 'super_admin'].includes(user.role)) {
+            try {
+                const { recordAdminAudit } = require('../services/auditLog.service');
+                recordAdminAudit({
+                    req: { ...req, user: { _id: user._id, role: user.role } },
+                    action: 'ADMIN_LOGIN',
+                    category: 'AUTH',
+                    severity: 'INFO',
+                    targetId: user._id,
+                    targetType: 'AdminAccount',
+                    targetIdentifier: `${user.username} (${user.email})`,
+                    after: { role: user.role, email: user.email },
+                    changeSummary: `Administrator "${user.username}" logged in.`
+                });
+            } catch (_) {}
+        }
 
         return res.status(200).json({
             message: "User logged in successfully",
@@ -412,6 +549,46 @@ async function logoutController(req, res) {
     // Blacklist token in Redis (24hr TTL) & DB
     await blacklistTokenInRedis(token, 86400);
     await blacklistModel.create({ token });
+
+    let decoded = null;
+    try {
+        decoded = JWT.verify(token, process.env.JWT_SECRET);
+    } catch (_) {
+        decoded = JWT.decode(token);
+    }
+
+    if (decoded?.sid) {
+        try {
+            await revokeSession(decoded.sid, {
+                actorId: decoded.id,
+                actorRole: decoded.role,
+                isSelfRevoke: true,
+                reason: 'User logout',
+                req
+            });
+        } catch (err) {
+            console.error('Session revoke error on logout:', err.message);
+        }
+    }
+
+    try {
+        if (decoded?.id) {
+            const adminUser = await userModel.findById(decoded.id).select("username email role");
+            if (adminUser && ['admin', 'super_admin'].includes(adminUser.role)) {
+                const { recordAdminAudit } = require('../services/auditLog.service');
+                recordAdminAudit({
+                    req: { ...req, user: { _id: adminUser._id, role: adminUser.role } },
+                    action: 'ADMIN_LOGOUT',
+                    category: 'AUTH',
+                    severity: 'INFO',
+                    targetId: adminUser._id,
+                    targetType: 'AdminAccount',
+                    targetIdentifier: `${adminUser.username} (${adminUser.email})`,
+                    changeSummary: `Administrator "${adminUser.username}" logged out.`
+                });
+            }
+        }
+    } catch (_) {}
 
     res.clearCookie("token", cookieOptions);
 
@@ -452,6 +629,16 @@ async function getMeController(req, res) {
 
     try {
         const decoded = JWT.verify(token, process.env.JWT_SECRET);
+
+        // Check if session has been explicitly revoked
+        const sessionRevoked = await isSessionRevoked(decoded.sid, decoded.id, decoded.iat);
+        if (sessionRevoked) {
+            res.clearCookie("token", cookieOptions);
+            return res.status(200).json({
+                message: "Session revoked",
+                user: null
+            });
+        }
         
         let account = null;
         let isAdmin = false;
@@ -749,6 +936,15 @@ async function googleSupabaseAuthController(req, res) {
                 await user.save();
             }
         } else {
+            // Check if new user registrations are globally disabled
+            const appSettings = await appSettingsService.getAppSettings();
+            if (appSettings?.newRegistrationEnabled === false) {
+                return res.status(403).json({
+                    success: false,
+                    message: "New user registrations are currently disabled by system administrators."
+                });
+            }
+
             // New user registration via Google OAuth
             // Generate a clean, unique username
             const rawName = (sbUser.user_metadata?.full_name || sbUser.user_metadata?.name || normalizedEmail.split('@')[0])
@@ -781,20 +977,28 @@ async function googleSupabaseAuthController(req, res) {
             });
         }
 
-        // Generate application JWT
-        const token = JWT.sign(
-            {
-                id: user._id,
-                username: user.username,
-                plan: user.plan || 'free',
-                role: user.role || 'user',
-                isAdmin: ['admin', 'super_admin'].includes(user.role)
-            },
-            process.env.JWT_SECRET,
-            { expiresIn: "1d" }
-        );
+        // Generate application JWT & track active session
+        const token = await issueUserTokenAndSession(user, req, res);
 
-        res.cookie("token", token, cookieOptions);
+        // Record immediate authenticated activity
+        recordUserActivity(user._id, { force: true }).catch(() => {});
+
+        if (['admin', 'super_admin'].includes(user.role)) {
+            try {
+                const { recordAdminAudit } = require('../services/auditLog.service');
+                recordAdminAudit({
+                    req: { ...req, user: { _id: user._id, role: user.role } },
+                    action: 'ADMIN_LOGIN',
+                    category: 'AUTH',
+                    severity: 'INFO',
+                    targetId: user._id,
+                    targetType: 'AdminAccount',
+                    targetIdentifier: `${user.username} (${user.email})`,
+                    after: { role: user.role, email: user.email },
+                    changeSummary: `Administrator "${user.username}" logged in.`
+                });
+            } catch (_) {}
+        }
 
         return res.status(200).json({
             message: "Authenticated successfully with Google",
@@ -955,12 +1159,16 @@ async function updateProfileController(req, res) {
                 username: updatedUser.username,
                 plan: updatedUser.plan || 'free',
                 role: updatedUser.role || (isAdmin ? 'admin' : 'user'),
-                isAdmin: isAdmin || ['admin', 'super_admin'].includes(updatedUser.role)
+                isAdmin: isAdmin || ['admin', 'super_admin'].includes(updatedUser.role),
+                ...(req.sessionId ? { sid: req.sessionId } : {})
             },
             process.env.JWT_SECRET,
             { expiresIn: "1d" }
         );
         res.cookie("token", token, cookieOptions);
+
+        // Record immediate authenticated activity on profile update
+        recordUserActivity(updatedUser._id, { force: true }).catch(() => {});
 
         return res.status(200).json({
             message: "Profile updated successfully.",

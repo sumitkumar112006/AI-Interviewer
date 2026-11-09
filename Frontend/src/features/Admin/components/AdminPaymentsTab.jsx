@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { getAdminPayments } from '../services/admin.api';
 import { CreditCard, CheckCircle2, AlertCircle, RotateCcw, Filter, Search } from 'lucide-react';
 import AdminPagination from './AdminPagination';
+import { AdminExportButton } from './AdminExportButton';
 
 export const AdminPaymentsTab = () => {
   const [payments, setPayments] = useState([]);
@@ -93,8 +94,15 @@ export const AdminPaymentsTab = () => {
             <option value="PARTIALLY_REFUNDED">Partially Refunded</option>
           </select>
         </div>
-        <div className="toolbar-counter">
-          Showing <strong>{payments.length}</strong> of <strong>{pagination.total}</strong> records
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <AdminExportButton
+            moduleName="payments"
+            filters={{ status: statusFilter }}
+            label="Export Payments"
+          />
+          <div className="toolbar-counter">
+            Showing <strong>{payments.length}</strong> of <strong>{pagination.total}</strong> records
+          </div>
         </div>
       </div>
 
@@ -125,7 +133,14 @@ export const AdminPaymentsTab = () => {
                     <div className="cell-sub">{p.gateway || 'Razorpay'} {p.gatewayOrderId ? `• ${p.gatewayOrderId}` : ''}</div>
                   </td>
                   <td>
-                    <div className="user-name">{p.userId?.username || 'Customer'}</div>
+                    <div className="user-name" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span>{p.userId?.username || 'Archived Customer'}</span>
+                      {p.userId?.isDeleted && (
+                        <span className="mono-badge" style={{ fontSize: '0.65rem', padding: '0.05rem 0.35rem', color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.3)', background: 'rgba(239, 68, 68, 0.08)' }}>
+                          Archived
+                        </span>
+                      )}
+                    </div>
                     <div className="user-email">{p.userId?.email || '—'}</div>
                   </td>
                   <td>

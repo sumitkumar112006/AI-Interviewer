@@ -167,6 +167,12 @@ const interviewReportSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "users"
     },
+    organization: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Organization",
+        default: null,
+        index: true
+    },
     generatedResumeHtml: {
         type: String,
         default: ""
@@ -212,7 +218,10 @@ const interviewReportSchema = new mongoose.Schema({
     }
 }, {
     timestamps: true
-})
+});
+
+interviewReportSchema.index({ user: 1, createdAt: -1 });
+interviewReportSchema.index({ organization: 1, createdAt: -1 });
 
 const interviewReportModel = mongoose.model("InterviewReports", interviewReportSchema);
 

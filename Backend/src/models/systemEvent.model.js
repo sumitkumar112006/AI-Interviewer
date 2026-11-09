@@ -26,7 +26,7 @@ const systemEventSchema = new Schema({
     },
     category: {
         type: String,
-        enum: ['AUTH', 'BILLING', 'SECURITY', 'SYSTEM'],
+        enum: ['AUTH', 'BILLING', 'SECURITY', 'SYSTEM', 'ADMIN'],
         default: 'SYSTEM',
         index: true
     },
@@ -41,15 +41,32 @@ const systemEventSchema = new Schema({
         ref: 'users',
         index: true
     },
+    actorRole: {
+        type: String,
+        trim: true
+    },
     targetId: {
         type: Schema.Types.ObjectId,
         ref: 'users',
+        index: true
+    },
+    targetType: {
+        type: String,
+        default: 'User',
         index: true
     },
     traceId: {
         type: String,
         trim: true,
         index: true
+    },
+    ipAddress: {
+        type: String,
+        trim: true
+    },
+    userAgent: {
+        type: String,
+        trim: true
     },
     details: {
         type: Schema.Types.Mixed,
@@ -59,8 +76,11 @@ const systemEventSchema = new Schema({
     timestamps: true
 });
 
-// Compound index for fast Admin Panel chronological filtering
+// Compound indexes for fast Admin Panel chronological filtering
 systemEventSchema.index({ createdAt: -1, severity: 1 });
+systemEventSchema.index({ category: 1, createdAt: -1 });
+systemEventSchema.index({ actorId: 1, createdAt: -1 });
+systemEventSchema.index({ 'details.action': 1, createdAt: -1 });
 
 // 90-day automatic TTL index (90 * 24 * 60 * 60 = 7,776,000 seconds)
 systemEventSchema.index({ createdAt: 1 }, { expireAfterSeconds: 7776000 });

@@ -63,19 +63,23 @@ class InvoiceService {
 
     const invoiceNumber = await this.getNextInvoiceNumber(session);
 
+    const originalAmount = order.originalAmount || order.amount;
+    const discountAmount = order.discountAmount || 0;
+    const totalAmount = order.amount;
+    const couponCode = order.couponCode || null;
+
     const items = [
       {
-        description: `${planConfig.name} Plan — ${order.billingCycle === 'YEARLY' ? 'Annual' : 'Monthly'} Subscription`,
+        description: `${planConfig.name} Plan — ${order.billingCycle === 'YEARLY' ? 'Annual' : 'Monthly'} Subscription${couponCode ? ` (Coupon Applied: ${couponCode})` : ''}`,
         quantity: 1,
-        unitAmount: order.amount,
-        amount: order.amount
+        unitAmount: originalAmount,
+        amount: originalAmount
       }
     ];
 
     const taxRate = 18; // 18% GST standard
-    const taxAmount = Math.round(order.amount * (taxRate / (100 + taxRate))); // back-calculated
-    const subtotal = order.amount - taxAmount; // net of inclusive GST
-    const totalAmount = order.amount;
+    const taxAmount = Math.round(totalAmount * (taxRate / (100 + taxRate))); // back-calculated on actual paid total
+    const subtotal = totalAmount - taxAmount; // net of inclusive GST
 
     const newInvoice = new Invoice({
       invoiceNumber,
@@ -91,7 +95,8 @@ class InvoiceService {
       subtotal,
       taxRate,
       taxAmount,
-      discountAmount: 0,
+      discountAmount,
+      couponCode,
       totalAmount,
       currency: order.currency || 'INR',
       status: 'PAID',

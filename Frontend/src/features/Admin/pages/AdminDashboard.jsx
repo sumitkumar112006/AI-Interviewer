@@ -18,11 +18,22 @@ import AdminSidebar from '../components/AdminSidebar';
 import AdminTopNav from '../components/AdminTopNav';
 import { AdminPaymentsTab } from '../components/AdminPaymentsTab';
 import { AdminSubscriptionsTab } from '../components/AdminSubscriptionsTab';
+import { AdminInvoicesTab } from '../components/AdminInvoicesTab';
+import { AdminCouponsTab } from '../components/AdminCouponsTab';
+import { AdminJobsTab } from '../components/AdminJobsTab';
+import { AdminSupportTicketsTab } from '../components/AdminSupportTicketsTab';
+import { AdminAtsAnalytics } from '../components/AdminAtsAnalytics';
+import { AdminAiUsageTab } from '../components/AdminAiUsageTab';
 import { AdminAuditLogsTab } from '../components/AdminAuditLogsTab';
+import { AdminSystemHealthTab } from '../components/AdminSystemHealthTab';
+import AdminSettingsTab from '../components/AdminSettingsTab';
+import AdminModerationTab from '../components/AdminModerationTab';
+import { AdminOrganizationsTab } from '../components/AdminOrganizationsTab';
 import { AdminFeatureMatrixTab } from '../components/AdminFeatureMatrixTab';
 import { AdminBroadcastTab } from '../components/AdminBroadcastTab';
 import { AdminManagementTab } from '../components/AdminManagementTab';
 import { AdminCreditsTab } from '../components/AdminCreditsTab';
+import { AdminExportButton } from '../components/AdminExportButton';
 import AdminPagination from '../components/AdminPagination';
 import ConfirmModal from '../../Shared/components/ConfirmModal';
 
@@ -56,6 +67,7 @@ import '../styles/admin.scss';
 export default function AdminDashboard() {
     const navigate = useNavigate();
     const { user: authUser, handleLogout } = useAuth();
+    const isSuperAdmin = authUser?.role === 'super_admin';
     const [isPending, startTransition] = useTransition();
 
     // Console Layout State (Minimizable & Adjustable width)
@@ -86,6 +98,8 @@ export default function AdminDashboard() {
     const [planFilter, setPlanFilter] = useState('');
     const [roleFilter, setRoleFilter] = useState('');
     const [blockedFilter, setBlockedFilter] = useState('');
+    const [activityFilter, setActivityFilter] = useState('');
+    const [showActivityDefsModal, setShowActivityDefsModal] = useState(false);
 
     // Modal state for quick action from TopNav
     const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
@@ -150,6 +164,7 @@ export default function AdminDashboard() {
                 plan: planFilter,
                 role: roleFilter,
                 blocked: blockedFilter,
+                activity: activityFilter,
                 page,
                 limit: 20
             });
@@ -162,7 +177,7 @@ export default function AdminDashboard() {
         } finally {
             setLoading(false);
         }
-    }, [search, planFilter, roleFilter, blockedFilter]);
+    }, [search, planFilter, roleFilter, blockedFilter, activityFilter]);
 
     useEffect(() => {
         fetchStats();
@@ -456,6 +471,64 @@ export default function AdminDashboard() {
     const activePct = Math.round((activeCount / totalUserAccounts) * 100);
     const blockedPct = Math.round((blockedCount / totalUserAccounts) * 100);
 
+    const formatLastActive = (dateVal) => {
+        if (!dateVal) {
+            return (
+                <span className="activity-status-pill never" title="No authenticated activity recorded">
+                    <span className="activity-indicator gray"></span>
+                    Never
+                </span>
+            );
+        }
+        const d = new Date(dateVal);
+        if (isNaN(d.getTime())) {
+            return <span className="activity-status-pill never">Never</span>;
+        }
+        const diffMs = Date.now() - d.getTime();
+        const diffMins = Math.floor(diffMs / (60 * 1000));
+        const diffHours = Math.floor(diffMs / (60 * 60 * 1000));
+        const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+
+        if (diffMins < 10) {
+            return (
+                <span className="activity-status-pill online" title={`Active at ${d.toLocaleTimeString()}`}>
+                    <span className="activity-indicator green pulse"></span>
+                    Active now
+                </span>
+            );
+        }
+        if (diffHours < 24 && d.getDate() === new Date().getDate()) {
+            return (
+                <span className="activity-status-pill today" title={d.toLocaleString()}>
+                    <span className="activity-indicator green"></span>
+                    Today ({diffHours === 0 ? `${diffMins}m` : `${diffHours}h`} ago)
+                </span>
+            );
+        }
+        if (diffDays <= 7) {
+            return (
+                <span className="activity-status-pill recent" title={d.toLocaleString()}>
+                    <span className="activity-indicator cyan"></span>
+                    {diffDays}d ago
+                </span>
+            );
+        }
+        if (diffDays <= 30) {
+            return (
+                <span className="activity-status-pill month" title={d.toLocaleString()}>
+                    <span className="activity-indicator amber"></span>
+                    {diffDays}d ago
+                </span>
+            );
+        }
+        return (
+            <span className="activity-status-pill dormant" title={`Inactive since ${d.toLocaleDateString()}`}>
+                <span className="activity-indicator red"></span>
+                Dormant ({diffDays}d)
+            </span>
+        );
+    };
+
     return (
         <div className="kivi-admin-shell">
             {/* Minimizable & Adjustable Google Vertex AI Style Sidebar */}
@@ -505,7 +578,7 @@ export default function AdminDashboard() {
                                     </div>
                                     <div className="stat-value">{stats?.totalUsers ?? '...'}</div>
                                     <div className="stat-sub">
-                                        <span style={{ color: '#22c55e', fontWeight: 700 }}>{activeCount} Active</span> • {blockedCount} Restricted
+                                        <span style={{ color: '#22c55e', fontWeight: 700 }}>{stats?.activity?.dau ?? activeCount} Active Today</span> • {stats?.activity?.mau ?? 0} MAU • {blockedCount} Restricted
                                     </div>
                                 </div>
 
@@ -677,32 +750,64 @@ export default function AdminDashboard() {
                                     </div>
                                 </div>
 
-                                {/* Account Security Health */}
+                                {/* User Activity & Retention Telemetry */}
                                 <div className="chart-card">
                                     <div className="chart-header">
-                                        <h3>Account Access Health</h3>
-                                        <span className="chart-badge">SECURITY RATIOS</span>
+                                        <h3>User Activity & Retention</h3>
+                                        <span className="chart-badge">ENGAGEMENT TELEMETRY</span>
                                     </div>
-                                    <div className="bar-chart-wrapper">
-                                        <div className="bar-group">
-                                            <div className="bar-label-row">
-                                                <span>Active Accounts</span>
-                                                <span>{activeCount} ({activePct}%)</span>
+                                    <div className="activity-telemetry-content">
+                                        <div className="activity-kpi-grid">
+                                            <div className="activity-kpi-box">
+                                                <span className="kpi-label">Active Today (DAU)</span>
+                                                <span className="kpi-val" style={{ color: '#4ade80' }}>{stats?.activity?.dau || 0}</span>
+                                                <span className="kpi-sub">Since 00:00 today</span>
                                             </div>
-                                            <div className="bar-track">
-                                                <div className="bar-fill" style={{ width: `${activePct}%`, background: '#22c55e' }}></div>
+                                            <div className="activity-kpi-box">
+                                                <span className="kpi-label">7-Day Active (WAU)</span>
+                                                <span className="kpi-val" style={{ color: '#38bdf8' }}>{stats?.activity?.wau || 0}</span>
+                                                <span className="kpi-sub">Rolling 7 days</span>
+                                            </div>
+                                            <div className="activity-kpi-box">
+                                                <span className="kpi-label">30-Day Active (MAU)</span>
+                                                <span className="kpi-val" style={{ color: '#818cf8' }}>{stats?.activity?.mau || 0}</span>
+                                                <span className="kpi-sub">Rolling 30 days</span>
+                                            </div>
+                                            <div className="activity-kpi-box">
+                                                <span className="kpi-label">Dormant Users</span>
+                                                <span className="kpi-val" style={{ color: '#f87171' }}>{stats?.activity?.dormant || 0}</span>
+                                                <span className="kpi-sub">&gt;30d inactive / legacy</span>
                                             </div>
                                         </div>
 
-                                        <div className="bar-group">
-                                            <div className="bar-label-row">
-                                                <span>Suspended Accounts</span>
-                                                <span>{blockedCount} ({blockedPct}%)</span>
+                                        <div className="activity-cohort-row">
+                                            <div className="cohort-item">
+                                                <span className="cohort-label">New Signups (7d):</span>
+                                                <span className="cohort-val" style={{ color: '#38bdf8' }}>+{stats?.activity?.newLast7Days || 0}</span>
                                             </div>
-                                            <div className="bar-track">
-                                                <div className="bar-fill" style={{ width: `${blockedPct}%`, background: '#ef4444' }}></div>
+                                            <div className="cohort-divider">•</div>
+                                            <div className="cohort-item">
+                                                <span className="cohort-label">Returning (7d):</span>
+                                                <span className="cohort-val" style={{ color: '#4ade80' }}>{stats?.activity?.returningLast7Days || 0}</span>
+                                            </div>
+                                            <div className="cohort-divider">•</div>
+                                            <div className="cohort-item">
+                                                <span className="cohort-label">DAU/MAU Ratio:</span>
+                                                <span className="cohort-val" style={{ color: '#fbbf24' }}>
+                                                    {stats?.activity?.mau > 0 ? `${((stats.activity.dau / stats.activity.mau) * 100).toFixed(1)}%` : '0%'}
+                                                </span>
                                             </div>
                                         </div>
+
+                                        <button
+                                            type="button"
+                                            className="activity-defs-btn"
+                                            onClick={() => setShowActivityDefsModal(true)}
+                                            title="View documented definitions for DAU, WAU, MAU, Dormant, and Returning metrics"
+                                        >
+                                            <Shield size={12} />
+                                            <span>View Documented Definitions & Methodology</span>
+                                        </button>
                                     </div>
                                 </div>
 
@@ -731,6 +836,35 @@ export default function AdminDashboard() {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* AI Token & Spend Telemetry Card Banner */}
+                            <div className="mt-6 p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-zinc-900 border border-amber-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                        <Sparkles className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                                            AI Token & Spend Monitoring
+                                            <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300">Active</span>
+                                        </h4>
+                                        <p className="text-xs text-zinc-400 mt-0.5">
+                                            Track provider tokens, model pricing, latency, and operational feature spend.
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab('ai-usage')}
+                                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold text-xs transition-colors flex items-center gap-1.5 whitespace-nowrap shadow-md shadow-amber-500/10"
+                                >
+                                    View Full AI Analytics
+                                    <ArrowUpRight className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+
+                            {/* Global Aggregated ATS Score Intelligence */}
+                            <AdminAtsAnalytics />
                         </div>
                     )}
 
@@ -769,7 +903,16 @@ export default function AdminDashboard() {
                                         <option value="true">Suspended Only</option>
                                     </select>
 
-                                    {(search || planFilter || roleFilter || blockedFilter) && (
+                                    <select value={activityFilter} onChange={(e) => setActivityFilter(e.target.value)}>
+                                        <option value="">All Activity</option>
+                                        <option value="today">Active Today (DAU)</option>
+                                        <option value="7d">Active Last 7 Days (WAU)</option>
+                                        <option value="30d">Active Last 30 Days (MAU)</option>
+                                        <option value="dormant">Dormant (&gt;30d)</option>
+                                        <option value="never">Never Active</option>
+                                    </select>
+
+                                    {(search || planFilter || roleFilter || blockedFilter || activityFilter) && (
                                         <button
                                             type="button"
                                             className="reset-filters-btn"
@@ -778,6 +921,7 @@ export default function AdminDashboard() {
                                                 setPlanFilter('');
                                                 setRoleFilter('');
                                                 setBlockedFilter('');
+                                                setActivityFilter('');
                                             }}
                                             title="Clear all active filters"
                                         >
@@ -786,8 +930,15 @@ export default function AdminDashboard() {
                                     )}
                                 </div>
 
-                                <div className="toolbar-counter">
-                                    Total <strong>{pagination.total}</strong> accounts
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                    <AdminExportButton
+                                        moduleName="users"
+                                        filters={{ search, plan: planFilter, role: roleFilter, isBlocked: blockedFilter, activity: activityFilter }}
+                                        label="Export Users"
+                                    />
+                                    <div className="toolbar-counter">
+                                        Total <strong>{pagination.total}</strong> accounts
+                                    </div>
                                 </div>
                             </div>
 
@@ -803,6 +954,7 @@ export default function AdminDashboard() {
                                             <th>Resumes</th>
                                             <th>Cover Letters</th>
                                             <th>Bonus Credits</th>
+                                            <th>Last Active</th>
                                             <th>Status</th>
                                             <th>Actions</th>
                                         </tr>
@@ -810,13 +962,13 @@ export default function AdminDashboard() {
                                     <tbody>
                                         {loading ? (
                                             <tr>
-                                                <td colSpan="9" className="empty-table-cell">
+                                                <td colSpan="10" className="empty-table-cell">
                                                     Loading accounts directory...
                                                 </td>
                                             </tr>
                                         ) : users.length === 0 ? (
                                             <tr>
-                                                <td colSpan="9" className="empty-table-cell">
+                                                <td colSpan="10" className="empty-table-cell">
                                                     No user accounts matching the specified filters.
                                                 </td>
                                             </tr>
@@ -842,11 +994,13 @@ export default function AdminDashboard() {
                                                         <select
                                                             className="action-select"
                                                             value={u.role || 'user'}
+                                                            disabled={!isSuperAdmin && u.role === 'super_admin'}
+                                                            title={!isSuperAdmin && u.role === 'super_admin' ? "Super Administrator permissions are protected." : "Select role"}
                                                             onChange={(e) => requestRoleChange(u, e.target.value)}
                                                         >
                                                             <option value="user">User</option>
                                                             <option value="admin">Admin</option>
-                                                            <option value="super_admin">Super Admin</option>
+                                                            <option value="super_admin" disabled={!isSuperAdmin}>Super Admin {!isSuperAdmin ? '(Restricted)' : ''}</option>
                                                         </select>
                                                     </td>
                                                     <td>
@@ -873,6 +1027,9 @@ export default function AdminDashboard() {
                                                         <span style={{ color: u.customBonusCredits ? '#818cf8' : '#94a3b8', fontWeight: u.customBonusCredits ? 700 : 400 }}>
                                                             +{u.customBonusCredits || 0}
                                                         </span>
+                                                    </td>
+                                                    <td>
+                                                        {formatLastActive(u.lastActiveAt)}
                                                     </td>
                                                     <td>
                                                         <span className={`badge-pill ${u.isBlocked ? 'blocked' : 'active'}`}>
@@ -903,7 +1060,9 @@ export default function AdminDashboard() {
                                                                 type="button"
                                                                 className={`row-action-btn ${u.isBlocked ? 'unblock-btn' : 'block-btn'}`}
                                                                 onClick={() => requestToggleBlock(u)}
-                                                                title={u.isBlocked ? "Restore user access" : "Suspend user access"}
+                                                                disabled={!isSuperAdmin && u.role === 'super_admin'}
+                                                                title={!isSuperAdmin && u.role === 'super_admin' ? "Super Administrator accounts cannot be suspended by ordinary admins" : (u.isBlocked ? "Restore user access" : "Suspend user access")}
+                                                                style={!isSuperAdmin && u.role === 'super_admin' ? { opacity: 0.3, cursor: 'not-allowed' } : {}}
                                                             >
                                                                 {u.isBlocked ? <Unlock size={13} /> : <Lock size={13} />}
                                                             </button>
@@ -912,7 +1071,9 @@ export default function AdminDashboard() {
                                                                 type="button"
                                                                 className="row-action-btn delete-btn"
                                                                 onClick={() => requestDeleteUser(u)}
-                                                                title="Purge user account"
+                                                                disabled={!isSuperAdmin && u.role === 'super_admin'}
+                                                                title={!isSuperAdmin && u.role === 'super_admin' ? "Super Administrator accounts cannot be deleted by ordinary admins" : "Purge user account"}
+                                                                style={!isSuperAdmin && u.role === 'super_admin' ? { opacity: 0.3, cursor: 'not-allowed' } : {}}
                                                             >
                                                                 <Trash2 size={13} />
                                                             </button>
@@ -937,6 +1098,9 @@ export default function AdminDashboard() {
                         </div>
                     )}
 
+                    {/* View 2.5: B2B Organizations & Enterprise Partners */}
+                    {activeTab === 'organizations' && <AdminOrganizationsTab />}
+
                     {/* View 3: Feature Matrix */}
                     {activeTab === 'feature-matrix' && (
                         <AdminFeatureMatrixTab
@@ -955,8 +1119,32 @@ export default function AdminDashboard() {
                     {/* View 5: Subscriptions */}
                     {activeTab === 'subscriptions' && <AdminSubscriptionsTab />}
 
-                    {/* View 6: Audit Trail */}
+                    {/* View 6: Tax Invoices */}
+                    {activeTab === 'invoices' && <AdminInvoicesTab />}
+
+                    {/* View 6.5: Coupons & Discounts */}
+                    {activeTab === 'coupons' && <AdminCouponsTab />}
+
+                    {/* View 7: AI Token & Cost Telemetry */}
+                    {activeTab === 'ai-usage' && <AdminAiUsageTab />}
+
+                    {/* View 8: Background Jobs */}
+                    {activeTab === 'jobs' && <AdminJobsTab />}
+
+                    {/* View 8: Support Tickets */}
+                    {activeTab === 'support-tickets' && <AdminSupportTicketsTab />}
+
+                    {/* View 9: Audit Trail */}
                     {activeTab === 'audit-logs' && <AdminAuditLogsTab />}
+
+                    {/* View 10: System Health & Operational Events */}
+                    {activeTab === 'system-health' && <AdminSystemHealthTab />}
+
+                    {/* View 10.5: Content Moderation & Abuse Control */}
+                    {activeTab === 'moderation' && <AdminModerationTab />}
+
+                    {/* View 11: Global App Settings */}
+                    {activeTab === 'settings' && <AdminSettingsTab />}
 
                     {/* View 7: Broadcast & Alerts */}
                     {activeTab === 'broadcast' && <AdminBroadcastTab />}
@@ -1275,6 +1463,95 @@ export default function AdminDashboard() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal: Documented User Activity Definitions */}
+            {showActivityDefsModal && (
+                <div className="modal-overlay" onClick={() => setShowActivityDefsModal(false)}>
+                    <div className="modal-card" style={{ maxWidth: '640px' }} onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header-row">
+                            <div className="flex items-center gap-2">
+                                <Shield className="w-5 h-5 text-indigo-400" />
+                                <h3>User Activity & Retention Definitions</h3>
+                            </div>
+                            <button className="modal-close-btn" onClick={() => setShowActivityDefsModal(false)}>✕</button>
+                        </div>
+
+                        <div className="modal-body-content" style={{ maxHeight: '65vh', overflowY: 'auto', padding: '0.5rem 0.25rem' }}>
+                            <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '1.2rem', lineHeight: '1.5' }}>
+                                KIVI AI calculates meaningful engagement using two-tier throttled authenticated requests. Keystrokes, browsing history, and unnecessary personal data are strictly never recorded.
+                            </p>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+                                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '0.85rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                        <strong style={{ color: '#4ade80', fontSize: '0.85rem' }}>Daily Active Users (DAU)</strong>
+                                        <span style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'monospace' }}>Today (Since 00:00:00)</span>
+                                    </div>
+                                    <p style={{ fontSize: '0.78rem', color: '#cbd5e1', margin: 0, lineHeight: '1.4' }}>
+                                        Distinct non-deleted users who completed at least one authenticated API or application interaction today.
+                                    </p>
+                                </div>
+
+                                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '0.85rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                        <strong style={{ color: '#38bdf8', fontSize: '0.85rem' }}>Weekly Active Users (WAU)</strong>
+                                        <span style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'monospace' }}>Rolling 7 Days</span>
+                                    </div>
+                                    <p style={{ fontSize: '0.78rem', color: '#cbd5e1', margin: 0, lineHeight: '1.4' }}>
+                                        Distinct non-deleted users with authenticated activity within the trailing 7 calendar days.
+                                    </p>
+                                </div>
+
+                                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '0.85rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                        <strong style={{ color: '#818cf8', fontSize: '0.85rem' }}>Monthly Active Users (MAU)</strong>
+                                        <span style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'monospace' }}>Rolling 30 Days</span>
+                                    </div>
+                                    <p style={{ fontSize: '0.78rem', color: '#cbd5e1', margin: 0, lineHeight: '1.4' }}>
+                                        Distinct non-deleted users with authenticated activity within the trailing 30 calendar days. Key baseline for product stickiness (DAU/MAU).
+                                    </p>
+                                </div>
+
+                                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '0.85rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                        <strong style={{ color: '#f87171', fontSize: '0.85rem' }}>Dormant Users</strong>
+                                        <span style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'monospace' }}>&gt;30 Days Inactive</span>
+                                    </div>
+                                    <p style={{ fontSize: '0.78rem', color: '#cbd5e1', margin: 0, lineHeight: '1.4' }}>
+                                        Registered non-deleted users whose last active timestamp is older than 30 days, or legacy accounts created over 30 days ago that have never logged in.
+                                    </p>
+                                </div>
+
+                                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '0.85rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                        <strong style={{ color: '#34d399', fontSize: '0.85rem' }}>Returning Users</strong>
+                                        <span style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'monospace' }}>Retention Cohort</span>
+                                    </div>
+                                    <p style={{ fontSize: '0.78rem', color: '#cbd5e1', margin: 0, lineHeight: '1.4' }}>
+                                        Users who were active during the 7-day or 30-day window, but registered prior to that window. Measures true sustained retention.
+                                    </p>
+                                </div>
+
+                                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '0.85rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                        <strong style={{ color: '#fbbf24', fontSize: '0.85rem' }}>Throttling & Performance Architecture</strong>
+                                        <span style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'monospace' }}>300s Sliding Window</span>
+                                    </div>
+                                    <p style={{ fontSize: '0.78rem', color: '#cbd5e1', margin: 0, lineHeight: '1.4' }}>
+                                        Two-tier cache (Node.js in-memory Map + Redis distributed TTL key) ensures at most 1 MongoDB write per user every 5 minutes. Repeated requests in the same session incur &lt;0.05ms overhead without hitting the database.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="modal-actions" style={{ marginTop: '1.2rem' }}>
+                            <button type="button" className="btn-cancel" onClick={() => setShowActivityDefsModal(false)}>
+                                Close
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

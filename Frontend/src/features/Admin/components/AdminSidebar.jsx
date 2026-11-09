@@ -5,6 +5,7 @@ import {
     SlidersHorizontal,
     CreditCard,
     Layers,
+    ReceiptText,
     FileClock,
     Megaphone,
     UserPlus,
@@ -13,9 +14,18 @@ import {
     PanelLeftOpen,
     Shield,
     LogOut,
-    ExternalLink
+    ExternalLink,
+    Cpu,
+    LifeBuoy,
+    Server,
+    Sliders,
+    Ticket,
+    Building2,
+    ShieldAlert
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../../Auth/hooks/useAuth';
+import { hasAdminPermission, PERMISSIONS } from '../utils/rbac';
 
 export default function AdminSidebar({
     activeTab,
@@ -60,32 +70,49 @@ export default function AdminSidebar({
         };
     }, [isResizing, setSidebarWidth]);
 
-    const navSections = [
+    const { user: currentUser } = useAuth();
+
+    const rawNavSections = [
         {
             group: 'Core Console',
             items: [
-                { id: 'overview', label: 'Overview & Metrics', icon: Activity },
-                { id: 'table', label: 'User Directory', icon: Users, badge: userCount > 0 ? userCount : null },
-                { id: 'feature-matrix', label: 'Feature Access Matrix', icon: SlidersHorizontal }
+                { id: 'overview', label: 'Overview & Metrics', icon: Activity, permission: PERMISSIONS.ANALYTICS_READ },
+                { id: 'table', label: 'User Directory', icon: Users, badge: userCount > 0 ? userCount : null, permission: PERMISSIONS.USERS_READ },
+                { id: 'organizations', label: 'B2B Partners', icon: Building2, permission: PERMISSIONS.ORGANIZATIONS_READ },
+                { id: 'feature-matrix', label: 'Feature Access Matrix', icon: SlidersHorizontal, permission: PERMISSIONS.USERS_UPDATE }
             ]
         },
         {
             group: 'Billing & Revenue',
             items: [
-                { id: 'payments', label: 'Payments Ledger', icon: CreditCard },
-                { id: 'subscriptions', label: 'Subscriptions', icon: Layers }
+                { id: 'payments', label: 'Payments Ledger', icon: CreditCard, permission: PERMISSIONS.BILLING_READ },
+                { id: 'subscriptions', label: 'Subscriptions', icon: Layers, permission: PERMISSIONS.BILLING_READ },
+                { id: 'invoices', label: 'Tax Invoices', icon: ReceiptText, permission: PERMISSIONS.INVOICES_READ },
+                { id: 'coupons', label: 'Coupons & Discounts', icon: Ticket, permission: PERMISSIONS.BILLING_READ }
             ]
         },
         {
             group: 'Operations & Security',
             items: [
-                { id: 'audit-logs', label: 'Audit Trail', icon: FileClock },
-                { id: 'broadcast', label: 'Broadcast & Alerts', icon: Megaphone },
-                { id: 'admins', label: 'Admin Accounts', icon: UserPlus, badge: adminCount > 0 ? `${adminCount}` : null },
-                { id: 'credits', label: 'Grant Bonus Credits', icon: Sparkles }
+                { id: 'system-health', label: 'System Health & Events', icon: Server, permission: PERMISSIONS.AUDIT_READ },
+                { id: 'moderation', label: 'Content Moderation', icon: ShieldAlert, permission: PERMISSIONS.MODERATION_READ },
+                { id: 'settings', label: 'Global App Settings', icon: Sliders, permission: PERMISSIONS.SETTINGS_READ },
+                { id: 'ai-usage', label: 'AI Cost & Tokens', icon: Sparkles, permission: PERMISSIONS.ANALYTICS_READ },
+                { id: 'jobs', label: 'Background Jobs', icon: Cpu, permission: PERMISSIONS.JOBS_READ },
+                { id: 'support-tickets', label: 'Support Tickets', icon: LifeBuoy, permission: PERMISSIONS.SUPPORT_READ },
+                { id: 'audit-logs', label: 'Audit Trail', icon: FileClock, permission: PERMISSIONS.AUDIT_READ },
+                { id: 'broadcast', label: 'Broadcast & Alerts', icon: Megaphone, permission: PERMISSIONS.SETTINGS_UPDATE },
+                { id: 'admins', label: 'Admin Accounts', icon: UserPlus, badge: adminCount > 0 ? `${adminCount}` : null, permission: PERMISSIONS.ADMINS_MANAGE },
+                { id: 'credits', label: 'Grant Bonus Credits', icon: Sparkles, permission: PERMISSIONS.USERS_UPDATE }
             ]
         }
     ];
+
+    // Filter items based on active granular admin permissions
+    const navSections = rawNavSections.map(sec => ({
+        ...sec,
+        items: sec.items.filter(item => !item.permission || hasAdminPermission(currentUser, item.permission))
+    })).filter(sec => sec.items.length > 0);
 
     return (
         <aside

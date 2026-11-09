@@ -1,6 +1,7 @@
 require('dotenv').config();
 const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const { instrumentLLMCall } = require('../telemetry/llmTelemetry');
+const { runWithAiContext } = require('./aiUsage.service');
 const tracer = trace.getTracer('kivi-backend');
 const Groq = require("groq-sdk")
 
@@ -605,26 +606,33 @@ async function callOpenRouter(systemPrompt, userPrompt, plan = "free", isAssista
     const temperature = getTemperatureForPlan(plan, isAssistant);
 
     console.log(`[AI] Switched to OpenRouter fallback (Model: ${model}).`)
-    const response = await axios.post(
-        OPENROUTER_BASE_URL,
-        {
-            model: model,
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userPrompt }
-            ],
-            temperature: temperature,
-            max_tokens: maxTokens,
-        },
-        {
-            headers: {
-                'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': 'https://resumegenerator.app',
-                'X-Title': 'Resume Generator'
-            }
+    const response = await instrumentLLMCall({
+        provider: 'openrouter',
+        model: model,
+        operation: 'chat',
+        execute: async () => {
+            return await axios.post(
+                OPENROUTER_BASE_URL,
+                {
+                    model: model,
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userPrompt }
+                    ],
+                    temperature: temperature,
+                    max_tokens: maxTokens,
+                },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+                        'Content-Type': 'application/json',
+                        'HTTP-Referer': 'https://resumegenerator.app',
+                        'X-Title': 'Resume Generator'
+                    }
+                }
+            );
         }
-    )
+    });
     return response.data.choices[0].message.content
 }
 
@@ -817,6 +825,7 @@ async function streamLlmWithFallback({ messages, systemPrompt, userPrompt, plan 
                 model: model,
                 operation: 'chat',
                 execute: async (span) => {
+                    let streamUsage = null;
                     const stream = await client.chat.completions.create({
                         model: model,
                         messages: formattedMessages,
@@ -835,9 +844,12 @@ async function streamLlmWithFallback({ messages, systemPrompt, userPrompt, plan 
                                 onToken(token);
                             }
                         }
+                        if (chunk.usage) {
+                            streamUsage = chunk.usage;
+                        }
                     }
 
-                    return { fullText };
+                    return { fullText, usage: streamUsage };
                 }
             });
 
@@ -892,6 +904,7 @@ async function streamLlmWithFallback({ messages, systemPrompt, userPrompt, plan 
                     model: geminiModel,
                     operation: 'generate_content',
                     execute: async (span) => {
+                        let finalUsageMetadata = null;
                         const responseStream = await client.models.generateContentStream({
                             model: geminiModel,
                             contents: contents,
@@ -912,6 +925,7 @@ async function streamLlmWithFallback({ messages, systemPrompt, userPrompt, plan 
                                 }
                             }
                             if (chunk.usageMetadata) {
+                                finalUsageMetadata = chunk.usageMetadata;
                                 if (typeof chunk.usageMetadata.promptTokenCount === 'number') {
                                     span.setAttribute('gen_ai.usage.input_tokens', chunk.usageMetadata.promptTokenCount);
                                 }
@@ -921,7 +935,7 @@ async function streamLlmWithFallback({ messages, systemPrompt, userPrompt, plan 
                             }
                         }
 
-                        return { fullText };
+                        return { fullText, usageMetadata: finalUsageMetadata };
                     }
                 });
 
@@ -989,9 +1003,20 @@ async function generateInterviewReport({
     selfDescribe,
     jobDescribe,
     plan = "free",
-    generatedResume = ""
+    generatedResume = "",
+    userId = null,
+    requestId = null,
+    jobId = null,
+    attempt = 1
 }) {
-    return tracer.startActiveSpan('kivi.ai.generate', {
+    return runWithAiContext({
+        feature: 'interview_report',
+        userId,
+        requestId,
+        jobId,
+        attempt
+    }, async () => {
+        return tracer.startActiveSpan('kivi.ai.generate', {
         attributes: {
             'kivi.operation.type': 'interview_report_generate',
             'kivi.user.plan': plan || 'free'
@@ -1116,6 +1141,7 @@ ${tailoredResumeText ? `Newly Generated Tailored ATS Resume:\n${tailoredResumeTe
             span.end();
         }
     });
+    });
 }
 
 
@@ -1123,8 +1149,24 @@ ${tailoredResumeText ? `Newly Generated Tailored ATS Resume:\n${tailoredResumeTe
 // generatePfdFromHtml removed — PDF is now generated client-side via window.print() + @media print CSS
 
 
-async function generateResumeHtml({ resume, selfDescription, jobDescription, plan = "free" }) {
-    return tracer.startActiveSpan('kivi.resume.generate', {
+async function generateResumeHtml({
+    resume,
+    selfDescription,
+    jobDescription,
+    plan = "free",
+    userId = null,
+    requestId = null,
+    jobId = null,
+    attempt = 1
+}) {
+    return runWithAiContext({
+        feature: 'resume_generation',
+        userId,
+        requestId,
+        jobId,
+        attempt
+    }, async () => {
+        return tracer.startActiveSpan('kivi.resume.generate', {
         attributes: {
             'kivi.operation.type': 'resume_generate',
             'kivi.user.plan': plan || 'free'
@@ -1290,6 +1332,7 @@ Job Description: ${jobDescription || 'None provided'}
             span.end();
         }
     });
+    });
 }
 
 async function generateResumePfd({ resume, selfDescription, jobDescription }) {
@@ -1310,8 +1353,25 @@ async function scrapeCompanyCulture(companyName) {
 }
 
 // Add the helper function and export it
-async function generateCoverLetter({ resume, selfDescription, jobDescription, companyName, roleName }) {
-    return tracer.startActiveSpan('kivi.cover_letter.generate', {
+async function generateCoverLetter({
+    resume,
+    selfDescription,
+    jobDescription,
+    companyName,
+    roleName,
+    userId = null,
+    requestId = null,
+    jobId = null,
+    attempt = 1
+}) {
+    return runWithAiContext({
+        feature: 'cover_letter',
+        userId,
+        requestId,
+        jobId,
+        attempt
+    }, async () => {
+        return tracer.startActiveSpan('kivi.cover_letter.generate', {
         attributes: {
             'kivi.operation.type': 'cover_letter_generate'
         }
@@ -1394,6 +1454,7 @@ Job Description: ${jobDescription}
             span.end();
         }
     });
+    });
 }
 
 function stripHtmlToCleanText(html = '') {
@@ -1418,8 +1479,28 @@ function stripHtmlToCleanText(html = '') {
 /**
  * AI Resume Chat Copilot & Section Rewriter
  */
-async function rewriteResumeSection({ selectedText = "", instruction = "", action = "enhance", message = "", plan = "free", currentResumeHtml = "", jobDescription = "", jobRole = "" }) {
-    return tracer.startActiveSpan('kivi.resume.rewrite', {
+async function rewriteResumeSection({
+    selectedText = "",
+    instruction = "",
+    action = "enhance",
+    message = "",
+    plan = "free",
+    currentResumeHtml = "",
+    jobDescription = "",
+    jobRole = "",
+    userId = null,
+    requestId = null,
+    jobId = null,
+    attempt = 1
+}) {
+    return runWithAiContext({
+        feature: 'resume_rewrite',
+        userId,
+        requestId,
+        jobId,
+        attempt
+    }, async () => {
+        return tracer.startActiveSpan('kivi.resume.rewrite', {
         attributes: {
             'kivi.operation.type': 'resume_rewrite',
             'kivi.action': action || 'enhance',
@@ -1545,6 +1626,7 @@ Generate response JSON with "replyText", "targetText", and "suggestedSnippet":
         } finally {
             span.end();
         }
+    });
     });
 }
 

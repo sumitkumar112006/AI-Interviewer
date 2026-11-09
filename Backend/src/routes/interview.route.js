@@ -4,6 +4,8 @@ const interviewController = require('../controller/interview.controller')
 const atsController = require('../controller/ats.controller')
 const upload = require('../middleware/file.middleware')
 const { createRateLimiter, createTieredRateLimiter, fullGenerationLimiter } = require('../middleware/rateLimiter.middleware')
+const { enforceFeatureAccess } = require('../middleware/appSettings.middleware')
+const { createModerationFilter } = require('../middleware/moderation.middleware')
 
 const interviewRouter = express.Router();
 
@@ -23,33 +25,19 @@ const getAllReportLimiter = createRateLimiter({
 });
 
 
-const checkInterviewReportsAccess = (req, res, next) => {
-    if (req.user?.blockedFeatures?.interviewReports) {
-        return res.status(403).json({ message: "Mock Interview & Report generation has been disabled for your account by an administrator. ❌" });
-    }
-    next();
-};
+const checkInterviewReportsAccess = enforceFeatureAccess('interviewReports');
+const checkResumeGenerationAccess = enforceFeatureAccess('resumeGeneration');
+const checkAiAssistantAccess = enforceFeatureAccess('aiAssistant');
 
-const checkResumeGenerationAccess = (req, res, next) => {
-    if (req.user?.blockedFeatures?.resumeGeneration) {
-        return res.status(403).json({ message: "Resume Generation access has been disabled for your account by an administrator. ❌" });
-    }
-    next();
-};
-
-const checkAiAssistantAccess = (req, res, next) => {
-    if (req.user?.blockedFeatures?.aiAssistant) {
-        return res.status(403).json({ message: "AI Assistant access has been disabled for your account by an administrator. ❌" });
-    }
-    next();
-};
+const interviewModerationFilter = createModerationFilter({ fields: ['jobDescription', 'selfDescription'], contentType: 'interview_request' });
+const resumeEditModerationFilter = createModerationFilter({ fields: ['selectedText', 'prompt'], contentType: 'resume_edit' });
 
 /**
  * @route POST /api/interview
  * @description generate new interview report on the bassis of user self description, resume and job description.
  * @access private
  */
-interviewRouter.post('/', authMidleware.authUser, checkInterviewReportsAccess, checkResumeGenerationAccess, fullGenerationLimiter, upload.single("resume"), interviewController.generateInterviewReportController)
+interviewRouter.post('/', authMidleware.authUser, checkInterviewReportsAccess, checkResumeGenerationAccess, fullGenerationLimiter, upload.single("resume"), interviewModerationFilter, interviewController.generateInterviewReportController)
 
 /**
  * @route GET /api/interview/report/:interviewId
@@ -86,7 +74,7 @@ interviewRouter.get("/", authMidleware.authUser, getAllReportLimiter, interviewC
 interviewRouter.post('/resume/pdf/:interviewReportId', authMidleware.authUser, checkResumeGenerationAccess, fullGenerationLimiter, interviewController.generateResumePdfController)
 
 // Rewrite a selected resume section/bullet point with AI Writer
-interviewRouter.post('/resume/rewrite-section', authMidleware.authUser, checkAiAssistantAccess, aiAssistantTieredLimiter, interviewController.rewriteResumeSectionController)
+interviewRouter.post('/resume/rewrite-section', authMidleware.authUser, checkAiAssistantAccess, aiAssistantTieredLimiter, resumeEditModerationFilter, interviewController.rewriteResumeSectionController)
 
 /**
  * @description This api will delete the Reports by ReportID.

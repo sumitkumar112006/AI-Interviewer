@@ -11,13 +11,14 @@ class OrderController {
   async createOrder(req, res, next) {
     try {
       const userId = req.user.id;
-      const { planKey, billingCycle, idempotencyKey, notes } = req.body;
+      const { planKey, billingCycle, idempotencyKey, couponCode, notes } = req.body;
 
       const result = await orderService.createOrder({
         userId,
         planKey,
         billingCycle,
         userSuppliedIdempotencyKey: idempotencyKey,
+        couponCode,
         notes
       });
 
@@ -29,6 +30,9 @@ class OrderController {
           gatewayOrderId: result.order.gatewayOrderId,
           planKey: result.order.planKey,
           amount: result.order.amount,
+          originalAmount: result.order.originalAmount || result.order.amount,
+          discountAmount: result.order.discountAmount || 0,
+          couponCode: result.order.couponCode || null,
           currency: result.order.currency,
           status: result.order.status,
           idempotencyKey: result.order.idempotencyKey,
@@ -37,6 +41,35 @@ class OrderController {
       });
     } catch (error) {
       next(error);
+    }
+  }
+
+  /**
+   * POST /api/orders/validate-coupon
+   * Validate a coupon code before initiating payment
+   */
+  async validateCoupon(req, res, next) {
+    try {
+      const userId = req.user?.id || req.user?._id;
+      const { couponCode, planKey, billingCycle } = req.body;
+
+      const validation = await orderService.validateCoupon({
+        code: couponCode,
+        userId,
+        planKey,
+        billingCycle
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Coupon is valid and eligible!',
+        data: validation
+      });
+    } catch (error) {
+      return res.status(error.status || 400).json({
+        success: false,
+        message: error.message || 'Invalid coupon code.'
+      });
     }
   }
 

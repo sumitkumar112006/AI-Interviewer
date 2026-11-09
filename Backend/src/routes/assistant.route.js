@@ -1,6 +1,8 @@
 const express = require('express');
 const authMiddleware = require('../middleware/auth.middleware');
 const { createTieredRateLimiter } = require('../middleware/rateLimiter.middleware');
+const { enforceFeatureAccess } = require('../middleware/appSettings.middleware');
+const { createModerationFilter } = require('../middleware/moderation.middleware');
 const {
     chatAssistantController,
     getAssistantHistoryController,
@@ -17,12 +19,8 @@ const aiAssistantTieredLimiter = createTieredRateLimiter({
     message: 'AI Assistant daily limit reached for your plan.'
 });
 
-const checkAiAssistantAccess = (req, res, next) => {
-    if (req.user?.blockedFeatures?.aiAssistant) {
-        return res.status(403).json({ message: "AI Assistant access has been disabled for your account by an administrator. ❌" });
-    }
-    next();
-};
+const checkAiAssistantAccess = enforceFeatureAccess('aiAssistant');
+const assistantModerationFilter = createModerationFilter({ fields: ['message', 'promptText'], contentType: 'assistant_message' });
 
 /**
  * @route POST /api/assistant/chat
@@ -34,6 +32,7 @@ assistantRouter.post(
     authMiddleware.authUser,
     checkAiAssistantAccess,
     aiAssistantTieredLimiter,
+    assistantModerationFilter,
     chatAssistantController
 );
 

@@ -396,6 +396,61 @@ async function getUserGenCredits(user) {
     };
 }
 
-module.exports = { createRateLimiter, createTieredRateLimiter, fullGenerationLimiter, getUserGenCredits };
+/**
+ * Dedicated Security & Admin Rate Limiters
+ */
+
+// Strict rate limiter for Admin login attempts
+const adminLoginLimiter = createRateLimiter({
+    prefix: 'ratelimit:admin:login',
+    windowSeconds: 900, // 15 minutes
+    maxRequests: 10,
+    message: 'Too many admin authentication attempts. Please wait 15 minutes before trying again.'
+});
+
+// Strict rate limiter for OTP verification (mitigates brute-forcing 6-digit codes)
+const otpVerifyLimiter = createRateLimiter({
+    prefix: 'ratelimit:auth:verify-otp',
+    windowSeconds: 300, // 5 minutes
+    maxRequests: 5,
+    message: 'Too many OTP verification attempts. Please wait 5 minutes before trying again.'
+});
+
+// General Admin Action Limiter (60 requests/minute)
+const adminActionLimiter = createRateLimiter({
+    prefix: 'ratelimit:admin:action',
+    windowSeconds: 60,
+    maxRequests: 60,
+    message: 'Admin console request threshold reached. Please slow down.'
+});
+
+// Privileged Admin Creation Limiter (10 new accounts/hour per admin)
+const adminCreationLimiter = createRateLimiter({
+    prefix: 'ratelimit:admin:create-account',
+    windowSeconds: 3600, // 1 hour
+    maxRequests: 10,
+    message: 'Administrator account creation limit reached. Please wait before registering more admin accounts.'
+});
+
+// Sensitive Admin Operations Limiter (role changes, deletions, manual credit overrides: 20/min)
+const adminSensitiveLimiter = createRateLimiter({
+    prefix: 'ratelimit:admin:sensitive',
+    windowSeconds: 60,
+    maxRequests: 20,
+    message: 'Too many privileged operations. Please slow down.'
+});
+
+module.exports = {
+    createRateLimiter,
+    createTieredRateLimiter,
+    fullGenerationLimiter,
+    getUserGenCredits,
+    adminLoginLimiter,
+    otpVerifyLimiter,
+    adminActionLimiter,
+    adminCreationLimiter,
+    adminSensitiveLimiter
+};
+
 
 

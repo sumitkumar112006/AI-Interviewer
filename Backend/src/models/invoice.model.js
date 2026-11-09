@@ -43,6 +43,7 @@ const invoiceSchema = new Schema({
   taxRate: Number,                                 // e.g. 18 for 18% GST
   taxAmount: { type: Number, default: 0 },
   discountAmount: { type: Number, default: 0 },
+  couponCode: { type: String, default: null },
   totalAmount: { type: Number, required: true },   // subtotal - discountAmount + taxAmount
   currency: { type: String, required: true, default: 'INR' },
 

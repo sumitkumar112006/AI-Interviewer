@@ -49,7 +49,7 @@ export default function AdminProtected({ children }) {
         );
     }
 
-    const isAdmin = user?.isAdmin || freshRole === 'admin' || freshRole === 'super_admin' || user?.role === 'admin' || user?.role === 'super_admin';
+    const isAdmin = (user?.isAdmin || freshRole === 'admin' || freshRole === 'super_admin' || user?.role === 'admin' || user?.role === 'super_admin') && !user?.isBlocked;
 
     if (!user || !isAdmin) {
         return (

@@ -43,3 +43,27 @@ export async function subscribeNewsletter({ email }) {
     const response = await api.post('newsletter', { email });
     return response.data;
 }
+
+/**
+ * Retrieve authenticated candidate's support tickets
+ */
+export async function getMySupportTickets(params = {}) {
+    const response = await api.get('my-tickets', { params });
+    return response.data;
+}
+
+/**
+ * Retrieve specific ticket details & conversation thread
+ */
+export async function getMySupportTicketDetails(ticketId) {
+    const response = await api.get(`my-tickets/${ticketId}`);
+    return response.data;
+}
+
+/**
+ * Post a customer reply to an existing support ticket
+ */
+export async function replyMySupportTicket(ticketId, message) {
+    const response = await api.post(`my-tickets/${ticketId}/reply`, { message });
+    return response.data;
+}

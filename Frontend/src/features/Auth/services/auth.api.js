@@ -143,5 +143,31 @@ export async function loginWithGoogleSupabase({ accessToken }) {
     } catch (err) {
         throw err;
     }
+}
 
+export async function getUserSessions() {
+    try {
+        const response = await api.get('sessions');
+        return response.data;
+    } catch (err) {
+        throw err;
+    }
+}
+
+export async function revokeUserSession(sessionId) {
+    try {
+        const response = await api.post(`sessions/${sessionId}/revoke`);
+        return response.data;
+    } catch (err) {
+        throw err;
+    }
+}
+
+export async function revokeOtherSessions() {
+    try {
+        const response = await api.post('sessions/revoke-others');
+        return response.data;
+    } catch (err) {
+        throw err;
+    }
 }

@@ -9,6 +9,7 @@ const {
 } = require('./searchTool.service');
 const { processTurnInBackground } = require('./memoryExtractor');
 const { callLlmWithFallback, streamLlmWithFallback } = require('../services/ai.service');
+const { runWithAiContext } = require('../services/aiUsage.service');
 
 /**
  * Unified Micro-Router Engine (Single Fast ~100 Token Call):
@@ -763,7 +764,8 @@ function logAssistantQueryPayload({
  * @returns {Promise<Object>} Assembled result with reply, messageForUser, ResumeUpdations, resources, profile, intentData
  */
 async function streamAssistantChat({ userId, reportId, message, selectedText, action, instruction, activeTab = '', currentRoute = '', userPlan = 'free', currentResumeHtml = '', onStatus = null, onToken }) {
-    const { formattedMessages, promptText, foundResources, profile, intentData, isExplicitRewrite, isSecurityBlock, dbCallsAvoided } = await buildAssistantPromptAndMessages({
+    return runWithAiContext({ feature: 'ai_assistant', userId }, async () => {
+        const { formattedMessages, promptText, foundResources, profile, intentData, isExplicitRewrite, isSecurityBlock, dbCallsAvoided } = await buildAssistantPromptAndMessages({
         userId,
         reportId,
         message,
@@ -830,13 +832,15 @@ async function streamAssistantChat({ userId, reportId, message, selectedText, ac
         intentData,
         dbCallsAvoided
     };
+    });
 }
 
 /**
  * Non-streaming AI Assistant Orchestrator function (backward compatible)
  */
 async function processAssistantChat({ userId, reportId, message, selectedText, action, instruction, activeTab = '', currentRoute = '', userPlan = 'free', currentResumeHtml = '' }) {
-    const { formattedMessages, promptText, foundResources, profile, intentData, isExplicitRewrite, isSecurityBlock, dbCallsAvoided } = await buildAssistantPromptAndMessages({
+    return runWithAiContext({ feature: 'ai_assistant', userId }, async () => {
+        const { formattedMessages, promptText, foundResources, profile, intentData, isExplicitRewrite, isSecurityBlock, dbCallsAvoided } = await buildAssistantPromptAndMessages({
         userId,
         reportId,
         message,
@@ -895,6 +899,7 @@ async function processAssistantChat({ userId, reportId, message, selectedText, a
         intentData,
         dbCallsAvoided
     };
+    });
 }
 
 module.exports = {

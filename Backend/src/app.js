@@ -90,6 +90,11 @@ app.get('/health', (req, res) => {
 // Global Rate Limiter (Protects all application and business API routes)
 app.use(globalLimiter);
 
+// Global Platform Maintenance Gate (Permits health checks, webhooks & admin bypass)
+const { checkMaintenanceMode, enforceMinimumAppVersion } = require('./middleware/appSettings.middleware');
+app.use(checkMaintenanceMode);
+app.use(enforceMinimumAppVersion);
+
 // Require all routes
 const { authRouter } = require('./routes/auth.route');
 const interviewRouter = require('./routes/interview.route');
@@ -104,14 +109,21 @@ const assistantRouter = require('./routes/assistant.route');
 const speechRouter = require('./routes/speech.route');
 const resumeLinkRouter = require('./routes/resumeLink.route');
 const supportRouter = require('./routes/support.route');
+const configRouter = require('./routes/config.route');
+const organizationRouter = require('./routes/organization.route');
+const moderationRouter = require('./routes/moderation.route');
 
 // Mount routes
+app.use('/api/config', configRouter);
 app.use("/api/auth", authRouter);
 app.use('/api/interview', interviewRouter);
 app.use('/api/cover-letter', coverLetterRouter);
 app.use('/api/jobs', jobRouter);
 app.use('/api/assistant', assistantRouter);
 app.use('/api/speech', speechRouter);
+app.use('/api/admin/organizations', organizationRouter);
+app.use('/api/organizations', organizationRouter);
+app.use('/api', moderationRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/notifications', notificationRouter);
 app.use('/api/orders', orderRouter);

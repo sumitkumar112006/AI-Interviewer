@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const jobSchema = new mongoose.Schema({
     userId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'user',
+        ref: 'users',
         required: true,
         index: true
     },
@@ -31,13 +31,33 @@ const jobSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['pending', 'processing', 'done', 'failed'],
+        enum: ['pending', 'processing', 'done', 'failed', 'cancelled'],
         default: 'pending',
         index: true
     },
     progress: {
         type: Number,
         default: 0
+    },
+    attempts: {
+        type: Number,
+        default: 1
+    },
+    startedAt: {
+        type: Date,
+        default: null
+    },
+    completedAt: {
+        type: Date,
+        default: null
+    },
+    durationMs: {
+        type: Number,
+        default: 0
+    },
+    bullJobId: {
+        type: String,
+        default: null
     },
     input: {
         type: mongoose.Schema.Types.Mixed,

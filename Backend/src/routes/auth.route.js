@@ -13,9 +13,14 @@ const {
     updateCareerProfileController,
     updateProfileController
 } = require("../controller/auth.controller");
+const {
+    getUserSessionsController,
+    revokeUserSessionController,
+    revokeOtherSessionsController
+} = require("../controller/session.controller");
 
 const { authUser } = require("../middleware/auth.middleware");
-const { createRateLimiter } = require("../middleware/rateLimiter.middleware");
+const { createRateLimiter, otpVerifyLimiter } = require("../middleware/rateLimiter.middleware");
 
 const authLoginLimiter = createRateLimiter({
     prefix: 'ratelimit:auth:login',
@@ -80,7 +85,7 @@ authRouter.post("/register", registerLimiter,registerUserController);
  * @description verify email via 6-digit OTP code & activate user account
  * @access Public
  */
-authRouter.post("/verify-otp",verifyOtpController);
+authRouter.post("/verify-otp", otpVerifyLimiter, verifyOtpController);
 
 /**
  * @route POST /api/auth/resend-otp
@@ -144,5 +149,12 @@ authRouter.put("/career-profile", authUser, updateCareerProfileController);
  * @access Private
  */
 authRouter.get("/usage", getUserUsageController);
+
+/**
+ * Session & Device Management (User)
+ */
+authRouter.get("/sessions", authUser, getUserSessionsController);
+authRouter.post("/sessions/revoke-others", authUser, revokeOtherSessionsController);
+authRouter.post("/sessions/:sessionId/revoke", authUser, revokeUserSessionController);
 
 module.exports = { authRouter };

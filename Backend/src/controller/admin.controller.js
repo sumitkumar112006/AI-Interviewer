@@ -5,6 +5,9 @@ const subscriptionModel = require("../models/subscription.model");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const notificationModel = require("../models/notification.model");
+const { recordAdminAudit } = require("../services/auditLog.service");
+const { ALL_ROLES, PERMISSIONS } = require("../config/rbac.config");
+const { getUserActivitySummary, getUserActivityAnalytics } = require("../services/userActivity.service");
 
 /**
  * @name getAdminStatsController
@@ -13,15 +16,20 @@ const notificationModel = require("../models/notification.model");
  */
 async function getAdminStatsController(req, res) {
     try {
-        const [totalUsers, totalAdmins, totalReports, totalCoverLetters, blockedUsers] = await Promise.all([
-            userModel.countDocuments(),
-            userModel.countDocuments({ role: { $in: ['admin', 'super_admin'] } }),
+        const [totalUsers, totalAdmins, totalReports, totalCoverLetters, blockedUsers, activitySummary] = await Promise.all([
+            userModel.countDocuments({ isDeleted: { $ne: true } }),
+            userModel.countDocuments({ role: { $ne: 'user' }, isDeleted: { $ne: true } }),
             interviewReportModel.countDocuments(),
             coverLetterModel.countDocuments(),
-            userModel.countDocuments({ isBlocked: true })
+            userModel.countDocuments({ isBlocked: true, isDeleted: { $ne: true } }),
+            getUserActivitySummary().catch(err => {
+                console.warn('[ADMIN STATS] Activity summary fallback:', err.message);
+                return { dau: 0, wau: 0, mau: 0, dormant: 0, newLast7Days: 0, returningLast7Days: 0 };
+            })
         ]);
 
         const planCounts = await userModel.aggregate([
+            { $match: { isDeleted: { $ne: true } } },
             { $group: { _id: { $ifNull: ["$plan", "free"] }, count: { $sum: 1 } } }
         ]);
 
@@ -37,6 +45,9 @@ async function getAdminStatsController(req, res) {
         sevenDaysAgo.setHours(0, 0, 0, 0);
 
         const dailyRegistrationsRaw = await userModel.aggregate([
+            {
+                $match: { isDeleted: { $ne: true } }
+            },
             {
                 $addFields: {
                     userCreatedAt: { $ifNull: ["$createdAt", { $toDate: "$_id" }] }
@@ -75,7 +86,8 @@ async function getAdminStatsController(req, res) {
                 totalCoverLetters,
                 blockedUsers,
                 plans,
-                dailyRegistrations
+                dailyRegistrations,
+                activity: activitySummary
             }
         });
     } catch (err) {
@@ -91,9 +103,15 @@ async function getAdminStatsController(req, res) {
  */
 async function getAdminUsersController(req, res) {
     try {
-        const { search = "", plan = "", role = "", blocked = "", page = 1, limit = 20 } = req.query;
+        const { search = "", plan = "", role = "", blocked = "", deleted = "", activity = "", page = 1, limit = 20 } = req.query;
 
         const query = {};
+
+        if (deleted === "true") {
+            query.isDeleted = true;
+        } else if (deleted !== "all") {
+            query.isDeleted = { $ne: true };
+        }
 
         if (search.trim()) {
             const searchRegex = new RegExp(search.trim(), "i");
@@ -110,6 +128,42 @@ async function getAdminUsersController(req, res) {
 
         if (blocked !== "") {
             query.isBlocked = blocked === "true";
+        }
+
+        // Activity filter handling
+        if (activity) {
+            const now = new Date();
+            if (activity === 'today') {
+                const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+                query.lastActiveAt = { $gte: startOfToday };
+            } else if (activity === '7d') {
+                const sevenDaysAgo = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
+                query.lastActiveAt = { $gte: sevenDaysAgo };
+            } else if (activity === '30d') {
+                const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+                query.lastActiveAt = { $gte: thirtyDaysAgo };
+            } else if (activity === 'dormant') {
+                const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+                const thirtyDaysHex = Math.floor(thirtyDaysAgo.getTime() / 1000).toString(16).padEnd(24, '0');
+                const thirtyDaysObjectId = new mongoose.Types.ObjectId(thirtyDaysHex);
+
+                query.$and = (query.$and || []).concat([
+                    {
+                        $or: [
+                            { lastActiveAt: { $lt: thirtyDaysAgo } },
+                            {
+                                lastActiveAt: null,
+                                $or: [
+                                    { createdAt: { $lt: thirtyDaysAgo } },
+                                    { createdAt: null, _id: { $lt: thirtyDaysObjectId } }
+                                ]
+                            }
+                        ]
+                    }
+                ]);
+            } else if (activity === 'never') {
+                query.lastActiveAt = null;
+            }
         }
 
         const pageNum = Math.max(1, parseInt(page, 10));
@@ -177,28 +231,91 @@ async function getAdminUsersController(req, res) {
 async function updateUserRoleController(req, res) {
     try {
         const { userId } = req.params;
-        const { role } = req.body;
+        const { role, reason } = req.body;
 
-        const validRoles = ['user', 'admin', 'super_admin'];
+        const validRoles = ALL_ROLES;
         if (!role || !validRoles.includes(role.toLowerCase())) {
-            return res.status(400).json({ message: "Invalid role. Allowed: 'user', 'admin', 'super_admin'." });
+            return res.status(400).json({ message: `Invalid role "${role}". Allowed: ${ALL_ROLES.join(', ')}.` });
         }
 
         const targetRole = role.toLowerCase();
+        const requesterRole = req.user?.role || 'admin';
+        const requesterId = req.user?.id || req.user?._id?.toString();
 
-        const user = await userModel.findByIdAndUpdate(
-            userId,
-            { role: targetRole },
-            { returnDocument: 'after' }
-        ).select("-password");
-
-        if (!user) {
+        const existingUser = await userModel.findById(userId).select("username email role");
+        if (!existingUser) {
             return res.status(404).json({ message: "Account not found." });
         }
 
+        // Privilege Escalation Guard 1: Ordinary admin cannot self-promote or modify own role
+        if (requesterId && requesterId === userId.toString() && requesterRole !== 'super_admin' && targetRole !== existingUser.role) {
+            await recordAdminAudit({
+                req,
+                action: 'PRIVILEGE_ESCALATION_BLOCKED',
+                category: 'SECURITY',
+                severity: 'CRITICAL',
+                targetId: existingUser._id,
+                targetType: 'User',
+                targetIdentifier: `${existingUser.username} (${existingUser.email})`,
+                changeSummary: `Administrator "${req.user.username}" attempted unauthorized self-role modification.`,
+                reason: reason || 'Self-role alteration attempt'
+            });
+            return res.status(403).json({ message: "Privilege escalation prevented: You cannot alter your own administrative role." });
+        }
+
+        // Privilege Escalation Guard 2: Ordinary admin cannot promote anyone to super_admin
+        if (targetRole === 'super_admin' && requesterRole !== 'super_admin') {
+            await recordAdminAudit({
+                req,
+                action: 'PRIVILEGE_ESCALATION_BLOCKED',
+                category: 'SECURITY',
+                severity: 'CRITICAL',
+                targetId: existingUser._id,
+                targetType: 'User',
+                targetIdentifier: `${existingUser.username} (${existingUser.email})`,
+                changeSummary: `Administrator "${req.user.username}" attempted to promote "${existingUser.username}" to Super Administrator without authorization.`,
+                reason: reason || 'Unauthorized promotion to super_admin'
+            });
+            return res.status(403).json({ message: "Privilege escalation prevented: Only a Super Administrator can promote accounts to Super Administrator." });
+        }
+
+        // Privilege Escalation Guard 3: Ordinary admin cannot modify an existing super_admin's role
+        if (existingUser.role === 'super_admin' && requesterRole !== 'super_admin') {
+            await recordAdminAudit({
+                req,
+                action: 'PRIVILEGE_ESCALATION_BLOCKED',
+                category: 'SECURITY',
+                severity: 'CRITICAL',
+                targetId: existingUser._id,
+                targetType: 'User',
+                targetIdentifier: `${existingUser.username} (${existingUser.email})`,
+                changeSummary: `Administrator "${req.user.username}" attempted to modify Super Administrator "${existingUser.username}" without authorization.`,
+                reason: reason || 'Unauthorized modification of super_admin role'
+            });
+            return res.status(403).json({ message: "Privilege escalation prevented: Only a Super Administrator can modify privileges of a Super Administrator." });
+        }
+
+        const oldRole = existingUser.role;
+        existingUser.role = targetRole;
+        await existingUser.save();
+
+        await recordAdminAudit({
+            req,
+            action: 'USER_ROLE_CHANGED',
+            category: 'ADMIN',
+            severity: 'WARN',
+            targetId: existingUser._id,
+            targetType: 'User',
+            targetIdentifier: `${existingUser.username} (${existingUser.email})`,
+            before: { role: oldRole },
+            after: { role: targetRole },
+            changeSummary: `Changed role from "${oldRole}" to "${targetRole}" for user ${existingUser.username}`,
+            reason
+        });
+
         return res.status(200).json({
-            message: `User ${user.username} (${user.email}) role updated to '${targetRole.toUpperCase()}'.`,
-            user
+            message: `User ${existingUser.username} (${existingUser.email}) role updated to '${targetRole.toUpperCase()}'.`,
+            user: existingUser
         });
     } catch (err) {
         return res.status(500).json({ message: err.message || "Failed to update user role." });
@@ -222,6 +339,26 @@ async function createAdminAccountController(req, res) {
             return res.status(400).json({ message: "Password must be at least 6 characters long." });
         }
 
+        const requestedRole = ALL_ROLES.includes(role.toLowerCase()) ? role.toLowerCase() : 'admin';
+        const requesterRole = req.user?.role || 'admin';
+
+        // Privilege Escalation Guard: Only Super Admins can create new Super Admin accounts
+        if (requestedRole === 'super_admin' && requesterRole !== 'super_admin') {
+            await recordAdminAudit({
+                req,
+                action: 'PRIVILEGE_ESCALATION_BLOCKED',
+                category: 'SECURITY',
+                severity: 'CRITICAL',
+                targetIdentifier: email.trim().toLowerCase(),
+                targetType: 'AdminAccount',
+                changeSummary: `Administrator "${req.user.username}" attempted to register a new Super Administrator without authorization.`,
+                reason: req.body?.reason || 'Unauthorized creation of super_admin account'
+            });
+            return res.status(403).json({
+                message: "Privilege escalation prevented: Only a Super Administrator can create a Super Administrator account."
+            });
+        }
+
         const normalizedEmail = email.trim().toLowerCase();
         const existingUser = await userModel.findOne({ email: normalizedEmail });
 
@@ -235,9 +372,23 @@ async function createAdminAccountController(req, res) {
             username: username.trim(),
             email: normalizedEmail,
             password: hash,
-            role: ['super_admin', 'admin'].includes(role.toLowerCase()) ? role.toLowerCase() : 'admin',
+            role: requestedRole,
             isVerified: true,
             plan: 'premium'
+        });
+
+        await recordAdminAudit({
+            req,
+            action: 'ADMIN_CREATED',
+            category: 'ADMIN',
+            severity: 'WARN',
+            targetId: newAdmin._id,
+            targetType: 'AdminAccount',
+            targetIdentifier: `${newAdmin.username} (${newAdmin.email})`,
+            before: null,
+            after: { username: newAdmin.username, email: newAdmin.email, role: newAdmin.role },
+            changeSummary: `Created new administrator account "${newAdmin.username}" with role "${newAdmin.role}"`,
+            reason: req.body?.reason
         });
 
         return res.status(201).json({
@@ -262,7 +413,7 @@ async function createAdminAccountController(req, res) {
 async function updateUserPlanController(req, res) {
     try {
         const { userId } = req.params;
-        const { plan } = req.body;
+        const { plan, reason } = req.body;
 
         if (!plan || !['free', 'pro', 'premium'].includes(plan.toLowerCase())) {
             return res.status(400).json({ message: "Invalid plan. Allowed: 'free', 'pro', 'premium'." });
@@ -271,6 +422,12 @@ async function updateUserPlanController(req, res) {
         const normalizedPlan = plan.toLowerCase();
         const now = new Date();
         const newPeriodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+        const existingUser = await userModel.findById(userId).select("username email plan");
+        if (!existingUser) {
+            return res.status(404).json({ message: "User not found." });
+        }
+        const oldPlan = existingUser.plan || 'free';
 
         // Update user plan and reset generation credits for the new billing period
         const user = await userModel.findByIdAndUpdate(
@@ -283,22 +440,33 @@ async function updateUserPlanController(req, res) {
             { returnDocument: 'after' }
         ).select("-password");
 
-        if (!user) {
-            return res.status(404).json({ message: "User not found." });
-        }
-
         // Create or update subscription document
         await subscriptionModel.findOneAndUpdate(
             { userId: userId },
             {
                 plan: normalizedPlan,
-                status: 'active',
+                status: 'ACTIVE',
                 startedAt: now,
+                currentPeriodStart: now,
                 currentPeriodEnd: newPeriodEnd,
                 cancelAtPeriodEnd: false
             },
             { upsert: true, returnDocument: 'after' }
         );
+
+        await recordAdminAudit({
+            req,
+            action: 'USER_PLAN_CHANGED',
+            category: 'ADMIN',
+            severity: 'INFO',
+            targetId: user._id,
+            targetType: 'User',
+            targetIdentifier: `${user.username} (${user.email})`,
+            before: { plan: oldPlan },
+            after: { plan: normalizedPlan },
+            changeSummary: `Updated subscription plan from "${oldPlan}" to "${normalizedPlan}" for user ${user.username}`,
+            reason
+        });
 
         try {
             await notificationModel.create({
@@ -327,11 +495,42 @@ async function updateUserPlanController(req, res) {
 async function toggleUserBlockController(req, res) {
     try {
         const { userId } = req.params;
-        const { isBlocked } = req.body;
+        const { isBlocked, reason } = req.body;
 
         if (typeof isBlocked !== 'boolean') {
             return res.status(400).json({ message: "isBlocked boolean parameter required." });
         }
+
+        const requesterRole = req.user?.role || 'admin';
+        const requesterId = req.user?.id || req.user?._id?.toString();
+
+        // Prevent admin from blocking themselves
+        if (requesterId && requesterId === userId.toString()) {
+            return res.status(400).json({ message: "You cannot suspend your own administrative account." });
+        }
+
+        const existingUser = await userModel.findById(userId).select("username email role isBlocked");
+        if (!existingUser) {
+            return res.status(404).json({ message: "User not found." });
+        }
+
+        // Privilege Escalation Guard: Ordinary admin cannot suspend a super_admin
+        if (existingUser.role === 'super_admin' && requesterRole !== 'super_admin') {
+            await recordAdminAudit({
+                req,
+                action: 'PRIVILEGE_ESCALATION_BLOCKED',
+                category: 'SECURITY',
+                severity: 'CRITICAL',
+                targetId: existingUser._id,
+                targetType: 'User',
+                targetIdentifier: `${existingUser.username} (${existingUser.email})`,
+                changeSummary: `Administrator "${req.user.username}" attempted to suspend Super Administrator "${existingUser.username}" without authorization.`,
+                reason: reason || 'Unauthorized suspension attempt on super_admin'
+            });
+            return res.status(403).json({ message: "Privilege escalation prevented: Ordinary administrators cannot suspend a Super Administrator." });
+        }
+
+        const oldBlocked = Boolean(existingUser.isBlocked);
 
         const user = await userModel.findByIdAndUpdate(
             userId,
@@ -339,9 +538,19 @@ async function toggleUserBlockController(req, res) {
             { returnDocument: 'after' }
         ).select("-password");
 
-        if (!user) {
-            return res.status(404).json({ message: "User not found." });
-        }
+        await recordAdminAudit({
+            req,
+            action: isBlocked ? 'USER_SUSPENDED' : 'USER_RESTORED',
+            category: 'ADMIN',
+            severity: isBlocked ? 'WARN' : 'INFO',
+            targetId: user._id,
+            targetType: 'User',
+            targetIdentifier: `${user.username} (${user.email})`,
+            before: { isBlocked: oldBlocked },
+            after: { isBlocked },
+            changeSummary: `${isBlocked ? 'Suspended' : 'Restored'} user account ${user.username} (${user.email})`,
+            reason
+        });
 
         try {
             await notificationModel.create({
@@ -389,8 +598,23 @@ async function grantUserCreditsController(req, res) {
             return res.status(404).json({ message: `No user found for identifier '${identifier}'.` });
         }
 
+        const oldCredits = user.customBonusCredits || 0;
         user.customBonusCredits = Math.max(0, (user.customBonusCredits || 0) + bonusCredits);
         await user.save();
+
+        await recordAdminAudit({
+            req,
+            action: 'CREDITS_GRANTED',
+            category: 'ADMIN',
+            severity: 'INFO',
+            targetId: user._id,
+            targetType: 'User',
+            targetIdentifier: `${user.username} (${user.email})`,
+            before: { customBonusCredits: oldCredits },
+            after: { customBonusCredits: user.customBonusCredits },
+            changeSummary: `Granted ${bonusCredits >= 0 ? '+' : ''}${bonusCredits} bonus credits to ${user.username}. New balance: ${user.customBonusCredits}`,
+            reason: req.body?.reason
+        });
 
         try {
             await notificationModel.create({
@@ -435,6 +659,7 @@ async function updateUserFeatureAccessController(req, res) {
             return res.status(404).json({ message: "User not found." });
         }
 
+        const oldFeatures = { ...(user.blockedFeatures || {}) };
         user.blockedFeatures = {
             aiAssistant: Boolean(blockedFeatures.aiAssistant),
             resumeGeneration: Boolean(blockedFeatures.resumeGeneration),
@@ -443,6 +668,20 @@ async function updateUserFeatureAccessController(req, res) {
         };
 
         await user.save();
+
+        await recordAdminAudit({
+            req,
+            action: 'FEATURE_ACCESS_CHANGED',
+            category: 'ADMIN',
+            severity: 'INFO',
+            targetId: user._id,
+            targetType: 'FeatureMatrix',
+            targetIdentifier: `${user.username} (${user.email})`,
+            before: { blockedFeatures: oldFeatures },
+            after: { blockedFeatures: user.blockedFeatures },
+            changeSummary: `Updated feature access permissions for ${user.username}`,
+            reason: req.body?.reason
+        });
 
         try {
             const blockedList = [];
@@ -488,7 +727,7 @@ async function getUserByIdController(req, res) {
         const { userId } = req.params;
 
         const [user, reports, coverLetters] = await Promise.all([
-            userModel.findById(userId).select("username email plan role isBlocked customBonusCredits customAiBonusCredits blockedFeatures createdAt").lean(),
+            userModel.findById(userId).select("username email plan role isBlocked customBonusCredits customAiBonusCredits blockedFeatures createdAt lastActiveAt").lean(),
             interviewReportModel.find({ user: userId })
                 .select("_id developerTitle matchScore createdAt generatedResumeHtml resume jobDescription")
                 .sort({ createdAt: -1 })
@@ -544,6 +783,9 @@ async function adjustUserCreditsController(req, res) {
             return res.status(404).json({ message: "User not found." });
         }
 
+        const oldGen = user.customBonusCredits || 0;
+        const oldAi = user.customAiBonusCredits || 0;
+
         // Mode 1: Direct setting via sliders / numeric values (can be negative or positive)
         if (typeof customBonusCredits === 'number' || typeof customAiBonusCredits === 'number') {
             if (typeof customBonusCredits === 'number') {
@@ -566,6 +808,20 @@ async function adjustUserCreditsController(req, res) {
         }
 
         await user.save();
+
+        await recordAdminAudit({
+            req,
+            action: 'CREDITS_ADJUSTED',
+            category: 'ADMIN',
+            severity: 'INFO',
+            targetId: user._id,
+            targetType: 'User',
+            targetIdentifier: `${user.username} (${user.email})`,
+            before: { customBonusCredits: oldGen, customAiBonusCredits: oldAi },
+            after: { customBonusCredits: user.customBonusCredits, customAiBonusCredits: user.customAiBonusCredits },
+            changeSummary: `Adjusted credits for ${user.username}: Generation (${oldGen} -> ${user.customBonusCredits}), AI (${oldAi} -> ${user.customAiBonusCredits})`,
+            reason: req.body?.reason
+        });
 
         try {
             await notificationModel.create({
@@ -655,6 +911,17 @@ async function sendAdminMessageController(req, res) {
 
         await notificationModel.insertMany(notificationDocs);
 
+        await recordAdminAudit({
+            req,
+            action: 'BROADCAST_SENT',
+            category: 'ADMIN',
+            severity: 'INFO',
+            targetType: 'Notification',
+            targetIdentifier: `Target: ${targetType} (${recipients.length} recipients)`,
+            after: { title: title.trim(), targetType, recipientsCount: recipients.length },
+            changeSummary: `Sent broadcast notification "${title.trim()}" to ${recipients.length} user(s) (target: ${targetType})`
+        });
+
         return res.status(200).json({
             message: `Successfully sent message to ${recipients.length} user(s).`,
             recipientsCount: recipients.length
@@ -682,7 +949,7 @@ async function getAdminPaymentsController(req, res) {
 
         const [payments, totalCount, statsAgg] = await Promise.all([
             Payment.find(filter)
-                .populate('userId', 'username email plan')
+                .populate('userId', 'username email plan isDeleted')
                 .populate('orderId', 'planKey billingCycle amount gatewayOrderId')
                 .sort({ createdAt: -1 })
                 .skip((page - 1) * limit)
@@ -750,12 +1017,12 @@ async function getAdminSubscriptionsController(req, res) {
         const status = req.query.status;
 
         const filter = {};
-        if (plan) filter.plan = plan.toLowerCase();
-        if (status) filter.status = status.toUpperCase();
+        if (plan) filter.plan = { $regex: new RegExp(`^${plan.trim()}$`, 'i') };
+        if (status) filter.status = { $regex: new RegExp(`^${status.trim()}$`, 'i') };
 
         const [subscriptions, totalCount, statusAgg] = await Promise.all([
             Subscription.find(filter)
-                .populate('userId', 'username email plan isBlocked')
+                .populate('userId', 'username email plan isBlocked isDeleted')
                 .populate('planId', 'name price features')
                 .sort({ createdAt: -1 })
                 .skip((page - 1) * limit)
@@ -772,14 +1039,25 @@ async function getAdminSubscriptionsController(req, res) {
             ])
         ]);
 
-        const tierCounts = { pro: 0, premium: 0, activeTotal: 0, cancelledTotal: 0 };
+        const tierCounts = { pro: 0, premium: 0, free: 0, activeTotal: 0, cancelledTotal: 0 };
         statusAgg.forEach(s => {
-            if (s._id.status === 'ACTIVE') {
+            const normStatus = (s._id.status || '').toUpperCase();
+            const normPlan = (s._id.plan || '').toLowerCase();
+            if (normStatus === 'ACTIVE') {
                 tierCounts.activeTotal += s.count;
-                if (s._id.plan === 'pro') tierCounts.pro += s.count;
-                if (s._id.plan === 'premium') tierCounts.premium += s.count;
-            } else if (s._id.status === 'CANCELLED') {
+                if (normPlan === 'pro') tierCounts.pro += s.count;
+                if (normPlan === 'premium') tierCounts.premium += s.count;
+                if (normPlan === 'free') tierCounts.free += s.count;
+            } else if (normStatus === 'CANCELLED') {
                 tierCounts.cancelledTotal += s.count;
+            }
+        });
+
+        // Normalize legacy records for consistent client-side presentation
+        subscriptions.forEach(s => {
+            if (s.status) s.status = s.status.toUpperCase();
+            if (!s.currentPeriodStart && s.startedAt) {
+                s.currentPeriodStart = s.startedAt;
             }
         });
 
@@ -800,32 +1078,145 @@ async function getAdminSubscriptionsController(req, res) {
 }
 
 /**
+ * @name getSubscriptionReconciliationController
+ * @description Get comprehensive forensic diagnostic reconciliation of Users, Subscriptions, Payments, and Invoices
+ */
+async function getSubscriptionReconciliationController(req, res) {
+    try {
+        const { getSubscriptionAndFinancialReconciliation } = require('../services/subscriptionReconciliation.service');
+        const data = await getSubscriptionAndFinancialReconciliation();
+        return res.status(200).json({
+            success: true,
+            data
+        });
+    } catch (err) {
+        console.error('Reconciliation diagnostic error:', err);
+        return res.status(500).json({
+            success: false,
+            message: err.message || 'Failed to execute subscription and financial reconciliation diagnostic.'
+        });
+    }
+}
+
+/**
  * @name getAdminAuditLogsController
  * @description Get subscription and payment state transition audit logs
  */
 async function getAdminAuditLogsController(req, res) {
     try {
-        const SubscriptionEvent = require("../models/subscriptionEvent.model");
+        const source = (req.query.source || 'system').toLowerCase();
         const page = Math.max(1, parseInt(req.query.page) || 1);
-        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
-        const eventType = req.query.eventType;
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 25));
 
+        // Subscriptions source: Legacy fallback
+        if (source === 'subscriptions') {
+            const SubscriptionEvent = require("../models/subscriptionEvent.model");
+            const eventType = req.query.eventType;
+            const filter = {};
+            if (eventType) filter.eventType = eventType.toUpperCase();
+
+            const [events, totalCount] = await Promise.all([
+                SubscriptionEvent.find(filter)
+                    .populate('userId', 'username email plan')
+                    .populate('paymentOrderId', 'amount currency gatewayOrderId')
+                    .sort({ createdAt: -1 })
+                    .skip((page - 1) * limit)
+                    .limit(limit)
+                    .lean(),
+                SubscriptionEvent.countDocuments(filter)
+            ]);
+
+            return res.status(200).json({
+                success: true,
+                source: 'subscriptions',
+                data: events,
+                pagination: {
+                    total: totalCount,
+                    page,
+                    pages: Math.ceil(totalCount / limit) || 1,
+                    limit
+                }
+            });
+        }
+
+        // Primary source: SystemEvent (Persistent, append-only admin audit trail)
+        const { SystemEvent } = require("../models/systemEvent.model");
         const filter = {};
-        if (eventType) filter.eventType = eventType.toUpperCase();
+
+        if (req.query.category && req.query.category !== 'ALL') {
+            filter.category = req.query.category.toUpperCase();
+        }
+
+        if (req.query.severity && req.query.severity !== 'ALL') {
+            filter.severity = req.query.severity.toUpperCase();
+        }
+
+        const actionFilter = req.query.action || req.query.eventType;
+        if (actionFilter && actionFilter !== 'ALL') {
+            const trimmedAction = actionFilter.trim();
+            filter.$or = [
+                { eventType: trimmedAction },
+                { 'details.action': trimmedAction }
+            ];
+        }
+
+        // Date range filtering
+        if (req.query.startDate || req.query.endDate) {
+            filter.createdAt = {};
+            if (req.query.startDate) {
+                filter.createdAt.$gte = new Date(req.query.startDate);
+            }
+            if (req.query.endDate) {
+                const end = new Date(req.query.endDate);
+                end.setHours(23, 59, 59, 999);
+                filter.createdAt.$lte = end;
+            }
+        }
+
+        // Keyword search across actor, target, summary, action
+        if (req.query.search && req.query.search.trim()) {
+            const searchRegex = new RegExp(req.query.search.trim(), 'i');
+            const matchingUsers = await userModel.find({
+                $or: [{ username: searchRegex }, { email: searchRegex }]
+            }).select('_id').lean();
+            const userIds = matchingUsers.map(u => u._id);
+
+            const searchOr = [
+                { 'details.targetIdentifier': searchRegex },
+                { 'details.changeSummary': searchRegex },
+                { 'details.action': searchRegex },
+                { eventType: searchRegex }
+            ];
+
+            if (userIds.length > 0) {
+                searchOr.push({ actorId: { $in: userIds } });
+                searchOr.push({ targetId: { $in: userIds } });
+            }
+
+            if (filter.$or) {
+                filter.$and = filter.$and || [];
+                filter.$and.push({ $or: filter.$or });
+                delete filter.$or;
+                filter.$and.push({ $or: searchOr });
+            } else {
+                filter.$or = searchOr;
+            }
+        }
 
         const [events, totalCount] = await Promise.all([
-            SubscriptionEvent.find(filter)
-                .populate('userId', 'username email plan')
-                .populate('paymentOrderId', 'amount currency gatewayOrderId')
+            SystemEvent.find(filter)
+                .populate('actorId', 'username email role')
+                .populate('targetId', 'username email role')
                 .sort({ createdAt: -1 })
                 .skip((page - 1) * limit)
                 .limit(limit)
                 .lean(),
-            SubscriptionEvent.countDocuments(filter)
+            SystemEvent.countDocuments(filter)
         ]);
 
         return res.status(200).json({
             success: true,
+            source: 'system',
             data: events,
             pagination: {
                 total: totalCount,
@@ -848,14 +1239,34 @@ async function getAdminSystemEventsController(req, res) {
         const { SystemEvent } = require("../models/systemEvent.model");
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
-        const { severity, category, eventType } = req.query;
+        const { severity, category, eventType, startDate, endDate, search } = req.query;
 
         const filter = {};
         if (severity) filter.severity = severity.toUpperCase();
         if (category) filter.category = category.toUpperCase();
         if (eventType) filter.eventType = eventType.trim();
 
-        const [events, totalCount] = await Promise.all([
+        if (startDate || endDate) {
+            filter.createdAt = {};
+            if (startDate && !isNaN(new Date(startDate).getTime())) filter.createdAt.$gte = new Date(startDate);
+            if (endDate && !isNaN(new Date(endDate).getTime())) {
+                const e = new Date(endDate);
+                e.setHours(23, 59, 59, 999);
+                filter.createdAt.$lte = e;
+            }
+        }
+
+        if (search && search.trim()) {
+            const searchRegex = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+            filter.$or = [
+                { eventType: searchRegex },
+                { 'details.message': searchRegex },
+                { 'details.action': searchRegex },
+                { targetType: searchRegex }
+            ];
+        }
+
+        const [events, totalCount, categoryCounts, severityCounts] = await Promise.all([
             SystemEvent.find(filter)
                 .populate('actorId', 'username email role')
                 .populate('targetId', 'username email role')
@@ -863,12 +1274,27 @@ async function getAdminSystemEventsController(req, res) {
                 .skip((page - 1) * limit)
                 .limit(limit)
                 .lean(),
-            SystemEvent.countDocuments(filter)
+            SystemEvent.countDocuments(filter),
+            SystemEvent.aggregate([
+                { $group: { _id: '$category', count: { $sum: 1 } } }
+            ]),
+            SystemEvent.aggregate([
+                { $group: { _id: '$severity', count: { $sum: 1 } } }
+            ])
         ]);
+
+        const catMap = {};
+        categoryCounts.forEach(c => { if (c._id) catMap[c._id] = c.count; });
+        const sevMap = {};
+        severityCounts.forEach(s => { if (s._id) sevMap[s._id] = s.count; });
 
         return res.status(200).json({
             success: true,
             data: events,
+            metrics: {
+                categories: catMap,
+                severities: sevMap
+            },
             pagination: {
                 total: totalCount,
                 page,
@@ -883,27 +1309,129 @@ async function getAdminSystemEventsController(req, res) {
 
 /**
  * @name getAdminInvoicesController
- * @description Get all tax invoices
+ * @description Search, filter & list all tax invoices with server-side pagination & revenue summaries
+ * @access Private (Admin Only)
  */
 async function getAdminInvoicesController(req, res) {
     try {
         const { Invoice } = require("../models/invoice.model");
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+        const { status, search, startDate, endDate } = req.query;
 
-        const [invoices, totalCount] = await Promise.all([
-            Invoice.find()
-                .populate('userId', 'username email')
+        const filter = {};
+
+        // 1. Status Filter (ISSUED, PAID, VOID)
+        if (status && ['ISSUED', 'PAID', 'VOID'].includes(status.toUpperCase())) {
+            filter.status = status.toUpperCase();
+        }
+
+        // 2. Date Range Filter (issuedAt)
+        if (startDate || endDate) {
+            filter.issuedAt = {};
+            if (startDate) {
+                const start = new Date(startDate);
+                if (!isNaN(start.getTime())) filter.issuedAt.$gte = start;
+            }
+            if (endDate) {
+                const end = new Date(endDate);
+                if (!isNaN(end.getTime())) {
+                    end.setHours(23, 59, 59, 999);
+                    filter.issuedAt.$lte = end;
+                }
+            }
+        }
+
+        // 3. Search Filter (invoiceNumber, billTo name/email, or userId)
+        if (search && search.trim()) {
+            const cleanSearch = search.trim();
+            const searchRegex = new RegExp(cleanSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+
+            // Find matching user accounts to match on userId
+            const matchingUsers = await userModel.find({
+                $or: [
+                    { username: searchRegex },
+                    { email: searchRegex }
+                ]
+            }).select('_id').limit(50).lean();
+
+            const userIds = matchingUsers.map(u => u._id);
+
+            filter.$or = [
+                { invoiceNumber: searchRegex },
+                { 'billTo.name': searchRegex },
+                { 'billTo.email': searchRegex }
+            ];
+
+            if (userIds.length > 0) {
+                filter.$or.push({ userId: { $in: userIds } });
+            }
+
+            if (mongoose.Types.ObjectId.isValid(cleanSearch)) {
+                filter.$or.push({ userId: new mongoose.Types.ObjectId(cleanSearch) });
+                filter.$or.push({ _id: new mongoose.Types.ObjectId(cleanSearch) });
+            }
+        }
+
+        // 4. Parallel Query: Filtered paginated results + Filtered count + Overall Summary
+        const [invoices, totalCount, summaryAgg] = await Promise.all([
+            Invoice.find(filter)
+                .populate('userId', 'username email isDeleted')
                 .sort({ issuedAt: -1 })
                 .skip((page - 1) * limit)
                 .limit(limit)
                 .lean(),
-            Invoice.countDocuments()
+            Invoice.countDocuments(filter),
+            Invoice.aggregate([
+                {
+                    $group: {
+                        _id: null,
+                        totalInvoices: { $sum: 1 },
+                        totalRevenuePaise: {
+                            $sum: {
+                                $cond: [{ $eq: ['$status', 'PAID'] }, '$totalAmount', 0]
+                            }
+                        },
+                        paidCount: {
+                            $sum: {
+                                $cond: [{ $eq: ['$status', 'PAID'] }, 1, 0]
+                            }
+                        },
+                        issuedCount: {
+                            $sum: {
+                                $cond: [{ $eq: ['$status', 'ISSUED'] }, 1, 0]
+                            }
+                        },
+                        voidCount: {
+                            $sum: {
+                                $cond: [{ $eq: ['$status', 'VOID'] }, 1, 0]
+                            }
+                        }
+                    }
+                }
+            ])
         ]);
+
+        const summaryData = summaryAgg[0] || {
+            totalInvoices: 0,
+            totalRevenuePaise: 0,
+            paidCount: 0,
+            issuedCount: 0,
+            voidCount: 0
+        };
+
+        const summary = {
+            totalInvoices: summaryData.totalInvoices,
+            totalRevenueRupees: (summaryData.totalRevenuePaise / 100).toFixed(2),
+            paidCount: summaryData.paidCount,
+            issuedCount: summaryData.issuedCount,
+            voidCount: summaryData.voidCount
+        };
 
         return res.status(200).json({
             success: true,
             data: invoices,
+            summary,
             pagination: {
                 total: totalCount,
                 page,
@@ -918,7 +1446,9 @@ async function getAdminInvoicesController(req, res) {
 
 /**
  * @name deleteUserController
- * @description Completely delete a user account and all associated data
+ * @description Safely archives and anonymizes a user account while strictly preserving
+ * financial records (Payments, PaymentOrders, Invoices, SubscriptionEvents) according to
+ * legal and tax statutory retention requirements.
  * @access Private (Admin Only)
  */
 async function deleteUserController(req, res) {
@@ -939,45 +1469,309 @@ async function deleteUserController(req, res) {
             return res.status(404).json({ message: "User account not found." });
         }
 
-        // Clean up all related user data
-        const { deleteCachePattern } = require("../services/redis.service");
-        const Payment = require("../models/payment.model");
-        const PaymentOrder = require("../models/paymentOrder.model");
-        const { Invoice } = require("../models/invoice.model");
-        const UsageTracking = require("../models/usageTracking.model");
-        const SubscriptionEvent = require("../models/subscriptionEvent.model");
+        // Privilege Escalation Guard: Ordinary admin cannot delete or archive a super_admin
+        const requesterRole = req.user?.role || 'admin';
+        if (user.role === 'super_admin' && requesterRole !== 'super_admin') {
+            await recordAdminAudit({
+                req,
+                action: 'PRIVILEGE_ESCALATION_BLOCKED',
+                category: 'SECURITY',
+                severity: 'CRITICAL',
+                targetId: user._id,
+                targetType: 'User',
+                targetIdentifier: `${user.username} (${user.email})`,
+                changeSummary: `Administrator "${req.user.username}" attempted to delete Super Administrator "${user.username}" without authorization.`,
+                reason: req.body?.reason || 'Unauthorized deletion attempt on super_admin'
+            });
+            return res.status(403).json({
+                message: "Privilege escalation prevented: Ordinary administrators cannot delete or archive a Super Administrator."
+            });
+        }
 
-        const results = await Promise.allSettled([
+        // Idempotency: If already archived/deleted, return safe status
+        if (user.isDeleted) {
+            return res.status(200).json({
+                success: true,
+                message: `User account "${user.username}" is already archived/deleted.`,
+                user: {
+                    id: user._id,
+                    username: user.username,
+                    email: user.email,
+                    isDeleted: true,
+                    deletedAt: user.deletedAt
+                }
+            });
+        }
+
+        const userSnapshot = {
+            username: user.username,
+            email: user.email,
+            plan: user.plan,
+            role: user.role,
+            customBonusCredits: user.customBonusCredits
+        };
+
+        // 1. Terminate any active subscriptions cleanly to prevent future charges
+        const SubscriptionEvent = require("../models/subscriptionEvent.model");
+        try {
+            const activeSubscriptions = await subscriptionModel.find({
+                userId,
+                status: { $in: ['ACTIVE', 'active', 'GRACE_PERIOD'] }
+            });
+            for (const sub of activeSubscriptions) {
+                sub.status = 'CANCELLED';
+                sub.canceledAt = new Date();
+                sub.cancelAtPeriodEnd = false;
+                await sub.save();
+
+                await SubscriptionEvent.create({
+                    userId,
+                    subscriptionId: sub._id,
+                    eventType: 'CANCELLED',
+                    fromPlan: sub.plan,
+                    toPlan: 'free',
+                    actorType: 'ADMIN',
+                    metadata: {
+                        reason: 'Account archived by administrator; financial records preserved'
+                    }
+                });
+            }
+        } catch (subErr) {
+            console.error("Subscription cancellation during user archival warning:", subErr.message);
+        }
+
+        // 2. Remove personal user-generated documents (Right to be Forgotten) & invalidate cache.
+        // NOTE: Payments, PaymentOrders, Invoices, and SubscriptionEvents are EXPLICITLY PRESERVED
+        // to maintain statutory accounting compliance and financial audit integrity.
+        const { deleteCachePattern } = require("../services/redis.service");
+        await Promise.allSettled([
             interviewReportModel.deleteMany({ user: userId }),
             coverLetterModel.deleteMany({ user: userId }),
-            subscriptionModel.deleteMany({ userId }),
-            Payment.deleteMany({ userId }),
-            PaymentOrder.deleteMany({ userId }),
-            Invoice.deleteMany({ userId }),
-            UsageTracking.deleteMany({ userId }),
-            SubscriptionEvent.deleteMany({ userId }),
             notificationModel.deleteMany({ recipient: userId }),
             deleteCachePattern(`*${userId}*`)
         ]);
 
-        const failures = results.filter(r => r.status === 'rejected');
-        if (failures.length > 0) {
-            failures.forEach(f => console.error("deleteUserController cleanup failure:", f.reason));
-            return res.status(500).json({
-                message: `Deletion of "${user.username}" was incomplete. ${failures.length} cleanup step(s) failed.`
-            });
-        }
+        // 3. Anonymize user personal data and set archival flags (preserves referential integrity for invoices/payments)
+        const crypto = require("crypto");
+        const anonymizedId = userId.toString().slice(-6);
+        const anonymizedUsername = `deleted_user_${anonymizedId}`;
+        const anonymizedEmail = `deleted_${userId.toString()}@anonymized.kivi.ai`;
+        const unmatchablePassword = `[ACCOUNT_ARCHIVED_${crypto.randomUUID()}]`;
 
-        // Delete user document last so failure leaves the account recoverable
-        await userModel.findByIdAndDelete(userId);
+        user.username = anonymizedUsername;
+        user.email = anonymizedEmail;
+        user.password = unmatchablePassword;
+        user.isDeleted = true;
+        user.deletedAt = new Date();
+        user.anonymizedAt = new Date();
+        user.deletionReason = (req.body && req.body.reason) ? String(req.body.reason).slice(0, 500) : "Administrative account archival";
+        user.deletedBy = req.user?._id || req.user?.id || null;
+        user.isBlocked = true;
+        user.role = 'user';
+        user.plan = 'free';
+        user.customBonusCredits = 0;
+        user.customAiBonusCredits = 0;
+        user.careerProfile = {
+            selfDescription: "",
+            targetRole: "",
+            targetCompanies: [],
+            experienceLevel: "fresher",
+            savedDescriptions: [],
+            savedRoadmaps: []
+        };
+        user.blockedFeatures = {
+            aiAssistant: true,
+            resumeGeneration: true,
+            coverLetterGeneration: true,
+            interviewReports: true
+        };
+
+        await user.save();
+
+        // 4. Record high-importance audit event
+        await recordAdminAudit({
+            req,
+            action: 'USER_DELETED',
+            category: 'ADMIN',
+            severity: 'WARN',
+            targetId: user._id,
+            targetType: 'User',
+            targetIdentifier: `${userSnapshot.username} (${userSnapshot.email})`,
+            before: userSnapshot,
+            after: {
+                isDeleted: true,
+                anonymizedUsername,
+                anonymizedEmail,
+                financialRecordsPreserved: true
+            },
+            changeSummary: `Safely archived user "${userSnapshot.username}" (${userSnapshot.email}). Personal content purged; statutory financial transactions, payments, and invoices preserved.`,
+            reason: user.deletionReason
+        });
 
         return res.status(200).json({
             success: true,
-            message: `User account "${user.username}" and all related data deleted successfully.`
+            message: `User account "${userSnapshot.username}" safely archived and anonymized. All statutory financial, invoice, and payment records were preserved.`,
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                isDeleted: true,
+                deletedAt: user.deletedAt
+            }
         });
     } catch (err) {
         console.error("deleteUserController error:", err);
         return res.status(500).json({ message: err.message || "Failed to delete user." });
+    }
+}
+
+/**
+ * @name exportAdminDataController
+ * @description Securely stream CSV or XLSX exports for admin modules
+ * @access Private (Admin Only)
+ */
+async function exportAdminDataController(req, res) {
+    try {
+        const { moduleName } = req.params;
+        const { format = 'csv', ...queryParams } = req.query;
+        const { streamExport } = require('../services/export.service');
+
+        await streamExport({
+            moduleName,
+            format,
+            queryParams,
+            req,
+            res
+        });
+    } catch (err) {
+        console.error('Export controller error:', err);
+        if (!res.headersSent) {
+            return res.status(err.status || 500).json({ message: err.message || 'Export failed.' });
+        }
+    }
+}
+
+/**
+ * @name getUserActivityAnalyticsController
+ * @description Get aggregated user activity analytics (DAU, WAU, MAU, Dormant, New, Returning)
+ * @access Private (Admin Only, Permission: analytics.read)
+ */
+async function getUserActivityAnalyticsController(req, res) {
+    try {
+        const { timeframe = '30d', plan = 'all' } = req.query;
+        const analytics = await getUserActivityAnalytics({ timeframe, plan });
+        return res.status(200).json({
+            success: true,
+            data: analytics
+        });
+    } catch (err) {
+        console.error('[ADMIN ACTIVITY ANALYTICS ERROR]', err);
+        return res.status(500).json({
+            success: false,
+            message: err.message || 'Failed to fetch user activity analytics.'
+        });
+    }
+}
+
+/**
+ * @name getAdminSystemHealthController
+ * @description Get operational health telemetry for all platform subsystems
+ * @access Private (Admin Only, Permission: settings.read | audit.read)
+ */
+async function getAdminSystemHealthController(req, res) {
+    try {
+        const { getSystemHealth } = require('../services/systemHealth.service');
+        const forceLive = req.query.refresh === 'true';
+        const health = await getSystemHealth({ forceLive });
+        return res.status(200).json({
+            success: true,
+            data: health
+        });
+    } catch (err) {
+        console.error('[ADMIN SYSTEM HEALTH ERROR]', err);
+        return res.status(500).json({
+            success: false,
+            message: err.message || 'Failed to probe system health.'
+        });
+    }
+}
+
+/**
+ * @name getAdminSettingsController
+ * @description Retrieve active platform-wide settings configuration
+ * @access Private (Permission: settings.read)
+ */
+async function getAdminSettingsController(req, res) {
+    try {
+        const appSettingsService = require('../services/appSettings.service');
+        const settings = await appSettingsService.getAppSettings();
+        return res.status(200).json({
+            success: true,
+            settings
+        });
+    } catch (err) {
+        console.error('Error in getAdminSettingsController:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to retrieve platform settings.'
+        });
+    }
+}
+
+/**
+ * @name updateAdminSettingsController
+ * @description Update platform-wide settings (maintenance, kill-switches, registration, AI provider, limits)
+ * @access Private (Permission: settings.update)
+ */
+async function updateAdminSettingsController(req, res) {
+    try {
+        const appSettingsService = require('../services/appSettings.service');
+        const updated = await appSettingsService.updateAppSettings(req.body, {
+            actorId: req.user?._id,
+            actorUsername: req.user?.username || 'admin',
+            actorRole: req.user?.role || 'admin',
+            req
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: 'Platform settings updated successfully.',
+            settings: updated
+        });
+    } catch (err) {
+        console.error('Error in updateAdminSettingsController:', err);
+        return res.status(400).json({
+            success: false,
+            message: err.message || 'Failed to update platform settings.'
+        });
+    }
+}
+
+/**
+ * @name rollbackAdminVersionController
+ * @description Roll back version control configuration to the previous valid configuration
+ * @access Private (Permission: settings.update)
+ */
+async function rollbackAdminVersionController(req, res) {
+    try {
+        const appSettingsService = require('../services/appSettings.service');
+        const rolledBack = await appSettingsService.rollbackVersionControl({
+            actorId: req.user?._id,
+            actorUsername: req.user?.username || 'admin',
+            actorRole: req.user?.role || 'admin',
+            req
+        });
+        return res.status(200).json({
+            success: true,
+            message: 'Version configuration rolled back to previous valid state successfully.',
+            settings: rolledBack
+        });
+    } catch (err) {
+        console.error('Error in rollbackAdminVersionController:', err);
+        return res.status(400).json({
+            success: false,
+            message: err.message || 'Failed to rollback version configuration.'
+        });
     }
 }
 
@@ -997,6 +1791,13 @@ module.exports = {
     getAdminSubscriptionsController,
     getAdminAuditLogsController,
     getAdminSystemEventsController,
+    getAdminSystemHealthController,
+    getAdminSettingsController,
+    updateAdminSettingsController,
+    rollbackAdminVersionController,
     getAdminInvoicesController,
-    deleteUserController
+    deleteUserController,
+    exportAdminDataController,
+    getSubscriptionReconciliationController,
+    getUserActivityAnalyticsController
 };

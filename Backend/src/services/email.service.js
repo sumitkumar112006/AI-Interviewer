@@ -16,6 +16,35 @@ class EmailProvider {
         throw new Error("Method 'sendOtp()' must be implemented.");
     }
 
+    async sendSupportReply(toEmail, details) {
+        throw new Error("Method 'sendSupportReply()' must be implemented.");
+    }
+
+    getSupportReplyTemplate(details) {
+        const { ticketId, subject, replyMessage, adminName } = details;
+        return `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background-color: #0f1322; color: #ffffff; border-radius: 12px; border: 1px solid #1c2338;">
+                <div style="border-bottom: 1px solid #1c2338; padding-bottom: 16px; margin-bottom: 20px;">
+                    <span style="font-size: 0.8rem; font-weight: 700; color: #818cf8; letter-spacing: 1.5px; text-transform: uppercase;">KIVI-AI Support Response</span>
+                    <h2 style="color: #7ddfff; margin: 6px 0 0 0; font-size: 1.3rem;">Ticket ${ticketId || ''}</h2>
+                    <p style="color: #94a3b8; font-size: 0.9rem; margin: 4px 0 0 0;">${subject || 'Support Request'}</p>
+                </div>
+                <p style="color: #cbd5e1; font-size: 0.95rem; line-height: 1.5;">
+                    Hello, our support team has responded to your inquiry:
+                </p>
+                <div style="background: rgba(99, 102, 241, 0.08); border-left: 4px solid #6366f1; border-radius: 6px; padding: 16px; margin: 18px 0; color: #f1f5f9; font-size: 0.95rem; line-height: 1.6; white-space: pre-wrap;">
+${replyMessage}
+                </div>
+                <p style="color: #64748b; font-size: 0.85rem; line-height: 1.5;">
+                    Responded by: <strong>${adminName || 'Support Representative'}</strong><br/>
+                    You can view the full discussion and reply anytime in your KIVI-AI Help & Support console.
+                </p>
+                <hr style="border: 0; border-top: 1px solid #1c2338; margin-top: 24px;" />
+                <p style="color: #627285; font-size: 0.75rem; text-align: center;">© 2026 KIVI-AI Interview Intelligence. All rights reserved.</p>
+            </div>
+        `;
+    }
+
     getHtmlTemplate(otp) {
         return `
             <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; background-color: #0f1322; color: #ffffff; border-radius: 12px; border: 1px solid #1c2338;">
@@ -65,6 +94,19 @@ class GmailSmtpProvider extends EmailProvider {
         console.log(`[GMAIL SMTP] OTP successfully delivered to ${toEmail}. Message ID: ${info.messageId}`);
         return { success: true, messageId: info.messageId };
     }
+
+    async sendSupportReply(toEmail, details) {
+        const mailOptions = {
+            from: `"KIVI-AI Support" <${this.user}>`,
+            to: toEmail,
+            subject: `[Re: Ticket ${details.ticketId || ''}] ${details.subject || 'Support Request'}`,
+            html: this.getSupportReplyTemplate(details)
+        };
+
+        const info = await this.transporter.sendMail(mailOptions);
+        console.log(`[GMAIL SMTP] Support reply delivered to ${toEmail}. Message ID: ${info.messageId}`);
+        return { success: true, messageId: info.messageId };
+    }
 }
 
 // 3. Brevo HTTP API Provider Implementation
@@ -110,6 +152,36 @@ class BrevoApiProvider extends EmailProvider {
             throw err;
         }
     }
+
+    async sendSupportReply(toEmail, details) {
+        const payload = {
+            sender: {
+                name: this.senderName,
+                email: this.senderEmail
+            },
+            to: [{ email: toEmail }],
+            subject: `[Re: Ticket ${details.ticketId || ''}] ${details.subject || 'Support Request'}`,
+            htmlContent: this.getSupportReplyTemplate(details)
+        };
+
+        try {
+            const response = await axios.post(this.apiUrl, payload, {
+                headers: {
+                    'api-key': this.apiKey,
+                    'Content-Type': 'application/json',
+                    'accept': 'application/json'
+                }
+            });
+
+            console.log(`[BREVO API] Support reply delivered to ${toEmail}. Message ID: ${response.data?.messageId}`);
+            return { success: true, messageId: response.data?.messageId };
+        } catch (err) {
+            if (err.response && err.response.data) {
+                console.error("[BREVO API ERROR DETAILS]:", JSON.stringify(err.response.data));
+            }
+            throw err;
+        }
+    }
 }
 
 // 4. Console Fallback Provider (Dev/Local fallback)
@@ -122,6 +194,18 @@ class ConsoleFallbackProvider extends EmailProvider {
             return { success: false, fallbackOtp: otp, reason: "No email credentials configured. Console print." };
         }
         console.warn(`[EMAIL SERVICE] No email credentials configured. Email delivery skipped in production.`);
+        return { success: false, reason: "No email credentials configured." };
+    }
+
+    async sendSupportReply(toEmail, details) {
+        if (process.env.NODE_ENV !== 'production') {
+            console.log(`\n==============================================`);
+            console.log(`[DEV MODE - CONSOLE] SUPPORT REPLY TO ${toEmail} (Ticket: ${details.ticketId}):`);
+            console.log(details.replyMessage);
+            console.log(`==============================================\n`);
+            return { success: true, simulated: true };
+        }
+        console.warn(`[EMAIL SERVICE] No email credentials configured. Support email skipped in production.`);
         return { success: false, reason: "No email credentials configured." };
     }
 }
@@ -160,10 +244,20 @@ class EmailService {
             return { success: false, error: err.message };
         }
     }
+
+    async sendSupportReplyEmail(toEmail, details) {
+        try {
+            return await this.provider.sendSupportReply(toEmail, details);
+        } catch (err) {
+            console.error(`[EMAIL SERVICE ERROR] Failed to send support reply:`, err.message);
+            return { success: false, error: err.message };
+        }
+    }
 }
 
 const emailServiceInstance = new EmailService();
 
 module.exports = {
-    sendOtpEmail: (toEmail, otp) => emailServiceInstance.sendOtpEmail(toEmail, otp)
+    sendOtpEmail: (toEmail, otp) => emailServiceInstance.sendOtpEmail(toEmail, otp),
+    sendSupportReplyEmail: (toEmail, details) => emailServiceInstance.sendSupportReplyEmail(toEmail, details)
 };

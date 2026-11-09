@@ -42,6 +42,7 @@ import {
     Plus
 } from 'lucide-react';
 import '../styles/userEvaluation.scss';
+import { AdminUserSessionsTab } from '../components/AdminUserSessionsTab';
 
 const UserEvaluationPage = () => {
     const { userId } = useParams();
@@ -544,6 +545,13 @@ const UserEvaluationPage = () => {
                             </div>
 
                             <div className="profile-field inline-meta">
+                                <span className="field-label">Last Active</span>
+                                <span className="meta-val" style={{ color: user.lastActiveAt ? '#4ade80' : '#94a3b8' }}>
+                                    {user.lastActiveAt ? new Date(user.lastActiveAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Never Active / Legacy'}
+                                </span>
+                            </div>
+
+                            <div className="profile-field inline-meta">
                                 <span className="field-label">Generations Used</span>
                                 <span className="meta-val">
                                     {user.generationsUsed || 0} generations
@@ -894,28 +902,37 @@ const UserEvaluationPage = () => {
                             >
                                 Cover Letters ({coverLetters.length})
                             </button>
+                            <button
+                                type="button"
+                                className={`doc-nav-tab ${activeDocTab === 'sessions' ? 'active' : ''}`}
+                                onClick={() => setActiveDocTab('sessions')}
+                            >
+                                Active Sessions & Devices
+                            </button>
                         </div>
                     </div>
 
                     {/* Filter search box */}
-                    <div className="docs-search-bar">
-                        <Search size={14} className="search-icon" />
-                        <input
-                            type="text"
-                            placeholder="Filter documents by role or company..."
-                            value={docSearchQuery}
-                            onChange={(e) => setDocSearchQuery(e.target.value)}
-                        />
-                        {docSearchQuery && (
-                            <button
-                                type="button"
-                                onClick={() => setDocSearchQuery('')}
-                                style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
-                            >
-                                ✕
-                            </button>
-                        )}
-                    </div>
+                    {activeDocTab !== 'sessions' && (
+                        <div className="docs-search-bar">
+                            <Search size={14} className="search-icon" />
+                            <input
+                                type="text"
+                                placeholder="Filter documents by role or company..."
+                                value={docSearchQuery}
+                                onChange={(e) => setDocSearchQuery(e.target.value)}
+                            />
+                            {docSearchQuery && (
+                                <button
+                                    type="button"
+                                    onClick={() => setDocSearchQuery('')}
+                                    style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+                                >
+                                    ✕
+                                </button>
+                            )}
+                        </div>
+                    )}
 
                     {/* Tab 1: Reports Content */}
                     {activeDocTab === 'reports' && (
@@ -1119,6 +1136,11 @@ const UserEvaluationPage = () => {
                                 </div>
                             )}
                         </div>
+                    )}
+
+                    {/* Tab 4: Active Sessions & Devices */}
+                    {activeDocTab === 'sessions' && (
+                        <AdminUserSessionsTab userId={userId} user={user} />
                     )}
                 </div>
             </div>

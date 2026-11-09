@@ -1,6 +1,17 @@
+'use strict';
+
 const express = require('express');
-const { contactUsController, supportTicketController, newsletterSubscriptionController } = require('../controller/support.controller');
+const { 
+    contactUsController, 
+    supportTicketController, 
+    getUserTicketsController,
+    getUserTicketDetailsController,
+    replyUserTicketController,
+    newsletterSubscriptionController 
+} = require('../controller/support.controller');
+const { authUser, optionalAuth } = require('../middleware/auth.middleware');
 const { createRateLimiter } = require('../middleware/rateLimiter.middleware');
+const { createModerationFilter } = require('../middleware/moderation.middleware');
 
 const supportRouter = express.Router();
 
@@ -12,11 +23,18 @@ const supportRateLimiter = createRateLimiter({
     message: 'Too many requests. Please wait a minute before submitting again.'
 });
 
-// Contact Us endpoint
-supportRouter.post('/contact', supportRateLimiter, contactUsController);
+const supportModerationFilter = createModerationFilter({ fields: ['subject', 'message'], contentType: 'support_ticket' });
 
-// Support Ticket endpoint
-supportRouter.post('/ticket', supportRateLimiter, supportTicketController);
+// Contact Us endpoint
+supportRouter.post('/contact', supportRateLimiter, supportModerationFilter, contactUsController);
+
+// Support Ticket submission endpoint (supports guest or authenticated user)
+supportRouter.post('/ticket', optionalAuth, supportRateLimiter, supportModerationFilter, supportTicketController);
+
+// Candidate / User ticket management endpoints
+supportRouter.get('/my-tickets', authUser, getUserTicketsController);
+supportRouter.get('/my-tickets/:ticketId', authUser, getUserTicketDetailsController);
+supportRouter.post('/my-tickets/:ticketId/reply', authUser, supportRateLimiter, replyUserTicketController);
 
 // Newsletter Subscription endpoint
 supportRouter.post('/newsletter', supportRateLimiter, newsletterSubscriptionController);

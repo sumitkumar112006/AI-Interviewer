@@ -156,11 +156,95 @@ function isOrderExpired(order, windowMinutes = 30) {
   return ageMs > windowMinutes * 60000;
 }
 
+/**
+ * Calculate coupon discount and validated final amount
+ * @param {Object} coupon - Coupon document or POJO
+ * @param {number} orderAmount - Original plan amount in minor units (paise)
+ * @param {string} [planKey='pro'] - Subscription plan key ('pro' | 'premium')
+ * @returns {{ discountAmount: number, finalAmount: number, originalAmount: number }}
+ */
+function calculateCouponDiscount(coupon, orderAmount, planKey = 'pro') {
+  if (!coupon) {
+    throw new Error('COUPON_REQUIRED');
+  }
+
+  if (coupon.isActive === false) {
+    throw new Error('COUPON_INACTIVE');
+  }
+
+  if (!Number.isSafeInteger(orderAmount) || orderAmount <= 0) {
+    throw new Error('INVALID_ORDER_AMOUNT');
+  }
+
+  const now = Date.now();
+
+  // Validate start date
+  if (coupon.startDate && new Date(coupon.startDate).getTime() > now) {
+    throw new Error('COUPON_NOT_STARTED');
+  }
+
+  // Validate expiration date
+  if (coupon.expirationDate && new Date(coupon.expirationDate).getTime() < now) {
+    throw new Error('COUPON_EXPIRED');
+  }
+
+  // Validate eligible subscription plans
+  if (Array.isArray(coupon.eligiblePlans) && coupon.eligiblePlans.length > 0) {
+    const normalizedPlan = (planKey || '').trim().toLowerCase();
+    const isEligible = coupon.eligiblePlans.some(p => String(p).trim().toLowerCase() === normalizedPlan);
+    if (!isEligible) {
+      throw new Error('COUPON_INELIGIBLE_FOR_PLAN');
+    }
+  }
+
+  // Validate minimum order value
+  const minOrder = Number(coupon.minOrderValue) || 0;
+  if (orderAmount < minOrder) {
+    throw new Error('MIN_ORDER_VALUE_NOT_MET');
+  }
+
+  // Validate global usage limit
+  if (coupon.usageLimit && Number(coupon.usedCount) >= Number(coupon.usageLimit)) {
+    throw new Error('COUPON_USAGE_LIMIT_EXCEEDED');
+  }
+
+  // Calculate gross discount
+  let discount = 0;
+  const discountType = (coupon.discountType || 'PERCENTAGE').toUpperCase();
+
+  if (discountType === 'PERCENTAGE') {
+    const pct = Math.max(0, Math.min(100, Number(coupon.discountValue) || 0));
+    discount = Math.round(orderAmount * (pct / 100));
+    if (coupon.maxDiscountAmount && Number(coupon.maxDiscountAmount) > 0) {
+      discount = Math.min(discount, Number(coupon.maxDiscountAmount));
+    }
+  } else if (discountType === 'FIXED') {
+    discount = Math.min(orderAmount, Math.max(0, Number(coupon.discountValue) || 0));
+  } else {
+    throw new Error('INVALID_DISCOUNT_TYPE');
+  }
+
+  // Razorpay requires minimum order amount of 100 paise (₹1.00)
+  const MIN_GATEWAY_AMOUNT = 100;
+  let finalAmount = orderAmount - discount;
+  if (finalAmount < MIN_GATEWAY_AMOUNT) {
+    finalAmount = Math.min(orderAmount, MIN_GATEWAY_AMOUNT);
+    discount = orderAmount - finalAmount;
+  }
+
+  return {
+    discountAmount: discount,
+    finalAmount,
+    originalAmount: orderAmount
+  };
+}
+
 module.exports = {
   computeOrderAmount,
   buildIdempotencyKey,
   decideWebhookAction,
   computeInvoiceTotals,
   decideRefundStatus,
-  isOrderExpired
+  isOrderExpired,
+  calculateCouponDiscount
 };

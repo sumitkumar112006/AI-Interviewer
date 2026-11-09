@@ -16,6 +16,7 @@ const {
     generateCoverLetter,
     rewriteResumeSection
 } = require('../services/ai.service');
+const { runWithAiContext } = require('../services/aiUsage.service');
 
 let aiWorkerInstance = null;
 let workerConnection = null;
@@ -68,12 +69,30 @@ function initAiWorker() {
                     return jobDoc.result;
                 }
 
-                // Mark as processing
+                // Mark as processing with execution metadata
                 jobDoc.status = 'processing';
+                jobDoc.startedAt = jobDoc.startedAt || new Date();
+                jobDoc.attempts = (jobDoc.attempts || 0) + 1;
+                jobDoc.bullJobId = bullJob.id ? String(bullJob.id) : jobDoc.bullJobId;
                 await jobDoc.save();
 
                 try {
-                    switch (jobDoc.type) {
+                    const featureName = jobDoc.type === 'interview_report'
+                        ? 'interview_report'
+                        : (jobDoc.type === 'resume_html'
+                            ? 'resume_generation'
+                            : (jobDoc.type === 'cover_letter' || jobDoc.type === 'cover_letter_report'
+                                ? 'cover_letter'
+                                : (jobDoc.type === 'rewrite_section' ? 'resume_rewrite' : (jobDoc.type || 'general_ai'))));
+
+                    await runWithAiContext({
+                        feature: featureName,
+                        userId: jobDoc.userId,
+                        jobId: jobDoc.jobId,
+                        requestId: jobDoc.jobId,
+                        attempt: jobDoc.attempts || 1
+                    }, async () => {
+                        switch (jobDoc.type) {
                 // 1. MOCK INTERVIEW & REPORT GENERATION (STAGE 1: Resume First, STAGE 2: Report Second)
                 case 'interview_report': {
                     const { resumeText, selfDescription, jobDescription, userPlan, extractedLinks } = jobDoc.input;
@@ -236,6 +255,8 @@ function initAiWorker() {
                     jobDoc.result = interviewReport;
                     jobDoc.status = 'done';
                     jobDoc.creditDeducted = true;
+                    jobDoc.completedAt = new Date();
+                    if (jobDoc.startedAt) jobDoc.durationMs = Date.now() - new Date(jobDoc.startedAt).getTime();
                     await jobDoc.save();
 
                     logger.info(`[AI Worker] Job ${jobId} (interview_report) finished successfully. Created Report: ${interviewReport._id}`);
@@ -332,6 +353,8 @@ function initAiWorker() {
                     jobDoc.result = interviewReport;
                     jobDoc.status = 'done';
                     jobDoc.creditDeducted = true;
+                    jobDoc.completedAt = new Date();
+                    if (jobDoc.startedAt) jobDoc.durationMs = Date.now() - new Date(jobDoc.startedAt).getTime();
                     await jobDoc.save();
 
                     logger.info(`[AI Worker] Job ${jobId} (resume_html) finished successfully for Report: ${interviewReportId}`);
@@ -352,21 +375,34 @@ function initAiWorker() {
                         roleName
                     });
 
-                    const coverLetter = await coverLetterModel.create({
-                        user: jobDoc.userId,
-                        resume: resumeText,
-                        jobDescription,
-                        selfDescription,
-                        companyName,
-                        roleName,
-                        generatedContent: coverLetterHtml
-                    });
+                    // Duplicate Protection: Update existing document if already generated
+                    let coverLetter = null;
+                    if (jobDoc.resourceId && mongoose.isValidObjectId(jobDoc.resourceId)) {
+                        coverLetter = await coverLetterModel.findById(jobDoc.resourceId);
+                    }
+
+                    if (coverLetter) {
+                        coverLetter.generatedContent = coverLetterHtml;
+                        await coverLetter.save();
+                    } else {
+                        coverLetter = await coverLetterModel.create({
+                            user: jobDoc.userId,
+                            resume: resumeText,
+                            jobDescription,
+                            selfDescription,
+                            companyName,
+                            roleName,
+                            generatedContent: coverLetterHtml
+                        });
+                    }
 
                     jobDoc.resourceId = coverLetter._id;
                     jobDoc.resourceModel = 'CoverLetter';
                     jobDoc.result = coverLetter;
                     jobDoc.status = 'done';
                     jobDoc.creditDeducted = true;
+                    jobDoc.completedAt = new Date();
+                    if (jobDoc.startedAt) jobDoc.durationMs = Date.now() - new Date(jobDoc.startedAt).getTime();
                     await jobDoc.save();
 
                     console.log(`[AI Worker] Job ${jobId} (cover_letter) finished successfully. Created Cover Letter: ${coverLetter._id}`);
@@ -456,6 +492,7 @@ function initAiWorker() {
                 default:
                     throw new Error(`Unknown job type: ${jobDoc.type}`);
             }
+                    });
                 } catch (err) {
                     jobSpan.recordException(err);
                     jobSpan.setStatus({ code: SpanStatusCode.ERROR, message: err?.message || 'AI job execution failed' });
@@ -466,6 +503,8 @@ function initAiWorker() {
                     });
                     jobDoc.status = 'failed';
                     jobDoc.error = err.message || 'Generation failed';
+                    jobDoc.completedAt = new Date();
+                    if (jobDoc.startedAt) jobDoc.durationMs = Date.now() - new Date(jobDoc.startedAt).getTime();
                     jobDoc.creditDeducted = true; // API was called
                     await jobDoc.save();
                     throw err;
