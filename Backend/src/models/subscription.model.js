@@ -58,6 +58,8 @@ subscriptionSchema.index(
   { unique: true, partialFilterExpression: { status: 'ACTIVE' } }
 );
 
+subscriptionSchema.index({ status: 1, createdAt: -1 });
+
 const Subscription = mongoose.models.subscriptions || mongoose.model('subscriptions', subscriptionSchema);
 
 module.exports = Subscription;

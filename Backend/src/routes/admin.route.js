@@ -59,6 +59,16 @@ const {
     getAiUsageLogsController
 } = require('../controller/aiUsage.controller');
 const {
+    getOverviewAnalyticsController,
+    getTrafficAnalyticsController,
+    getRegistrationAnalyticsController,
+    getRevenueAnalyticsController,
+    getPlanAnalyticsController,
+    getFeatureUsageAnalyticsController,
+    getActivityHeatmapAnalyticsController,
+    getRecentUsersAnalyticsController
+} = require('../controller/adminAnalytics.controller');
+const {
     listCouponsController,
     createCouponController,
     getCouponDetailsController,
@@ -112,6 +122,18 @@ adminRouter.get('/analytics/ai-usage/logs', requirePermission(PERMISSIONS.ANALYT
  * @access Private (Permission: analytics.read)
  */
 adminRouter.get('/analytics/user-activity', requirePermission(PERMISSIONS.ANALYTICS_READ), getUserActivityAnalyticsController);
+
+/**
+ * Dashboard-01 Enterprise Analytics Endpoints
+ */
+adminRouter.get('/analytics/overview', requirePermission(PERMISSIONS.ANALYTICS_READ), getOverviewAnalyticsController);
+adminRouter.get('/analytics/traffic', requirePermission(PERMISSIONS.ANALYTICS_READ), getTrafficAnalyticsController);
+adminRouter.get('/analytics/registrations', requirePermission(PERMISSIONS.ANALYTICS_READ), getRegistrationAnalyticsController);
+adminRouter.get('/analytics/revenue', requirePermission(PERMISSIONS.ANALYTICS_READ), getRevenueAnalyticsController);
+adminRouter.get('/analytics/plans', requirePermission(PERMISSIONS.ANALYTICS_READ), getPlanAnalyticsController);
+adminRouter.get('/analytics/feature-usage', requirePermission(PERMISSIONS.ANALYTICS_READ), getFeatureUsageAnalyticsController);
+adminRouter.get('/analytics/activity-heatmap', requirePermission(PERMISSIONS.ANALYTICS_READ), getActivityHeatmapAnalyticsController);
+adminRouter.get('/analytics/recent-users', requirePermission(PERMISSIONS.USERS_READ), getRecentUsersAnalyticsController);
 
 /**
  * @route GET /api/admin/users

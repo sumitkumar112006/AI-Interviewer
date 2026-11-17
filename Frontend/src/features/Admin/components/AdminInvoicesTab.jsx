@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import AdminPagination from './AdminPagination';
 import { AdminExportButton } from './AdminExportButton';
+import ShadcnDatePicker from './ShadcnDatePicker';
 
 export const AdminInvoicesTab = () => {
     const [invoices, setInvoices] = useState([]);
@@ -224,34 +225,21 @@ export const AdminInvoicesTab = () => {
                     </select>
 
                     {/* Date Range Filters */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#94a3b8', fontSize: '0.8rem' }}>
-                        <span>From:</span>
-                        <input
-                            type="date"
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#94a3b8', fontSize: '0.8rem', minWidth: '310px' }}>
+                        <ShadcnDatePicker
                             value={startDate}
-                            onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-                            style={{
-                                padding: '0.4rem 0.5rem',
-                                background: 'rgba(15, 23, 42, 0.8)',
-                                border: '1px solid rgba(255, 255, 255, 0.1)',
-                                borderRadius: '6px',
-                                color: '#f8fafc',
-                                fontSize: '0.8rem'
-                            }}
+                            onChange={(val) => { setStartDate(val); setPage(1); }}
+                            placeholder="Start date"
+                            maxDate={endDate}
+                            ariaLabel="Filter invoice start date"
                         />
-                        <span>To:</span>
-                        <input
-                            type="date"
+                        <span>to</span>
+                        <ShadcnDatePicker
                             value={endDate}
-                            onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-                            style={{
-                                padding: '0.4rem 0.5rem',
-                                background: 'rgba(15, 23, 42, 0.8)',
-                                border: '1px solid rgba(255, 255, 255, 0.1)',
-                                borderRadius: '6px',
-                                color: '#f8fafc',
-                                fontSize: '0.8rem'
-                            }}
+                            onChange={(val) => { setEndDate(val); setPage(1); }}
+                            placeholder="End date"
+                            minDate={startDate}
+                            ariaLabel="Filter invoice end date"
                         />
                     </div>
 

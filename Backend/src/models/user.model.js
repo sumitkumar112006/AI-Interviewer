@@ -148,6 +148,8 @@ const userSchema = new mongoose.Schema({
 
 userSchema.index({ isDeleted: 1, lastActiveAt: -1 });
 userSchema.index({ lastActiveAt: -1, createdAt: -1 });
+userSchema.index({ isDeleted: 1, plan: 1 });
+userSchema.index({ isDeleted: 1, createdAt: -1 });
 
 const userModel = mongoose.model("users", userSchema);
 

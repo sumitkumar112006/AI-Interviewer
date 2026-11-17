@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import AdminPagination from './AdminPagination';
 import { AdminExportButton } from './AdminExportButton';
+import ShadcnDatePicker from './ShadcnDatePicker';
 
 export const AdminAuditLogsTab = () => {
   const [source, setSource] = useState('system'); // 'system' (Admin Actions) | 'subscriptions' (Legacy transitions)
@@ -212,23 +213,21 @@ export const AdminAuditLogsTab = () => {
                 <option value="CRITICAL">CRITICAL</option>
               </select>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#94a3b8', fontSize: '0.8rem' }}>
-                <input
-                  type="date"
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#94a3b8', fontSize: '0.8rem', minWidth: '310px' }}>
+                <ShadcnDatePicker
                   value={startDate}
-                  onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-                  className="action-select"
-                  title="Filter from start date"
-                  style={{ colorScheme: 'dark', padding: '0.35rem 0.6rem' }}
+                  onChange={(val) => { setStartDate(val); setPage(1); }}
+                  placeholder="Start date"
+                  maxDate={endDate}
+                  ariaLabel="Filter from start date"
                 />
                 <span>to</span>
-                <input
-                  type="date"
+                <ShadcnDatePicker
                   value={endDate}
-                  onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-                  className="action-select"
-                  title="Filter to end date"
-                  style={{ colorScheme: 'dark', padding: '0.35rem 0.6rem' }}
+                  onChange={(val) => { setEndDate(val); setPage(1); }}
+                  placeholder="End date"
+                  minDate={startDate}
+                  ariaLabel="Filter to end date"
                 />
               </div>
 

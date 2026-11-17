@@ -1,28 +1,13 @@
-import React, { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
-import PageLoading from '../../Shared/components/PageLoading'
-import GoogleAuthButton from '../components/GoogleAuthButton'
-import '../styles/auth.scss'
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
+import { supabase, isSupabaseConfigured } from '../services/supabase';
+import { SmokeyBackground, LoginForm } from '@/components/ui/login-form';
+import SplashCursor from '@/components/SplashCursor';
+import { ArrowRight, ArrowLeft, Loader2, KeyRound, Mail, AlertCircle } from 'lucide-react';
 
-/* ── Eye icons ── */
-const EyeOpen = () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-        <circle cx="12" cy="12" r="3" />
-    </svg>
-)
-
-const EyeClosed = () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-        <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" />
-        <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" />
-        <line x1="1" y1="1" x2="23" y2="23" />
-    </svg>
-)
-
-const Login = () => {
-    const navigate = useNavigate()
+export const Login = () => {
+    const navigate = useNavigate();
     const {
         loading,
         handleLogin,
@@ -30,503 +15,375 @@ const Login = () => {
         handleResendOtp,
         handleForgotPassword,
         handleResetPassword
-    } = useAuth()
+    } = useAuth();
 
-    const [email, setEmail] = useState('')
-    const [password, setPassword] = useState('')
-    const [newPassword, setNewPassword] = useState('')
-    const [showPassword, setShowPassword] = useState(false)
-    const [showNewPassword, setShowNewPassword] = useState(false)
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [error, setError] = useState('');
+    const [infoMessage, setInfoMessage] = useState('');
+    const [validationError, setValidationError] = useState('');
 
-    const [error, setError] = useState('')
-    const [infoMessage, setInfoMessage] = useState('')
-    const [validationError, setValidationError] = useState('')
+    const [step, setStep] = useState(1); // 1: Login, 2: Login OTP, 3: Forgot Pass Email, 4: Reset Pass OTP & New Pass
+    const [otp, setOtp] = useState('');
 
-    const [step, setStep] = useState(1) // 1: Login, 2: Login OTP, 3: Forgot Pass Email, 4: Reset Pass OTP & New Pass
-    const [otp, setOtp] = useState('')
-
-    const emailValid = email.trim().length > 0 && email.includes('@')
-    const passwordValid = password.length >= 1
-    const newPasswordValid = newPassword.length >= 6
+    const emailValid = email.trim().length > 0 && email.includes('@');
+    const passwordValid = password.length >= 1;
+    const newPasswordValid = newPassword.length >= 6;
 
     /* ── Step 1: Login submit ── */
     const handleSubmit = async (e) => {
-        if (e) e.preventDefault()
-        setError('')
-        setInfoMessage('')
-        setValidationError('')
+        if (e) e.preventDefault();
+        setError('');
+        setInfoMessage('');
+        setValidationError('');
 
         if (!emailValid || !passwordValid) {
-            setValidationError('Please fill in both email and password before submitting.')
-            return
+            setValidationError('Please fill in both email and password.');
+            return;
         }
 
         try {
-            const loginRes = await handleLogin({ email, password })
+            const loginRes = await handleLogin({ email, password });
             if (loginRes?.user?.isAdmin || ['admin', 'super_admin'].includes(loginRes?.user?.role)) {
-                navigate('/admin-portal-dashboard-root')
+                navigate('/admin-portal-dashboard-root');
             } else {
-                navigate('/')
+                navigate('/');
             }
         } catch (err) {
-            console.error('Login error:', err)
+            console.error('Login error:', err);
             if (err?.response?.status === 403 && err?.response?.data?.requiresOtp) {
-                const data = err.response.data
-                setInfoMessage(data.message || 'Your email is not verified. A code has been sent to your inbox.')
-                setOtp('')
-                setStep(2)
+                const data = err.response.data;
+                setInfoMessage(data.message || 'Your email is not verified. A code has been sent to your inbox.');
+                setOtp('');
+                setStep(2);
             } else {
-                setError(err?.response?.data?.message || err?.message || 'Login failed. Please check your credentials.')
+                setError(err?.response?.data?.message || err?.message || 'Login failed. Please check your credentials.');
             }
         }
-    }
+    };
+
+    /* ── Google OAuth ── */
+    const handleGoogleAuth = async () => {
+        if (!isSupabaseConfigured()) {
+            setError('Supabase authentication is not configured.');
+            return;
+        }
+
+        try {
+            setError('');
+            const callbackUrl = `${window.location.origin}/auth/callback`;
+            const { error: oauthError } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: callbackUrl,
+                    queryParams: {
+                        access_type: 'offline',
+                        prompt: 'consent'
+                    }
+                }
+            });
+            if (oauthError) throw oauthError;
+        } catch (err) {
+            console.error('Google login error:', err);
+            setError(err?.message || 'Google sign in failed. Please try again.');
+        }
+    };
 
     /* ── Step 2: OTP verify ── */
     const handleVerifyOtpSubmit = async (e) => {
-        e.preventDefault()
-        setError('')
+        e.preventDefault();
+        setError('');
         try {
-            const verifyRes = await handleVerifyOtp({ email, otp })
+            const verifyRes = await handleVerifyOtp({ email, otp });
             if (verifyRes?.user?.isAdmin || ['admin', 'super_admin'].includes(verifyRes?.user?.role)) {
-                navigate('/admin-portal-dashboard-root')
+                navigate('/admin-portal-dashboard-root');
             } else {
-                navigate('/')
+                navigate('/');
             }
         } catch (err) {
-            setError(err?.response?.data?.message || err?.message || 'Invalid OTP code.')
+            setError(err?.response?.data?.message || err?.message || 'Invalid OTP code.');
         }
-    }
+    };
 
     const handleResend = async () => {
-        setError('')
-        setInfoMessage('')
+        setError('');
+        setInfoMessage('');
         try {
-            const res = await handleResendOtp({ email })
-            setInfoMessage(res?.message || 'Verification code resent to your email.')
-            setOtp('')
+            const res = await handleResendOtp({ email });
+            setInfoMessage(res?.message || 'Verification code resent to your email.');
+            setOtp('');
         } catch (err) {
-            setError(err?.response?.data?.message || 'Failed to resend OTP.')
+            setError(err?.response?.data?.message || 'Failed to resend OTP.');
         }
-    }
+    };
 
     /* ── Step 3: Request Forgot Password OTP ── */
     const handleForgotPasswordSubmit = async (e) => {
-        e.preventDefault()
-        setError('')
-        setInfoMessage('')
-        setValidationError('')
+        e.preventDefault();
+        setError('');
+        setInfoMessage('');
+        setValidationError('');
 
         if (!emailValid) {
-            setValidationError('Please enter a valid email address.')
-            return
+            setValidationError('Please enter a valid email address.');
+            return;
         }
 
         try {
-            const res = await handleForgotPassword({ email })
-            setInfoMessage(res?.message || 'Reset code sent! Please check your inbox.')
-            setOtp('')
-            setStep(4)
+            const res = await handleForgotPassword({ email });
+            setInfoMessage(res?.message || 'Reset code sent! Please check your inbox.');
+            setOtp('');
+            setStep(4);
         } catch (err) {
-            setError(err?.response?.data?.message || 'Failed to send reset code. Please try again.')
+            setError(err?.response?.data?.message || 'Failed to send reset code. Please try again.');
         }
-    }
+    };
 
     /* ── Step 4: Reset Password Submit ── */
     const handleResetPasswordSubmit = async (e) => {
-        e.preventDefault()
-        setError('')
-        setInfoMessage('')
+        e.preventDefault();
+        setError('');
+        setInfoMessage('');
 
         if (otp.length < 6) {
-            setError('Please enter the full 6-digit OTP code.')
-            return
+            setError('Please enter the full 6-digit OTP code.');
+            return;
         }
 
         if (!newPasswordValid) {
-            setError('New password must be at least 6 characters long.')
-            return
+            setError('New password must be at least 6 characters long.');
+            return;
         }
 
         try {
-            const res = await handleResetPassword({ email, otp, newPassword })
-            setInfoMessage(res?.message || 'Password reset successfully! Please log in.')
-            setPassword('')
-            setNewPassword('')
-            setOtp('')
-            setStep(1)
+            const res = await handleResetPassword({ email, otp, newPassword });
+            setInfoMessage(res?.message || 'Password reset successfully! Please log in.');
+            setPassword('');
+            setNewPassword('');
+            setOtp('');
+            setStep(1);
         } catch (err) {
-            setError(err?.response?.data?.message || 'Failed to reset password. Please check your code.')
+            setError(err?.response?.data?.message || 'Failed to reset password. Please check your code.');
         }
-    }
-
-    if (loading) {
-        return <main><PageLoading title="Authenticating..." subtitle="Verifying your session..." /></main>
-    }
+    };
 
     return (
-        <div className="auth-page-root">
-            {/* ── Top Navbar ── */}
-            <header className="auth-navbar">
-                <div className="auth-navbar-inner">
-                    <Link to="/" className="auth-nav-brand">
-                        <img src="/Logo.png" alt="KIVI-AI Logo" className="auth-brand-logo-img" />
-                        <span className="auth-brand-name">KIVI-AI</span>
-                    </Link>
-                    <div className="auth-nav-actions">
-                        <Link to="/register" className="auth-nav-cta-btn">
-                            Practice Free Mock Interview
-                        </Link>
-                        <Link to="/register" className="auth-nav-link">
-                            Create Account
-                        </Link>
-                    </div>
-                </div>
-            </header>
+        <main
+            className="relative w-screen h-screen min-h-screen bg-gray-900 overflow-hidden flex items-center justify-center"
+            style={{ width: '100vw', height: '100vh', minHeight: '100vh' }}
+        >
+            {/* Interactive WebGL Shader Background */}
+            <SmokeyBackground className="absolute inset-0" color="#1E40AF" backdropBlurAmount="sm" />
+            <SplashCursor />
 
-            {/* ── Centered Main Body ── */}
-            <main className="auth-main-content">
-                <div className="auth-form-card">
+            <div
+                className="relative z-10 flex items-center justify-center w-full h-full p-4"
+                style={{ width: '100%', height: '100%', minHeight: '100vh' }}
+            >
+                {/* Step 1: Main Glassmorphism Login Form */}
+                {step === 1 && (
+                    <LoginForm
+                        email={email}
+                        setEmail={(val) => { setEmail(val); setValidationError(''); }}
+                        password={password}
+                        setPassword={(val) => { setPassword(val); setValidationError(''); }}
+                        onSubmit={handleSubmit}
+                        onGoogleLogin={handleGoogleAuth}
+                        onForgotPassword={() => {
+                            setStep(3);
+                            setError('');
+                            setInfoMessage('');
+                            setValidationError('');
+                        }}
+                        onSignUp={() => navigate('/register')}
+                        error={error || validationError}
+                        infoMessage={infoMessage}
+                        loading={loading}
+                    />
+                )}
 
-                    {/* Step 1: Login */}
-                    {step === 1 && (
-                        <>
-                            <div className="auth-header">
-                                <h1>Account Login</h1>
-                                <p className="auth-subtitle">
-                                    Welcome back! Enter your email and password to access your account.
-                                </p>
-                            </div>
-
-                            {infoMessage && <div className="auth-alert auth-alert-info">{infoMessage}</div>}
-                            {error && <div className="auth-alert auth-alert-error">{error}</div>}
-                            {validationError && <div className="auth-alert auth-alert-warning">{validationError}</div>}
-
-                            {/* Google Sign-In */}
-                            <GoogleAuthButton onError={setError} text="Continue with Google" />
-
-                            <div className="auth-oauth-divider">
-                                <span>or sign in with email</span>
-                            </div>
-
-                            <form className="auth-form" onSubmit={handleSubmit} noValidate>
-                                {/* Email */}
-                                <div className="auth-field">
-                                    <label htmlFor="login-email">Email address</label>
-                                    <div className="auth-input-wrapper">
-                                        <input
-                                            id="login-email"
-                                            type="email"
-                                            name="email"
-                                            autoComplete="email"
-                                            placeholder="name@company.com"
-                                            value={email}
-                                            onChange={(e) => {
-                                                setEmail(e.target.value)
-                                                setValidationError('')
-                                            }}
-                                            required
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Password */}
-                                <div className="auth-field">
-                                    <div className="auth-label-row">
-                                        <label htmlFor="login-password">Password</label>
-                                        <button
-                                            type="button"
-                                            className="auth-forgot-link"
-                                            onClick={() => {
-                                                setStep(3)
-                                                setError('')
-                                                setInfoMessage('')
-                                                setValidationError('')
-                                            }}
-                                        >
-                                            Forgot password?
-                                        </button>
-                                    </div>
-                                    <div className="auth-input-wrapper with-icon">
-                                        <input
-                                            id="login-password"
-                                            type={showPassword ? 'text' : 'password'}
-                                            name="password"
-                                            autoComplete="current-password"
-                                            placeholder="Enter your password"
-                                            value={password}
-                                            onChange={(e) => {
-                                                setPassword(e.target.value)
-                                                setValidationError('')
-                                            }}
-                                            required
-                                        />
-                                        <button
-                                            type="button"
-                                            className="auth-eye-btn"
-                                            onClick={() => setShowPassword(p => !p)}
-                                            aria-label={showPassword ? 'Hide password' : 'Show password'}
-                                        >
-                                            {showPassword ? <EyeClosed /> : <EyeOpen />}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Submit Button */}
-                                <button
-                                    type="submit"
-                                    className="auth-btn-primary"
-                                    disabled={loading}
-                                >
-                                    {loading ? <span className="auth-spinner" /> : 'Log in'}
-                                </button>
-                            </form>
-
-                            {/* Data Protection & Privacy Consent */}
-                            <div className="auth-privacy-consent-box">
-                                <p className="auth-privacy-consent-text">
-                                    Protected by KIVI-AI Data Governance. View our{' '}
-                                    <Link to="/privacy-policy" className="auth-consent-link">Privacy Policy</Link>{' '}
-                                    &amp;{' '}
-                                    <Link to="/terms-of-service" className="auth-consent-link">Terms</Link>.
-                                </p>
-                            </div>
-
-                            <p className="auth-switch-text">
-                                Don't have an account?
-                                <Link to="/register">Create one</Link>
+                {/* Step 2: Email Verification OTP */}
+                {step === 2 && (
+                    <div className="login-card-container w-full max-w-[440px] p-8 space-y-6 bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20 shadow-2xl relative z-20 text-white">
+                        <div className="text-center">
+                            <h2 className="text-2xl font-bold tracking-tight">Verify Your Email</h2>
+                            <p className="mt-2 text-xs text-gray-300">
+                                Verification code sent to <strong className="text-white">{email}</strong>
                             </p>
-                        </>
-                    )}
+                        </div>
 
-                    {/* Step 2: Email OTP Verify */}
-                    {step === 2 && (
-                        <>
-                            <div className="auth-header">
-                                <h1>Verify Your Email</h1>
-                                <p className="auth-subtitle">
-                                    We sent a 6-digit verification code to <strong>{email}</strong>.
-                                </p>
+                        {infoMessage && <div className="p-3 text-xs rounded-lg bg-blue-500/20 border border-blue-500/40 text-blue-200">{infoMessage}</div>}
+                        {error && <div className="p-3 text-xs rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-200">{error}</div>}
+
+                        <form className="space-y-6" onSubmit={handleVerifyOtpSubmit}>
+                            <div className="relative z-0">
+                                <input
+                                    type="text"
+                                    id="otp_code"
+                                    inputMode="numeric"
+                                    maxLength={6}
+                                    value={otp}
+                                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                    className="block py-2.5 px-0 w-full text-center tracking-widest text-lg font-mono text-white bg-transparent border-0 border-b-2 border-gray-300 appearance-none focus:outline-none focus:border-blue-500"
+                                    placeholder="Enter 6-digit code"
+                                    required
+                                />
                             </div>
 
-                            {infoMessage && <div className="auth-alert auth-alert-info">{infoMessage}</div>}
-                            {error && <div className="auth-alert auth-alert-error">{error}</div>}
+                            <button
+                                type="submit"
+                                disabled={loading || otp.length < 6}
+                                className="w-full flex items-center justify-center py-3 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition disabled:opacity-50 cursor-pointer"
+                            >
+                                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Verify & Continue'}
+                            </button>
+                        </form>
 
-                            <form className="auth-form" onSubmit={handleVerifyOtpSubmit}>
-                                <div className="auth-field">
-                                    <label htmlFor="login-otp">6-Digit verification code</label>
-                                    <div className="auth-input-wrapper">
-                                        <input
-                                            id="login-otp"
-                                            type="text"
-                                            name="otp"
-                                            inputMode="numeric"
-                                            maxLength={6}
-                                            placeholder="849201"
-                                            value={otp}
-                                            onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                                            className="otp-input"
-                                            required
-                                        />
-                                    </div>
-                                </div>
-
-                                <button
-                                    type="submit"
-                                    className="auth-btn-primary"
-                                    disabled={loading || otp.length < 6}
-                                >
-                                    {loading ? <span className="auth-spinner" /> : 'Verify & Log in'}
-                                </button>
-                            </form>
-
-                            <div className="otp-actions-row">
-                                <button
-                                    type="button"
-                                    className="back-action-btn"
-                                    onClick={() => { setStep(1); setError(''); setInfoMessage('') }}
-                                >
-                                    ← Back to login
-                                </button>
-                                <button
-                                    type="button"
-                                    className="resend-action-btn"
-                                    onClick={handleResend}
-                                >
-                                    Resend code
-                                </button>
-                            </div>
-                        </>
-                    )}
-
-                    {/* Step 3: Forgot Password Request */}
-                    {step === 3 && (
-                        <>
-                            <div className="auth-header">
-                                <h1>Reset Password</h1>
-                                <p className="auth-subtitle">
-                                    Enter your registered email address to receive a 6-digit verification code.
-                                </p>
-                            </div>
-
-                            {error && <div className="auth-alert auth-alert-error">{error}</div>}
-                            {validationError && <div className="auth-alert auth-alert-warning">{validationError}</div>}
-
-                            <form className="auth-form" onSubmit={handleForgotPasswordSubmit}>
-                                <div className="auth-field">
-                                    <label htmlFor="forgot-email">Email address</label>
-                                    <div className="auth-input-wrapper">
-                                        <input
-                                            id="forgot-email"
-                                            type="email"
-                                            name="email"
-                                            autoComplete="email"
-                                            placeholder="name@company.com"
-                                            value={email}
-                                            onChange={(e) => {
-                                                setEmail(e.target.value)
-                                                setValidationError('')
-                                            }}
-                                            required
-                                        />
-                                    </div>
-                                </div>
-
-                                <button
-                                    type="submit"
-                                    className="auth-btn-primary"
-                                    disabled={loading || !emailValid}
-                                >
-                                    {loading ? <span className="auth-spinner" /> : 'Send reset code'}
-                                </button>
-                            </form>
-
-                            <div className="otp-actions-row" style={{ justifyContent: 'center' }}>
-                                <button
-                                    type="button"
-                                    className="back-action-btn"
-                                    onClick={() => { setStep(1); setError(''); setInfoMessage('') }}
-                                >
-                                    ← Back to login
-                                </button>
-                            </div>
-                        </>
-                    )}
-
-                    {/* Step 4: Reset Password Submit */}
-                    {step === 4 && (
-                        <>
-                            <div className="auth-header">
-                                <h1>Account Activation</h1>
-                                <p className="auth-subtitle">
-                                    Enter the 6-digit code sent to <strong>{email}</strong> and set your new password.
-                                </p>
-                            </div>
-
-                            {infoMessage && <div className="auth-alert auth-alert-info">{infoMessage}</div>}
-                            {error && <div className="auth-alert auth-alert-error">{error}</div>}
-
-                            <form className="auth-form" onSubmit={handleResetPasswordSubmit}>
-                                <div className="auth-field">
-                                    <label htmlFor="reset-otp">6-Digit verification code</label>
-                                    <div className="auth-input-wrapper">
-                                        <input
-                                            id="reset-otp"
-                                            type="text"
-                                            name="otp"
-                                            inputMode="numeric"
-                                            maxLength={6}
-                                            placeholder="849201"
-                                            value={otp}
-                                            onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                                            className="otp-input"
-                                            required
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="auth-field">
-                                    <label htmlFor="reset-new-password">New password</label>
-                                    <div className="auth-input-wrapper with-icon">
-                                        <input
-                                            id="reset-new-password"
-                                            type={showNewPassword ? 'text' : 'password'}
-                                            name="newPassword"
-                                            placeholder="Enter new password"
-                                            value={newPassword}
-                                            onChange={(e) => setNewPassword(e.target.value)}
-                                            required
-                                        />
-                                        <button
-                                            type="button"
-                                            className="auth-eye-btn"
-                                            onClick={() => setShowNewPassword(p => !p)}
-                                            aria-label={showNewPassword ? 'Hide password' : 'Show password'}
-                                        >
-                                            {showNewPassword ? <EyeClosed /> : <EyeOpen />}
-                                        </button>
-                                    </div>
-                                    <div className="auth-req-list">
-                                        <span className={`req-item ${newPassword.length >= 6 ? 'valid' : ''}`}>
-                                            ✓ At least 6 characters
-                                        </span>
-                                        <span className={`req-item ${/[A-Z]/.test(newPassword) ? 'valid' : ''}`}>
-                                            ✓ An uppercase letter
-                                        </span>
-                                        <span className={`req-item ${/[0-9]/.test(newPassword) ? 'valid' : ''}`}>
-                                            ✓ At least one number
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <button
-                                    type="submit"
-                                    className="auth-btn-primary"
-                                    disabled={loading || otp.length < 6 || !newPasswordValid}
-                                >
-                                    {loading ? <span className="auth-spinner" /> : 'Set password'}
-                                </button>
-                            </form>
-
-                            <div className="otp-actions-row">
-                                <button
-                                    type="button"
-                                    className="back-action-btn"
-                                    onClick={() => { setStep(1); setError(''); setInfoMessage('') }}
-                                >
-                                    ← Back to login
-                                </button>
-                                <button
-                                    type="button"
-                                    className="resend-action-btn"
-                                    onClick={handleForgotPasswordSubmit}
-                                >
-                                    Resend code
-                                </button>
-                            </div>
-                        </>
-                    )}
-
-                </div>
-            </main>
-
-            {/* ── Split Footer (Matching Reference Screenshot) ── */}
-            <footer className="auth-footer">
-                <div className="auth-footer-inner">
-                    <div className="auth-footer-left">
-                        <p>
-                            KIVI-AI provides AI-powered resume building, interview practice, and career tools. Please read our <Link to="/privacy-policy">Privacy Policy</Link> and <Link to="/terms-of-service">Terms of Use</Link>.
-                        </p>
+                        <div className="flex items-center justify-between text-xs text-gray-300 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => { setStep(1); setError(''); }}
+                                className="flex items-center gap-1 hover:text-white cursor-pointer"
+                            >
+                                <ArrowLeft size={14} /> Back to Login
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleResend}
+                                className="text-blue-400 hover:text-blue-300 cursor-pointer"
+                            >
+                                Resend code
+                            </button>
+                        </div>
                     </div>
-                    <div className="auth-footer-right">
-                        <p>
-                            Email our support team at <a href="mailto:support@kivi-ai.com">support@kivi-ai.com</a><br />
-                            KIVI-AI.com © 2022 - 2026. All rights reserved.
-                        </p>
-                    </div>
-                </div>
-            </footer>
-        </div>
-    )
-}
+                )}
 
-export default Login
+                {/* Step 3: Forgot Password Request */}
+                {step === 3 && (
+                    <div className="login-card-container w-full max-w-[440px] p-8 space-y-6 bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20 shadow-2xl relative z-20 text-white">
+                        <div className="text-center">
+                            <h2 className="text-2xl font-bold tracking-tight">Reset Password</h2>
+                            <p className="mt-2 text-xs text-gray-300">
+                                Enter your account email to receive a recovery code.
+                            </p>
+                        </div>
+
+                        {infoMessage && <div className="p-3 text-xs rounded-lg bg-blue-500/20 border border-blue-500/40 text-blue-200">{infoMessage}</div>}
+                        {error && <div className="p-3 text-xs rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-200">{error}</div>}
+                        {validationError && <div className="p-3 text-xs rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-200">{validationError}</div>}
+
+                        <form className="space-y-6" onSubmit={handleForgotPasswordSubmit}>
+                            <div className="relative z-0">
+                                <input
+                                    type="email"
+                                    id="reset_email"
+                                    value={email}
+                                    onChange={(e) => { setEmail(e.target.value); setValidationError(''); }}
+                                    className="block py-2.5 px-0 w-full text-sm text-white bg-transparent border-0 border-b-2 border-gray-300 appearance-none focus:outline-none focus:border-blue-500 peer"
+                                    placeholder=" "
+                                    required
+                                />
+                                <label
+                                    htmlFor="reset_email"
+                                    className="absolute text-sm text-gray-300 duration-300 transform -translate-y-6 scale-75 top-3 -z-10 origin-[0] peer-focus:left-0 peer-focus:text-blue-400 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-6"
+                                >
+                                    <Mail className="inline-block mr-2 -mt-1" size={16} />
+                                    Email Address
+                                </label>
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full flex items-center justify-center py-3 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition disabled:opacity-50 cursor-pointer"
+                            >
+                                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Send Recovery Code'}
+                            </button>
+                        </form>
+
+                        <div className="text-center pt-2">
+                            <button
+                                type="button"
+                                onClick={() => { setStep(1); setError(''); setValidationError(''); }}
+                                className="text-xs text-gray-300 hover:text-white flex items-center justify-center gap-1 mx-auto cursor-pointer"
+                            >
+                                <ArrowLeft size={14} /> Back to Login
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Step 4: Reset Password OTP + New Password */}
+                {step === 4 && (
+                    <div className="login-card-container w-full max-w-[440px] p-8 space-y-6 bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20 shadow-2xl relative z-20 text-white">
+                        <div className="text-center">
+                            <h2 className="text-2xl font-bold tracking-tight">Set New Password</h2>
+                            <p className="mt-2 text-xs text-gray-300">
+                                Enter the recovery code and your new password.
+                            </p>
+                        </div>
+
+                        {infoMessage && <div className="p-3 text-xs rounded-lg bg-blue-500/20 border border-blue-500/40 text-blue-200">{infoMessage}</div>}
+                        {error && <div className="p-3 text-xs rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-200">{error}</div>}
+
+                        <form className="space-y-6" onSubmit={handleResetPasswordSubmit}>
+                            <div className="relative z-0">
+                                <input
+                                    type="text"
+                                    id="reset_otp"
+                                    inputMode="numeric"
+                                    maxLength={6}
+                                    value={otp}
+                                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                    className="block py-2.5 px-0 w-full text-center tracking-widest text-lg font-mono text-white bg-transparent border-0 border-b-2 border-gray-300 appearance-none focus:outline-none focus:border-blue-500"
+                                    placeholder="Enter 6-digit code"
+                                    required
+                                />
+                            </div>
+
+                            <div className="relative z-0">
+                                <input
+                                    type="password"
+                                    id="new_password"
+                                    value={newPassword}
+                                    onChange={(e) => setNewPassword(e.target.value)}
+                                    className="block py-2.5 px-0 w-full text-sm text-white bg-transparent border-0 border-b-2 border-gray-300 appearance-none focus:outline-none focus:border-blue-500 peer"
+                                    placeholder=" "
+                                    required
+                                />
+                                <label
+                                    htmlFor="new_password"
+                                    className="absolute text-sm text-gray-300 duration-300 transform -translate-y-6 scale-75 top-3 -z-10 origin-[0] peer-focus:left-0 peer-focus:text-blue-400 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-6"
+                                >
+                                    <KeyRound className="inline-block mr-2 -mt-1" size={16} />
+                                    New Password (min 6 chars)
+                                </label>
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={loading || otp.length < 6 || newPassword.length < 6}
+                                className="w-full flex items-center justify-center py-3 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition disabled:opacity-50 cursor-pointer"
+                            >
+                                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Update Password & Log In'}
+                            </button>
+                        </form>
+
+                        <div className="text-center pt-2">
+                            <button
+                                type="button"
+                                onClick={() => { setStep(1); setError(''); }}
+                                className="text-xs text-gray-300 hover:text-white flex items-center justify-center gap-1 mx-auto cursor-pointer"
+                            >
+                                <ArrowLeft size={14} /> Cancel & Back to Login
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </main>
+    );
+};
+
+export default Login;

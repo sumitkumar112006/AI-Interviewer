@@ -30,7 +30,7 @@ async function connectToDB() {
         await mongoose.connect(process.env.MONGO_URI, {
             maxPoolSize: 20,
             minPoolSize: 5,
-            serverSelectionTimeoutMS: 5000
+            serverSelectionTimeoutMS: 30000
         });
         await removeLegacyUserIndexes();
         console.log("connected to database")

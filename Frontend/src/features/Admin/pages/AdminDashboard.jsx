@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useTransition } from 'react';
+import React, { useEffect, useState, useCallback, useTransition, lazy, Suspense } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../Auth/hooks/useAuth';
 import {
@@ -16,26 +16,29 @@ import {
 
 import AdminSidebar from '../components/AdminSidebar';
 import AdminTopNav from '../components/AdminTopNav';
-import { AdminPaymentsTab } from '../components/AdminPaymentsTab';
-import { AdminSubscriptionsTab } from '../components/AdminSubscriptionsTab';
-import { AdminInvoicesTab } from '../components/AdminInvoicesTab';
-import { AdminCouponsTab } from '../components/AdminCouponsTab';
-import { AdminJobsTab } from '../components/AdminJobsTab';
-import { AdminSupportTicketsTab } from '../components/AdminSupportTicketsTab';
-import { AdminAtsAnalytics } from '../components/AdminAtsAnalytics';
-import { AdminAiUsageTab } from '../components/AdminAiUsageTab';
-import { AdminAuditLogsTab } from '../components/AdminAuditLogsTab';
-import { AdminSystemHealthTab } from '../components/AdminSystemHealthTab';
-import AdminSettingsTab from '../components/AdminSettingsTab';
-import AdminModerationTab from '../components/AdminModerationTab';
-import { AdminOrganizationsTab } from '../components/AdminOrganizationsTab';
-import { AdminFeatureMatrixTab } from '../components/AdminFeatureMatrixTab';
-import { AdminBroadcastTab } from '../components/AdminBroadcastTab';
-import { AdminManagementTab } from '../components/AdminManagementTab';
-import { AdminCreditsTab } from '../components/AdminCreditsTab';
 import { AdminExportButton } from '../components/AdminExportButton';
+import AdminDashboard01View from '../components/dashboard01/AdminDashboard01View';
 import AdminPagination from '../components/AdminPagination';
 import ConfirmModal from '../../Shared/components/ConfirmModal';
+
+// Lazy-loaded secondary admin tabs
+const AdminPaymentsTab = lazy(() => import('../components/AdminPaymentsTab').then(m => ({ default: m.AdminPaymentsTab })));
+const AdminSubscriptionsTab = lazy(() => import('../components/AdminSubscriptionsTab').then(m => ({ default: m.AdminSubscriptionsTab })));
+const AdminInvoicesTab = lazy(() => import('../components/AdminInvoicesTab').then(m => ({ default: m.AdminInvoicesTab })));
+const AdminCouponsTab = lazy(() => import('../components/AdminCouponsTab').then(m => ({ default: m.AdminCouponsTab })));
+const AdminJobsTab = lazy(() => import('../components/AdminJobsTab').then(m => ({ default: m.AdminJobsTab })));
+const AdminSupportTicketsTab = lazy(() => import('../components/AdminSupportTicketsTab').then(m => ({ default: m.AdminSupportTicketsTab })));
+const AdminAtsAnalytics = lazy(() => import('../components/AdminAtsAnalytics').then(m => ({ default: m.AdminAtsAnalytics })));
+const AdminAiUsageTab = lazy(() => import('../components/AdminAiUsageTab').then(m => ({ default: m.AdminAiUsageTab })));
+const AdminAuditLogsTab = lazy(() => import('../components/AdminAuditLogsTab').then(m => ({ default: m.AdminAuditLogsTab })));
+const AdminSystemHealthTab = lazy(() => import('../components/AdminSystemHealthTab').then(m => ({ default: m.AdminSystemHealthTab })));
+const AdminSettingsTab = lazy(() => import('../components/AdminSettingsTab'));
+const AdminModerationTab = lazy(() => import('../components/AdminModerationTab'));
+const AdminOrganizationsTab = lazy(() => import('../components/AdminOrganizationsTab').then(m => ({ default: m.AdminOrganizationsTab })));
+const AdminFeatureMatrixTab = lazy(() => import('../components/AdminFeatureMatrixTab').then(m => ({ default: m.AdminFeatureMatrixTab })));
+const AdminBroadcastTab = lazy(() => import('../components/AdminBroadcastTab').then(m => ({ default: m.AdminBroadcastTab })));
+const AdminManagementTab = lazy(() => import('../components/AdminManagementTab').then(m => ({ default: m.AdminManagementTab })));
+const AdminCreditsTab = lazy(() => import('../components/AdminCreditsTab').then(m => ({ default: m.AdminCreditsTab })));
 
 import {
     Activity,
@@ -58,8 +61,7 @@ import {
     Check,
     X,
     ExternalLink,
-    ChevronRight,
-    TrendingUp
+    ChevronRight
 } from 'lucide-react';
 
 import '../styles/admin.scss';
@@ -128,9 +130,6 @@ export default function AdminDashboard() {
     });
     const [evalMsg, setEvalMsg] = useState({ type: '', text: '' });
     const [evalSubmitting, setEvalSubmitting] = useState(false);
-
-    // Donut hover highlight
-    const [hoveredSegment, setHoveredSegment] = useState(null);
 
     // Confirmation Action Modal State
     const [confirmModal, setConfirmModal] = useState({
@@ -451,26 +450,6 @@ export default function AdminDashboard() {
         }
     };
 
-    // Visual Charts Proportions
-    const freeCount = stats?.plans?.free || 0;
-    const proCount = stats?.plans?.pro || 0;
-    const premCount = stats?.plans?.premium || 0;
-    const totalPlanUsers = (freeCount + proCount + premCount) || 1;
-
-    const freePct = Math.round((freeCount / totalPlanUsers) * 100);
-    const proPct = Math.round((proCount / totalPlanUsers) * 100);
-    const premPct = Math.round((premCount / totalPlanUsers) * 100);
-
-    const reportsCount = stats?.totalReports || 0;
-    const coverLettersCount = stats?.totalCoverLetters || 0;
-    const maxGenVal = Math.max(reportsCount, coverLettersCount, 1);
-
-    const totalUserAccounts = stats?.totalUsers || 1;
-    const blockedCount = stats?.blockedUsers || 0;
-    const activeCount = Math.max(0, totalUserAccounts - blockedCount);
-    const activePct = Math.round((activeCount / totalUserAccounts) * 100);
-    const blockedPct = Math.round((blockedCount / totalUserAccounts) * 100);
-
     const formatLastActive = (dateVal) => {
         if (!dateVal) {
             return (
@@ -564,309 +543,20 @@ export default function AdminDashboard() {
 
                 {/* Main Content Workspace */}
                 <main className="admin-workspace">
-                    {/* View 1: Overview & Analytics */}
-                    {activeTab === 'overview' && (
-                        <div className="overview-view-container">
-                            {/* Primary Metric KPI Cards */}
-                            <div className="stats-cards-grid">
-                                <div className="stat-card">
-                                    <div className="stat-header">
-                                        <span className="stat-title">Authenticated Users</span>
-                                        <div className="stat-icon-wrapper" style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8' }}>
-                                            <Users size={17} />
-                                        </div>
-                                    </div>
-                                    <div className="stat-value">{stats?.totalUsers ?? '...'}</div>
-                                    <div className="stat-sub">
-                                        <span style={{ color: '#22c55e', fontWeight: 700 }}>{stats?.activity?.dau ?? activeCount} Active Today</span> • {stats?.activity?.mau ?? 0} MAU • {blockedCount} Restricted
-                                    </div>
-                                </div>
-
-                                <div className="stat-card">
-                                    <div className="stat-header">
-                                        <span className="stat-title">Platform Admins</span>
-                                        <div className="stat-icon-wrapper" style={{ background: 'rgba(239, 68, 68, 0.12)', color: '#f87171' }}>
-                                            <Shield size={17} />
-                                        </div>
-                                    </div>
-                                    <div className="stat-value">{stats?.totalAdmins ?? '...'}</div>
-                                    <div className="stat-sub">Elevated Security Roles</div>
-                                </div>
-
-                                <div className="stat-card">
-                                    <div className="stat-header">
-                                        <span className="stat-title">Mock Interview Reports</span>
-                                        <div className="stat-icon-wrapper" style={{ background: 'rgba(99, 102, 241, 0.12)', color: '#818cf8' }}>
-                                            <Activity size={17} />
-                                        </div>
-                                    </div>
-                                    <div className="stat-value">{stats?.totalReports ?? '...'}</div>
-                                    <div className="stat-sub">Score Analyses Completed</div>
-                                </div>
-
-                                <div className="stat-card">
-                                    <div className="stat-header">
-                                        <span className="stat-title">Paid Plan Subscriptions</span>
-                                        <div className="stat-icon-wrapper" style={{ background: 'rgba(192, 132, 252, 0.12)', color: '#c084fc' }}>
-                                            <Layers size={17} />
-                                        </div>
-                                    </div>
-                                    <div className="stat-value-pills">
-                                        <span className="tier-pill pro-pill">{stats?.plans?.pro || 0} Pro</span>
-                                        <span className="tier-pill prem-pill">{stats?.plans?.premium || 0} Premium</span>
-                                    </div>
-                                    <div className="stat-sub">{stats?.plans?.free || 0} Free Tier Accounts</div>
-                                </div>
-                            </div>
-
-                            {/* Telemetry Visual Grid */}
-                            <div className="charts-grid-container">
-                                {/* SVG Donut: Tier Distribution */}
-                                <div className="chart-card">
-                                    <div className="chart-header">
-                                        <h3>Subscription Distribution</h3>
-                                        <span className="chart-badge">LIVE TIERS</span>
-                                    </div>
-                                    <div className="donut-chart-wrapper">
-                                        <div className="donut-svg-container">
-                                            <svg className="svg-donut" viewBox="0 0 42 42">
-                                                <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="4.2" />
-                                                
-                                                <circle
-                                                    className={`donut-segment ${hoveredSegment === 'free' ? 'active' : ''}`}
-                                                    cx="21" cy="21" r="15.915" fill="transparent" stroke="#38bdf8"
-                                                    strokeWidth={hoveredSegment === 'free' ? '5.6' : '4.2'}
-                                                    strokeDasharray={`${freePct} ${100 - freePct}`} strokeDashoffset="0"
-                                                    onMouseEnter={() => setHoveredSegment('free')}
-                                                    onMouseLeave={() => setHoveredSegment(null)}
-                                                />
-                                                <circle
-                                                    className={`donut-segment ${hoveredSegment === 'pro' ? 'active' : ''}`}
-                                                    cx="21" cy="21" r="15.915" fill="transparent" stroke="#818cf8"
-                                                    strokeWidth={hoveredSegment === 'pro' ? '5.6' : '4.2'}
-                                                    strokeDasharray={`${proPct} ${100 - proPct}`} strokeDashoffset={`-${freePct}`}
-                                                    onMouseEnter={() => setHoveredSegment('pro')}
-                                                    onMouseLeave={() => setHoveredSegment(null)}
-                                                />
-                                                <circle
-                                                    className={`donut-segment ${hoveredSegment === 'premium' ? 'active' : ''}`}
-                                                    cx="21" cy="21" r="15.915" fill="transparent" stroke="#c084fc"
-                                                    strokeWidth={hoveredSegment === 'premium' ? '5.6' : '4.2'}
-                                                    strokeDasharray={`${premPct} ${100 - premPct}`} strokeDashoffset={`-${freePct + proPct}`}
-                                                    onMouseEnter={() => setHoveredSegment('premium')}
-                                                    onMouseLeave={() => setHoveredSegment(null)}
-                                                />
-                                            </svg>
-                                            
-                                            <div className="donut-center-info">
-                                                {hoveredSegment === 'free' && (
-                                                    <>
-                                                        <span className="donut-center-label" style={{ color: '#38bdf8' }}>Free Tier</span>
-                                                        <span className="donut-center-val">{freeCount} ({freePct}%)</span>
-                                                    </>
-                                                )}
-                                                {hoveredSegment === 'pro' && (
-                                                    <>
-                                                        <span className="donut-center-label" style={{ color: '#818cf8' }}>Pro Tier</span>
-                                                        <span className="donut-center-val">{proCount} ({proPct}%)</span>
-                                                    </>
-                                                )}
-                                                {hoveredSegment === 'premium' && (
-                                                    <>
-                                                        <span className="donut-center-label" style={{ color: '#c084fc' }}>Premium</span>
-                                                        <span className="donut-center-val">{premCount} ({premPct}%)</span>
-                                                    </>
-                                                )}
-                                                {!hoveredSegment && (
-                                                    <>
-                                                        <span className="donut-center-label">Total Users</span>
-                                                        <span className="donut-center-val">{stats?.totalUsers || 0}</span>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        <div className="chart-legend">
-                                            <div
-                                                className={`legend-item ${hoveredSegment === 'free' ? 'highlighted' : ''}`}
-                                                onMouseEnter={() => setHoveredSegment('free')}
-                                                onMouseLeave={() => setHoveredSegment(null)}
-                                            >
-                                                <span className="legend-label">
-                                                    <span className="dot" style={{ background: '#38bdf8' }}></span> Free Tier
-                                                </span>
-                                                <span className="legend-value">{freeCount} ({freePct}%)</span>
-                                            </div>
-                                            <div
-                                                className={`legend-item ${hoveredSegment === 'pro' ? 'highlighted' : ''}`}
-                                                onMouseEnter={() => setHoveredSegment('pro')}
-                                                onMouseLeave={() => setHoveredSegment(null)}
-                                            >
-                                                <span className="legend-label">
-                                                    <span className="dot" style={{ background: '#818cf8' }}></span> Pro Tier
-                                                </span>
-                                                <span className="legend-value">{proCount} ({proPct}%)</span>
-                                            </div>
-                                            <div
-                                                className={`legend-item ${hoveredSegment === 'premium' ? 'highlighted' : ''}`}
-                                                onMouseEnter={() => setHoveredSegment('premium')}
-                                                onMouseLeave={() => setHoveredSegment(null)}
-                                            >
-                                                <span className="legend-label">
-                                                    <span className="dot" style={{ background: '#c084fc' }}></span> Premium Tier
-                                                </span>
-                                                <span className="legend-value">{premCount} ({premPct}%)</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Platform Output Volume */}
-                                <div className="chart-card">
-                                    <div className="chart-header">
-                                        <h3>Pipeline Output Activity</h3>
-                                        <span className="chart-badge">GENERATIONS</span>
-                                    </div>
-                                    <div className="bar-chart-wrapper">
-                                        <div className="bar-group">
-                                            <div className="bar-label-row">
-                                                <span>Mock Interview Reports</span>
-                                                <span>{reportsCount}</span>
-                                            </div>
-                                            <div className="bar-track">
-                                                <div className="bar-fill" style={{ width: `${(reportsCount / maxGenVal) * 100}%`, background: 'linear-gradient(90deg, #6366f1, #818cf8)' }}></div>
-                                            </div>
-                                        </div>
-
-                                        <div className="bar-group">
-                                            <div className="bar-label-row">
-                                                <span>Cover Letters Generated</span>
-                                                <span>{coverLettersCount}</span>
-                                            </div>
-                                            <div className="bar-track">
-                                                <div className="bar-fill" style={{ width: `${(coverLettersCount / maxGenVal) * 100}%`, background: 'linear-gradient(90deg, #a855f7, #c084fc)' }}></div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* User Activity & Retention Telemetry */}
-                                <div className="chart-card">
-                                    <div className="chart-header">
-                                        <h3>User Activity & Retention</h3>
-                                        <span className="chart-badge">ENGAGEMENT TELEMETRY</span>
-                                    </div>
-                                    <div className="activity-telemetry-content">
-                                        <div className="activity-kpi-grid">
-                                            <div className="activity-kpi-box">
-                                                <span className="kpi-label">Active Today (DAU)</span>
-                                                <span className="kpi-val" style={{ color: '#4ade80' }}>{stats?.activity?.dau || 0}</span>
-                                                <span className="kpi-sub">Since 00:00 today</span>
-                                            </div>
-                                            <div className="activity-kpi-box">
-                                                <span className="kpi-label">7-Day Active (WAU)</span>
-                                                <span className="kpi-val" style={{ color: '#38bdf8' }}>{stats?.activity?.wau || 0}</span>
-                                                <span className="kpi-sub">Rolling 7 days</span>
-                                            </div>
-                                            <div className="activity-kpi-box">
-                                                <span className="kpi-label">30-Day Active (MAU)</span>
-                                                <span className="kpi-val" style={{ color: '#818cf8' }}>{stats?.activity?.mau || 0}</span>
-                                                <span className="kpi-sub">Rolling 30 days</span>
-                                            </div>
-                                            <div className="activity-kpi-box">
-                                                <span className="kpi-label">Dormant Users</span>
-                                                <span className="kpi-val" style={{ color: '#f87171' }}>{stats?.activity?.dormant || 0}</span>
-                                                <span className="kpi-sub">&gt;30d inactive / legacy</span>
-                                            </div>
-                                        </div>
-
-                                        <div className="activity-cohort-row">
-                                            <div className="cohort-item">
-                                                <span className="cohort-label">New Signups (7d):</span>
-                                                <span className="cohort-val" style={{ color: '#38bdf8' }}>+{stats?.activity?.newLast7Days || 0}</span>
-                                            </div>
-                                            <div className="cohort-divider">•</div>
-                                            <div className="cohort-item">
-                                                <span className="cohort-label">Returning (7d):</span>
-                                                <span className="cohort-val" style={{ color: '#4ade80' }}>{stats?.activity?.returningLast7Days || 0}</span>
-                                            </div>
-                                            <div className="cohort-divider">•</div>
-                                            <div className="cohort-item">
-                                                <span className="cohort-label">DAU/MAU Ratio:</span>
-                                                <span className="cohort-val" style={{ color: '#fbbf24' }}>
-                                                    {stats?.activity?.mau > 0 ? `${((stats.activity.dau / stats.activity.mau) * 100).toFixed(1)}%` : '0%'}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        <button
-                                            type="button"
-                                            className="activity-defs-btn"
-                                            onClick={() => setShowActivityDefsModal(true)}
-                                            title="View documented definitions for DAU, WAU, MAU, Dormant, and Returning metrics"
-                                        >
-                                            <Shield size={12} />
-                                            <span>View Documented Definitions & Methodology</span>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* 7-Day Growth Timeline */}
-                                <div className="chart-card">
-                                    <div className="chart-header">
-                                        <h3>7-Day Registration Growth</h3>
-                                        <span className="chart-badge">RECENT ACTIVITY</span>
-                                    </div>
-                                    <div className="trend-timeline-wrapper">
-                                        {stats?.dailyRegistrations?.length > 0 ? (
-                                            stats.dailyRegistrations.map(item => (
-                                                <div key={item._id} className="timeline-col">
-                                                    <div className="col-val">{item.count}</div>
-                                                    <div className="col-bar-container">
-                                                        <div className="col-bar" style={{ height: `${Math.min(100, (item.count / Math.max(...stats.dailyRegistrations.map(d => d.count), 1)) * 100)}%` }}></div>
-                                                    </div>
-                                                    <div className="col-date">{item._id.slice(5)}</div>
-                                                </div>
-                                            ))
-                                        ) : (
-                                            <div className="empty-chart-notice">
-                                                No registrations recorded in last 7 days.
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* AI Token & Spend Telemetry Card Banner */}
-                            <div className="mt-6 p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-zinc-900 border border-amber-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                                        <Sparkles className="w-5 h-5" />
-                                    </div>
-                                    <div>
-                                        <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                                            AI Token & Spend Monitoring
-                                            <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300">Active</span>
-                                        </h4>
-                                        <p className="text-xs text-zinc-400 mt-0.5">
-                                            Track provider tokens, model pricing, latency, and operational feature spend.
-                                        </p>
-                                    </div>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveTab('ai-usage')}
-                                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-zinc-950 font-semibold text-xs transition-colors flex items-center gap-1.5 whitespace-nowrap shadow-md shadow-amber-500/10"
-                                >
-                                    View Full AI Analytics
-                                    <ArrowUpRight className="w-3.5 h-3.5" />
-                                </button>
-                            </div>
-
-                            {/* Global Aggregated ATS Score Intelligence */}
-                            <AdminAtsAnalytics />
+                    <Suspense fallback={
+                        <div className="p-12 text-center text-zinc-500 font-mono text-xs flex items-center justify-center gap-2">
+                            <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                            Synchronizing administrative module...
                         </div>
+                    }>
+                    {/* View 1: Overview & Analytics (shadcn/ui Dashboard-01 Architecture) */}
+                    {activeTab === 'overview' && (
+                        <AdminDashboard01View
+                            isSuperAdmin={isSuperAdmin}
+                            onRefreshParent={fetchStats}
+                        />
                     )}
+
 
                     {/* View 2: User Directory */}
                     {activeTab === 'table' && (
@@ -1138,7 +828,7 @@ export default function AdminDashboard() {
                     {activeTab === 'audit-logs' && <AdminAuditLogsTab />}
 
                     {/* View 10: System Health & Operational Events */}
-                    {activeTab === 'system-health' && <AdminSystemHealthTab />}
+                    {activeTab === 'system-health' && <AdminSystemHealthTab setActiveTab={setActiveTab} />}
 
                     {/* View 10.5: Content Moderation & Abuse Control */}
                     {activeTab === 'moderation' && <AdminModerationTab />}
@@ -1162,6 +852,7 @@ export default function AdminDashboard() {
                     {activeTab === 'credits' && (
                         <AdminCreditsTab onRefresh={handleRefreshAll} />
                     )}
+                    </Suspense>
                 </main>
             </div>
 

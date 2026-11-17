@@ -344,3 +344,46 @@ export async function submitUserModerationAppeal(id, payload) {
     return response.data;
 }
 
+// ── Dashboard-01 Analytics Endpoints ────────────────────────────────────────
+
+export async function getAnalyticsOverview(params = {}) {
+    const response = await api.get('analytics/overview', { params });
+    return response.data;
+}
+
+export async function getAnalyticsTraffic(params = {}) {
+    const response = await api.get('analytics/traffic', { params });
+    return response.data;
+}
+
+export async function getAnalyticsRegistrations(params = {}) {
+    const response = await api.get('analytics/registrations', { params });
+    return response.data;
+}
+
+export async function getAnalyticsRevenue(params = {}) {
+    const response = await api.get('analytics/revenue', { params });
+    return response.data;
+}
+
+export async function getAnalyticsPlans() {
+    const response = await api.get('analytics/plans');
+    return response.data;
+}
+
+export async function getAnalyticsFeatureUsage(params = {}) {
+    const response = await api.get('analytics/feature-usage', { params });
+    return response.data;
+}
+
+export async function getAnalyticsHeatmap(params = {}) {
+    const response = await api.get('analytics/activity-heatmap', { params });
+    return response.data;
+}
+
+export async function getAnalyticsRecentUsers(params = {}) {
+    const response = await api.get('analytics/recent-users', { params });
+    return response.data;
+}
+
+

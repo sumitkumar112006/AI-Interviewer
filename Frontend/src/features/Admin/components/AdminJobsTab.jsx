@@ -21,13 +21,15 @@ import {
     RefreshCw, 
     Terminal, 
     FileCode, 
-    ShieldCheck, 
     Zap,
-    PlayCircle,
+    Copy,
+    Check,
+    RotateCw,
     XCircle
 } from 'lucide-react';
 import AdminPagination from './AdminPagination';
 import { AdminExportButton } from './AdminExportButton';
+import ShadcnDatePicker from './ShadcnDatePicker';
 
 export const AdminJobsTab = () => {
     const [jobs, setJobs] = useState([]);
@@ -51,6 +53,9 @@ export const AdminJobsTab = () => {
     const [actionLoadingId, setActionLoadingId] = useState(null);
     const [actionFeedback, setActionFeedback] = useState(null);
 
+    // Clipboard Copy State
+    const [copiedId, setCopiedId] = useState(null);
+
     // Action Confirmation Modal
     const [confirmModal, setConfirmModal] = useState({
         isOpen: false,
@@ -59,6 +64,13 @@ export const AdminJobsTab = () => {
         jobType: '',
         reason: ''
     });
+
+    const handleCopy = (text, id) => {
+        if (!text) return;
+        navigator.clipboard.writeText(text);
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
 
     const fetchJobs = useCallback(async () => {
         try {
@@ -151,7 +163,6 @@ export const AdminJobsTab = () => {
                     type: 'success',
                     message: res.message || `Job ${action} executed successfully.`
                 });
-                // If drawer was open for this job, refresh its details
                 if (selectedJob && (selectedJob._id === jobId || selectedJob.id === jobId)) {
                     await handleInspectJob(jobId);
                 }
@@ -183,89 +194,92 @@ export const AdminJobsTab = () => {
         return `${mins}m ${remSecs}s`;
     };
 
-    const getStatusBadge = (status) => {
+    const renderStatusBadge = (status) => {
         switch (status?.toLowerCase()) {
             case 'done':
                 return (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span className="jobs-status-badge status-done">
+                        <CheckCircle2 className="w-3 h-3" />
                         Completed
                     </span>
                 );
             case 'processing':
                 return (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30 animate-pulse">
-                        <Activity className="w-3.5 h-3.5 animate-spin" />
+                    <span className="jobs-status-badge status-processing">
+                        <Activity className="w-3 h-3 animate-spin" />
                         Processing
                     </span>
                 );
             case 'pending':
                 return (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                        <Clock className="w-3.5 h-3.5" />
+                    <span className="jobs-status-badge status-pending">
+                        <Clock className="w-3 h-3" />
                         Pending
                     </span>
                 );
             case 'failed':
                 return (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30">
-                        <XCircle className="w-3.5 h-3.5" />
+                    <span className="jobs-status-badge status-failed">
+                        <XCircle className="w-3 h-3" />
                         Failed
                     </span>
                 );
             case 'cancelled':
                 return (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-zinc-500/15 text-zinc-400 border border-zinc-500/30">
-                        <Ban className="w-3.5 h-3.5" />
+                    <span className="jobs-status-badge status-cancelled">
+                        <Ban className="w-3 h-3" />
                         Cancelled
                     </span>
                 );
             default:
                 return (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-zinc-700/30 text-zinc-300 border border-zinc-700">
+                    <span className="jobs-status-badge status-cancelled">
                         {status || 'Unknown'}
                     </span>
                 );
         }
     };
 
-    const getTypeBadge = (type) => {
-        switch (type) {
-            case 'interview_report':
-                return <span className="text-purple-400 font-mono text-xs bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">interview_report</span>;
-            case 'resume_html':
-                return <span className="text-cyan-400 font-mono text-xs bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">resume_html</span>;
-            case 'cover_letter':
-                return <span className="text-indigo-400 font-mono text-xs bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">cover_letter</span>;
-            case 'rewrite_section':
-                return <span className="text-pink-400 font-mono text-xs bg-pink-500/10 px-2 py-0.5 rounded border border-pink-500/20">rewrite_section</span>;
-            default:
-                return <span className="text-zinc-400 font-mono text-xs bg-zinc-800 px-2 py-0.5 rounded border border-zinc-700">{type || 'job'}</span>;
-        }
+    const renderTypeBadge = (type) => {
+        const typeClass = `type-${type || 'default'}`;
+        return (
+            <span className={`jobs-type-badge ${typeClass}`}>
+                {type || 'job'}
+            </span>
+        );
     };
 
+    const isFiltered = Boolean(search || statusFilter || typeFilter || startDate || endDate);
+
     return (
-        <div className="space-y-6">
-            {/* Header Section */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-3">
-                        <Cpu className="w-7 h-7 text-indigo-400" />
-                        Background Job Monitoring
-                    </h1>
-                    <p className="text-sm text-zinc-400 mt-1">
+        <div className="jobs-console-container">
+            {/* 1. Header Section */}
+            <div className="jobs-header">
+                <div className="header-title-block">
+                    <div className="title-row">
+                        <div className="title-icon-badge">
+                            <Cpu className="w-5 h-5" />
+                        </div>
+                        <h2>Background Job Monitoring</h2>
+                        <div className="jobs-telemetry-badge">
+                            <span className="pulse-dot" />
+                            BullMQ Queue Active
+                        </div>
+                    </div>
+                    <p className="header-subtitle">
                         Monitor BullMQ workers, inspect AI generation tasks, track attempt counts, and manage job lifecycles safely.
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
+
+                <div className="header-actions">
                     <button
                         onClick={fetchJobs}
                         disabled={loading}
-                        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium border border-zinc-700 transition"
+                        className="action-btn refresh-btn"
                         title="Refresh job ledger"
                     >
-                        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-indigo-400' : ''}`} />
-                        Refresh
+                        <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                        <span>Refresh</span>
                     </button>
                     <AdminExportButton 
                         moduleName="jobs"
@@ -280,296 +294,334 @@ export const AdminJobsTab = () => {
                 </div>
             </div>
 
-            {/* Global Action Feedback Alert */}
+            {/* 2. Global Action Feedback Alert */}
             {actionFeedback && (
-                <div className={`p-4 rounded-xl border flex items-center justify-between gap-3 text-sm animate-fade-in ${
-                    actionFeedback.type === 'success' 
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' 
-                        : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                }`}>
-                    <div className="flex items-center gap-2">
-                        {actionFeedback.type === 'success' ? <CheckCircle2 className="w-5 h-5 flex-shrink-0" /> : <AlertCircle className="w-5 h-5 flex-shrink-0" />}
+                <div className={`jobs-feedback-alert ${actionFeedback.type === 'success' ? 'variant-success' : 'variant-error'}`}>
+                    <div className="alert-content">
+                        {actionFeedback.type === 'success' ? (
+                            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                        ) : (
+                            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                        )}
                         <span>{actionFeedback.message}</span>
                     </div>
                     <button 
                         onClick={() => setActionFeedback(null)} 
-                        className="text-zinc-400 hover:text-white transition"
+                        className="close-alert-btn"
+                        aria-label="Dismiss feedback"
                     >
                         <X className="w-4 h-4" />
                     </button>
                 </div>
             )}
 
-            {/* Metrics & Queue Overview Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                <div className="bg-zinc-900/70 border border-zinc-800/80 rounded-xl p-4">
-                    <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Total Tasks</span>
-                        <Cpu className="w-4 h-4 text-zinc-500" />
+            {/* 3. Metrics Overview Cards Grid */}
+            <div className="jobs-kpis-grid">
+                <div className="kpi-stat-card variant-total">
+                    <div className="card-header-mini">
+                        <span className="card-label">Total Tasks</span>
+                        <div className="icon-indicator">
+                            <Cpu className="w-4 h-4" />
+                        </div>
                     </div>
-                    <div className="text-2xl font-bold text-white mt-2">
+                    <div className="card-value">
                         {summary?.totalJobs?.toLocaleString() || 0}
                     </div>
-                    <span className="text-[11px] text-zinc-500 mt-1 block">In database history</span>
+                    <span className="card-subtext">In database history</span>
                 </div>
 
-                <div className="bg-zinc-900/70 border border-zinc-800/80 rounded-xl p-4">
-                    <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-blue-400 uppercase tracking-wider">Processing</span>
-                        <Activity className="w-4 h-4 text-blue-400 animate-pulse" />
+                <div className="kpi-stat-card variant-processing">
+                    <div className="card-header-mini">
+                        <span className="card-label">Processing</span>
+                        <div className="icon-indicator">
+                            <Activity className="w-4 h-4 animate-spin" />
+                        </div>
                     </div>
-                    <div className="text-2xl font-bold text-blue-400 mt-2">
+                    <div className="card-value">
                         {summary?.processingCount?.toLocaleString() || 0}
                     </div>
-                    <span className="text-[11px] text-zinc-500 mt-1 block">Live in AI worker</span>
+                    <span className="card-subtext">Live in AI worker</span>
                 </div>
 
-                <div className="bg-zinc-900/70 border border-zinc-800/80 rounded-xl p-4">
-                    <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-amber-400 uppercase tracking-wider">Pending</span>
-                        <Clock className="w-4 h-4 text-amber-400" />
+                <div className="kpi-stat-card variant-pending">
+                    <div className="card-header-mini">
+                        <span className="card-label">Pending</span>
+                        <div className="icon-indicator">
+                            <Clock className="w-4 h-4" />
+                        </div>
                     </div>
-                    <div className="text-2xl font-bold text-amber-400 mt-2">
+                    <div className="card-value">
                         {summary?.pendingCount?.toLocaleString() || 0}
                     </div>
-                    <span className="text-[11px] text-zinc-500 mt-1 block">Waiting for slot</span>
+                    <span className="card-subtext">Waiting for slot</span>
                 </div>
 
-                <div className="bg-zinc-900/70 border border-zinc-800/80 rounded-xl p-4">
-                    <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-emerald-400 uppercase tracking-wider">Completed</span>
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <div className="kpi-stat-card variant-completed">
+                    <div className="card-header-mini">
+                        <span className="card-label">Completed</span>
+                        <div className="icon-indicator">
+                            <CheckCircle2 className="w-4 h-4" />
+                        </div>
                     </div>
-                    <div className="text-2xl font-bold text-emerald-400 mt-2">
+                    <div className="card-value">
                         {summary?.doneCount?.toLocaleString() || 0}
                     </div>
-                    <span className="text-[11px] text-zinc-500 mt-1 block">Successfully resolved</span>
+                    <span className="card-subtext">Successfully resolved</span>
                 </div>
 
-                <div className="bg-zinc-900/70 border border-zinc-800/80 rounded-xl p-4">
-                    <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-rose-400 uppercase tracking-wider">Failed</span>
-                        <AlertCircle className="w-4 h-4 text-rose-400" />
+                <div className="kpi-stat-card variant-failed">
+                    <div className="card-header-mini">
+                        <span className="card-label">Failed</span>
+                        <div className="icon-indicator">
+                            <AlertCircle className="w-4 h-4" />
+                        </div>
                     </div>
-                    <div className="text-2xl font-bold text-rose-400 mt-2">
+                    <div className="card-value">
                         {summary?.failedCount?.toLocaleString() || 0}
                     </div>
-                    <span className="text-[11px] text-zinc-500 mt-1 block">Eligible for retry</span>
+                    <span className="card-subtext">Eligible for retry</span>
                 </div>
 
-                <div className="bg-zinc-900/70 border border-zinc-800/80 rounded-xl p-4">
-                    <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-purple-400 uppercase tracking-wider">Success Rate</span>
-                        <Zap className="w-4 h-4 text-purple-400" />
+                <div className="kpi-stat-card variant-rate">
+                    <div className="card-header-mini">
+                        <span className="card-label">Success Rate</span>
+                        <div className="icon-indicator">
+                            <Zap className="w-4 h-4" />
+                        </div>
                     </div>
-                    <div className="text-2xl font-bold text-purple-400 mt-2">
+                    <div className="card-value">
                         {summary?.successRate || 0}%
                     </div>
-                    <span className="text-[11px] text-zinc-500 mt-1 block">
+                    <span className="card-subtext">
                         BullMQ: {queueMetrics?.activeWorkerCount > 0 ? 'Worker Active' : 'Standby'}
                     </span>
                 </div>
             </div>
 
-            {/* Filters Toolbar */}
-            <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+            {/* 4. Filters Toolbar Card */}
+            <div className="jobs-filter-card">
+                <div className="filter-grid">
                     {/* Search Input */}
-                    <div className="relative">
-                        <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <div className="search-box">
+                        <Search className="w-4 h-4 search-icon" />
                         <input
                             type="text"
                             value={search}
                             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                             placeholder="Search by Job ID, email, user..."
-                            className="w-full pl-9 pr-3 py-2 bg-zinc-800/80 border border-zinc-700/80 rounded-lg text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition"
                         />
                     </div>
 
                     {/* Status Filter */}
-                    <div>
-                        <select
-                            value={statusFilter}
-                            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-                            className="w-full px-3 py-2 bg-zinc-800/80 border border-zinc-700/80 rounded-lg text-sm text-zinc-200 focus:outline-none focus:border-indigo-500 transition"
-                        >
-                            <option value="">All Statuses</option>
-                            <option value="pending">Pending</option>
-                            <option value="processing">Processing</option>
-                            <option value="done">Completed (Done)</option>
-                            <option value="failed">Failed</option>
-                            <option value="cancelled">Cancelled</option>
-                        </select>
-                    </div>
+                    <select
+                        value={statusFilter}
+                        onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+                        className="filter-select"
+                        aria-label="Filter by job status"
+                    >
+                        <option value="">All Statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="processing">Processing</option>
+                        <option value="done">Completed (Done)</option>
+                        <option value="failed">Failed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
 
-                    {/* Type Filter */}
-                    <div>
-                        <select
-                            value={typeFilter}
-                            onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
-                            className="w-full px-3 py-2 bg-zinc-800/80 border border-zinc-700/80 rounded-lg text-sm text-zinc-200 focus:outline-none focus:border-indigo-500 transition"
-                        >
-                            <option value="">All Task Types</option>
-                            <option value="interview_report">Interview Report</option>
-                            <option value="resume_html">Resume HTML</option>
-                            <option value="cover_letter">Cover Letter</option>
-                            <option value="cover_letter_report">Cover Letter Report</option>
-                            <option value="rewrite_section">Rewrite Section</option>
-                        </select>
-                    </div>
+                    {/* Task Type Filter */}
+                    <select
+                        value={typeFilter}
+                        onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
+                        className="filter-select"
+                        aria-label="Filter by task type"
+                    >
+                        <option value="">All Task Types</option>
+                        <option value="interview_report">Interview Report</option>
+                        <option value="resume_html">Resume HTML</option>
+                        <option value="cover_letter">Cover Letter</option>
+                        <option value="cover_letter_report">Cover Letter Report</option>
+                        <option value="rewrite_section">Rewrite Section</option>
+                    </select>
 
                     {/* Start Date */}
-                    <div className="relative">
-                        <Calendar className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                        <input
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-                            className="w-full pl-9 pr-3 py-2 bg-zinc-800/80 border border-zinc-700/80 rounded-lg text-sm text-zinc-200 focus:outline-none focus:border-indigo-500 transition"
-                        />
-                    </div>
+                    <ShadcnDatePicker
+                        value={startDate}
+                        onChange={(val) => { setStartDate(val); setPage(1); }}
+                        placeholder="Start date"
+                        maxDate={endDate}
+                        ariaLabel="Filter start date"
+                    />
 
-                    {/* End Date & Reset */}
-                    <div className="flex gap-2">
-                        <div className="relative flex-1">
-                            <Calendar className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                            <input
-                                type="date"
-                                value={endDate}
-                                onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-                                className="w-full pl-9 pr-3 py-2 bg-zinc-800/80 border border-zinc-700/80 rounded-lg text-sm text-zinc-200 focus:outline-none focus:border-indigo-500 transition"
-                            />
-                        </div>
-                        <button
-                            onClick={handleResetFilters}
-                            className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium border border-zinc-700 transition"
-                            title="Reset filters"
-                        >
-                            Reset
-                        </button>
-                    </div>
+                    {/* End Date */}
+                    <ShadcnDatePicker
+                        value={endDate}
+                        onChange={(val) => { setEndDate(val); setPage(1); }}
+                        placeholder="End date"
+                        minDate={startDate}
+                        ariaLabel="Filter end date"
+                    />
+
+                    {/* Reset Button */}
+                    <button
+                        onClick={handleResetFilters}
+                        disabled={!isFiltered}
+                        className="reset-filters-btn"
+                        title="Clear all active filters"
+                    >
+                        <RotateCw className="w-3.5 h-3.5" />
+                        <span>Reset</span>
+                    </button>
                 </div>
             </div>
 
-            {/* Jobs Ledger Table */}
-            <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl overflow-hidden">
+            {/* 5. Jobs Ledger Table Container */}
+            <div className="jobs-table-container">
                 {loading ? (
-                    <div className="py-20 text-center">
-                        <Activity className="w-8 h-8 text-indigo-400 animate-spin mx-auto mb-3" />
-                        <p className="text-sm text-zinc-400">Loading background tasks and queue state...</p>
+                    <div className="table-state-box">
+                        <div className="state-icon-wrap">
+                            <Activity className="w-6 h-6 text-indigo-400 animate-spin" />
+                        </div>
+                        <h4>Loading Background Tasks</h4>
+                        <p>Synchronizing active BullMQ queue state and task history from MongoDB...</p>
                     </div>
                 ) : error ? (
-                    <div className="py-16 text-center">
-                        <AlertCircle className="w-8 h-8 text-rose-400 mx-auto mb-3" />
-                        <p className="text-sm text-rose-300 mb-3">{error}</p>
-                        <button
-                            onClick={fetchJobs}
-                            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-sm font-medium border border-zinc-700 transition"
-                        >
-                            Retry Loading
+                    <div className="table-state-box">
+                        <div className="state-icon-wrap" style={{ color: '#f43f5e', borderColor: 'rgba(244, 63, 94, 0.3)' }}>
+                            <AlertCircle className="w-6 h-6" />
+                        </div>
+                        <h4>Failed to Load Jobs</h4>
+                        <p>{error}</p>
+                        <button onClick={fetchJobs} className="state-action-btn">
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>Retry Connection</span>
                         </button>
                     </div>
                 ) : jobs.length === 0 ? (
-                    <div className="py-16 text-center">
-                        <Cpu className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
-                        <p className="text-base font-medium text-zinc-300">No background tasks found</p>
-                        <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
-                            No jobs match your current search or filter criteria. Try resetting your filters.
+                    <div className="table-state-box">
+                        <div className="state-icon-wrap">
+                            <Cpu className="w-6 h-6 text-slate-500" />
+                        </div>
+                        <h4>No Background Tasks Found</h4>
+                        <p>
+                            {isFiltered 
+                                ? 'No background jobs match your current filter or search criteria.' 
+                                : 'No background tasks have been executed yet in the system.'}
                         </p>
-                        <button
-                            onClick={handleResetFilters}
-                            className="mt-4 px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-medium border border-zinc-700 transition"
-                        >
-                            Clear Filters
-                        </button>
+                        {isFiltered && (
+                            <button onClick={handleResetFilters} className="state-action-btn">
+                                <RotateCw className="w-3.5 h-3.5" />
+                                <span>Reset Active Filters</span>
+                            </button>
+                        )}
                     </div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
+                    <div className="table-responsive-wrapper">
+                        <table>
                             <thead>
-                                <tr className="border-b border-zinc-800 bg-zinc-900/90 text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                                    <th className="py-3.5 px-4">Job ID & Task</th>
-                                    <th className="py-3.5 px-4">User</th>
-                                    <th className="py-3.5 px-4">Status</th>
-                                    <th className="py-3.5 px-4">Attempts</th>
-                                    <th className="py-3.5 px-4">Duration</th>
-                                    <th className="py-3.5 px-4">Created</th>
-                                    <th className="py-3.5 px-4 text-right">Actions</th>
+                                <tr>
+                                    <th>Job ID & Task</th>
+                                    <th>User</th>
+                                    <th>Status</th>
+                                    <th>Attempts</th>
+                                    <th>Duration</th>
+                                    <th>Created At</th>
+                                    <th className="text-right">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-zinc-800/60 text-sm">
+                            <tbody>
                                 {jobs.map((job) => {
+                                    const rawId = job._id || job.id || '';
+                                    const shortId = rawId.length > 8 ? rawId.slice(-8) : rawId;
                                     const isRetryEligible = job.status === 'failed' || job.status === 'cancelled';
                                     const isCancelEligible = job.status === 'pending' || job.status === 'processing';
-                                    const isActionLoading = actionLoadingId === (job._id || job.id);
+                                    const isActionLoading = actionLoadingId === rawId;
+                                    const isCopied = copiedId === rawId;
 
                                     return (
-                                        <tr key={job._id || job.id} className="hover:bg-zinc-800/30 transition">
+                                        <tr key={rawId}>
                                             {/* Job ID & Task */}
-                                            <td className="py-3.5 px-4">
-                                                <div className="flex flex-col gap-1">
-                                                    <span className="font-mono text-xs text-zinc-300 tracking-wider">
-                                                        {(job._id || job.id).slice(-8)}
-                                                    </span>
+                                            <td>
+                                                <div className="job-id-cell">
+                                                    <div className="id-row">
+                                                        <span className="id-text" title={rawId}>
+                                                            {shortId}
+                                                        </span>
+                                                        <button
+                                                            onClick={() => handleCopy(rawId, rawId)}
+                                                            className="copy-id-btn"
+                                                            title={isCopied ? 'Copied full ID!' : 'Copy full Job ID'}
+                                                        >
+                                                            {isCopied ? (
+                                                                <Check className="w-3 h-3 text-emerald-400" />
+                                                            ) : (
+                                                                <Copy className="w-3 h-3" />
+                                                            )}
+                                                        </button>
+                                                    </div>
                                                     <div>
-                                                        {getTypeBadge(job.type)}
+                                                        {renderTypeBadge(job.type)}
                                                     </div>
                                                 </div>
                                             </td>
 
                                             {/* User Identity */}
-                                            <td className="py-3.5 px-4">
-                                                {job.userId ? (
-                                                    <div className="flex flex-col">
-                                                        <span className="font-medium text-zinc-200 flex items-center gap-1.5">
-                                                            {job.userId.username || 'Unnamed'}
-                                                            {job.userId.isDeleted && (
-                                                                <span className="text-[10px] bg-rose-500/20 text-rose-400 px-1 rounded">Archived</span>
-                                                            )}
-                                                        </span>
-                                                        <span className="text-xs text-zinc-500">
-                                                            {job.userId.email || '—'}
-                                                        </span>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-xs text-zinc-500">System Task</span>
-                                                )}
+                                            <td>
+                                                <div className="user-cell">
+                                                    {job.userId ? (
+                                                        <>
+                                                            <span className="user-name">
+                                                                {job.userId.username || 'Unnamed'}
+                                                                {job.userId.isDeleted && (
+                                                                    <span className="archived-tag">Archived</span>
+                                                                )}
+                                                            </span>
+                                                            <span className="user-email">
+                                                                {job.userId.email || '—'}
+                                                            </span>
+                                                        </>
+                                                    ) : (
+                                                        <span className="system-label">System Internal Task</span>
+                                                    )}
+                                                </div>
                                             </td>
 
                                             {/* Status */}
-                                            <td className="py-3.5 px-4">
-                                                {getStatusBadge(job.status)}
+                                            <td>
+                                                {renderStatusBadge(job.status)}
                                             </td>
 
                                             {/* Attempts */}
-                                            <td className="py-3.5 px-4">
-                                                <span className="inline-flex items-center gap-1 font-mono text-xs text-zinc-300 bg-zinc-800/70 px-2 py-0.5 rounded border border-zinc-700/60">
+                                            <td>
+                                                <span className="attempts-pill">
                                                     {job.attempts || 1} / 3
                                                 </span>
                                             </td>
 
                                             {/* Duration */}
-                                            <td className="py-3.5 px-4 font-mono text-xs text-zinc-300">
-                                                {formatDuration(job.durationMs)}
+                                            <td>
+                                                <span className="duration-cell">
+                                                    {formatDuration(job.durationMs)}
+                                                </span>
                                             </td>
 
                                             {/* Created */}
-                                            <td className="py-3.5 px-4 text-xs text-zinc-400 whitespace-nowrap">
-                                                {job.createdAt ? new Date(job.createdAt).toLocaleString([], {
-                                                    month: 'short',
-                                                    day: '2-digit',
-                                                    hour: '2-digit',
-                                                    minute: '2-digit'
-                                                }) : '—'}
+                                            <td>
+                                                <span className="created-cell">
+                                                    {job.createdAt ? new Date(job.createdAt).toLocaleString([], {
+                                                        month: 'short',
+                                                        day: '2-digit',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    }) : '—'}
+                                                </span>
                                             </td>
 
                                             {/* Actions */}
-                                            <td className="py-3.5 px-4 text-right">
-                                                <div className="flex items-center justify-end gap-1.5">
+                                            <td className="action-cell">
+                                                <div className="actions-group">
                                                     <button
-                                                        onClick={() => handleInspectJob(job._id || job.id)}
-                                                        className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition"
-                                                        title="Inspect Job"
+                                                        onClick={() => handleInspectJob(rawId)}
+                                                        className="icon-action-btn inspect-btn"
+                                                        title="Inspect Job & Diagnostics"
                                                     >
                                                         <Eye className="w-4 h-4" />
                                                     </button>
@@ -578,10 +630,10 @@ export const AdminJobsTab = () => {
                                                         <button
                                                             onClick={() => handleOpenConfirm('retry', job)}
                                                             disabled={isActionLoading}
-                                                            className="p-1.5 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-lg transition disabled:opacity-50"
-                                                            title="Retry Job"
+                                                            className="icon-action-btn retry-btn"
+                                                            title="Retry Job Safely"
                                                         >
-                                                            <RotateCcw className={`w-4 h-4 ${isActionLoading ? 'animate-spin' : ''}`} />
+                                                            <RotateCcw className={`w-3.5 h-3.5 ${isActionLoading ? 'animate-spin' : ''}`} />
                                                         </button>
                                                     )}
 
@@ -589,10 +641,10 @@ export const AdminJobsTab = () => {
                                                         <button
                                                             onClick={() => handleOpenConfirm('cancel', job)}
                                                             disabled={isActionLoading}
-                                                            className="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition disabled:opacity-50"
-                                                            title="Cancel Job"
+                                                            className="icon-action-btn cancel-btn"
+                                                            title="Cancel Execution"
                                                         >
-                                                            <Ban className={`w-4 h-4 ${isActionLoading ? 'animate-spin' : ''}`} />
+                                                            <Ban className={`w-3.5 h-3.5 ${isActionLoading ? 'animate-spin' : ''}`} />
                                                         </button>
                                                     )}
                                                 </div>
@@ -605,9 +657,9 @@ export const AdminJobsTab = () => {
                     </div>
                 )}
 
-                {/* Pagination */}
+                {/* Bottom Pagination */}
                 {jobs.length > 0 && (
-                    <div className="border-t border-zinc-800 p-4">
+                    <div className="table-pagination-strip">
                         <AdminPagination
                             currentPage={page}
                             totalPages={pagination.pages || 1}
@@ -619,121 +671,139 @@ export const AdminJobsTab = () => {
                 )}
             </div>
 
-            {/* Job Details Drawer Modal */}
+            {/* 6. Job Details & Diagnostics Drawer */}
             {(selectedJob || detailsLoading) && (
-                <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm animate-fade-in">
-                    <div className="w-full max-w-xl bg-zinc-900 border-l border-zinc-800 h-full overflow-y-auto p-6 flex flex-col justify-between shadow-2xl">
-                        <div>
-                            {/* Drawer Header */}
-                            <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                                        <Cpu className="w-5 h-5" />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-base font-semibold text-white">
-                                            Job Details & Diagnostics
-                                        </h3>
-                                        <p className="text-xs text-zinc-500 font-mono">
-                                            {selectedJob?._id || selectedJob?.id || 'Loading...'}
-                                        </p>
+                <div 
+                    className="jobs-drawer-backdrop"
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) setSelectedJob(null);
+                    }}
+                >
+                    <div className="jobs-drawer-panel">
+                        {/* Drawer Header */}
+                        <div className="drawer-header">
+                            <div className="header-content">
+                                <div className="drawer-icon-wrap">
+                                    <Cpu className="w-5 h-5" />
+                                </div>
+                                <div className="title-text">
+                                    <h3>Job Diagnostics & Payload</h3>
+                                    <div className="job-id-subtitle">
+                                        <span>{selectedJob?._id || selectedJob?.id || 'Loading...'}</span>
+                                        {selectedJob && (
+                                            <button
+                                                onClick={() => handleCopy(selectedJob._id || selectedJob.id, 'drawer-id')}
+                                                className="copy-mini-btn"
+                                                title={copiedId === 'drawer-id' ? 'Copied!' : 'Copy Job ID'}
+                                            >
+                                                {copiedId === 'drawer-id' ? (
+                                                    <Check className="w-3 h-3 text-emerald-400" />
+                                                ) : (
+                                                    <Copy className="w-3 h-3" />
+                                                )}
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => setSelectedJob(null)}
-                                    className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition"
-                                >
-                                    <X className="w-5 h-5" />
-                                </button>
                             </div>
+                            <button
+                                onClick={() => setSelectedJob(null)}
+                                className="close-drawer-btn"
+                                aria-label="Close drawer"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
 
+                        {/* Drawer Body */}
+                        <div className="drawer-body">
                             {detailsLoading ? (
-                                <div className="py-20 text-center">
-                                    <Activity className="w-8 h-8 text-indigo-400 animate-spin mx-auto mb-2" />
-                                    <p className="text-xs text-zinc-400">Loading diagnostic payload...</p>
+                                <div className="table-state-box">
+                                    <Activity className="w-7 h-7 text-indigo-400 animate-spin mb-2" />
+                                    <p>Loading diagnostic payload and BullMQ state...</p>
                                 </div>
                             ) : selectedJob && (
-                                <div className="mt-6 space-y-6">
-                                    {/* Status & Timing Grid */}
-                                    <div className="grid grid-cols-2 gap-3 bg-zinc-800/40 p-3.5 rounded-xl border border-zinc-800">
-                                        <div>
-                                            <span className="text-xs text-zinc-400 block mb-1">Status</span>
-                                            {getStatusBadge(selectedJob.status)}
+                                <>
+                                    {/* Timing & Diagnostics Grid */}
+                                    <div className="diagnostics-grid">
+                                        <div className="diag-item">
+                                            <span className="diag-label">Current Status</span>
+                                            <div>{renderStatusBadge(selectedJob.status)}</div>
                                         </div>
-                                        <div>
-                                            <span className="text-xs text-zinc-400 block mb-1">Task Type</span>
-                                            {getTypeBadge(selectedJob.type)}
+                                        <div className="diag-item">
+                                            <span className="diag-label">Task Type</span>
+                                            <div>{renderTypeBadge(selectedJob.type)}</div>
                                         </div>
-                                        <div>
-                                            <span className="text-xs text-zinc-400 block mb-1">Attempts</span>
-                                            <span className="font-mono text-sm text-zinc-200">
-                                                {selectedJob.attempts || 1}
+                                        <div className="diag-item">
+                                            <span className="diag-label">Execution Attempts</span>
+                                            <span className="diag-value mono">
+                                                {selectedJob.attempts || 1} / 3 Max
                                             </span>
                                         </div>
-                                        <div>
-                                            <span className="text-xs text-zinc-400 block mb-1">Execution Duration</span>
-                                            <span className="font-mono text-sm text-zinc-200">
+                                        <div className="diag-item">
+                                            <span className="diag-label">Execution Duration</span>
+                                            <span className="diag-value mono">
                                                 {formatDuration(selectedJob.durationMs)}
                                             </span>
                                         </div>
-                                        <div>
-                                            <span className="text-xs text-zinc-400 block mb-1">Started At</span>
-                                            <span className="text-xs text-zinc-300">
+                                        <div className="diag-item">
+                                            <span className="diag-label">Started At</span>
+                                            <span className="diag-value">
                                                 {selectedJob.startedAt ? new Date(selectedJob.startedAt).toLocaleString() : '—'}
                                             </span>
                                         </div>
-                                        <div>
-                                            <span className="text-xs text-zinc-400 block mb-1">Completed At</span>
-                                            <span className="text-xs text-zinc-300">
+                                        <div className="diag-item">
+                                            <span className="diag-label">Completed At</span>
+                                            <span className="diag-value">
                                                 {selectedJob.completedAt ? new Date(selectedJob.completedAt).toLocaleString() : '—'}
                                             </span>
                                         </div>
                                     </div>
 
-                                    {/* User Details */}
-                                    <div className="bg-zinc-800/40 p-3.5 rounded-xl border border-zinc-800">
-                                        <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-                                            <User className="w-3.5 h-3.5 text-zinc-400" />
-                                            Requesting User
+                                    {/* Requesting User Card */}
+                                    <div className="user-card-box">
+                                        <div className="box-header">
+                                            <User className="w-3.5 h-3.5 text-slate-400" />
+                                            Requesting User Account
                                         </div>
                                         {selectedJob.userId ? (
-                                            <div className="text-sm">
-                                                <p className="text-zinc-200 font-medium">
-                                                    {selectedJob.userId.username}
-                                                </p>
-                                                <p className="text-xs text-zinc-400">
-                                                    {selectedJob.userId.email}
-                                                </p>
-                                                <p className="text-[11px] text-zinc-500 mt-1 font-mono">
-                                                    ID: {selectedJob.userId._id || selectedJob.userId}
-                                                </p>
+                                            <div className="user-info">
+                                                <span className="u-name">
+                                                    {selectedJob.userId.username || 'Unnamed'}
+                                                </span>
+                                                <span className="u-email">
+                                                    {selectedJob.userId.email || '—'}
+                                                </span>
+                                                <span className="u-id">
+                                                    User ID: {selectedJob.userId._id || selectedJob.userId}
+                                                </span>
                                             </div>
                                         ) : (
-                                            <p className="text-xs text-zinc-400">System Internal Execution</p>
+                                            <span className="u-email">System Internal Execution (No User Bound)</span>
                                         )}
                                     </div>
 
-                                    {/* BullMQ Metadata */}
-                                    <div className="bg-zinc-800/40 p-3.5 rounded-xl border border-zinc-800">
-                                        <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-zinc-300 uppercase tracking-wider">
+                                    {/* BullMQ Metadata Card */}
+                                    <div className="bullmq-card-box">
+                                        <div className="box-header">
                                             <Terminal className="w-3.5 h-3.5 text-indigo-400" />
                                             BullMQ Queue Metadata
                                         </div>
-                                        <div className="space-y-1 text-xs">
-                                            <div className="flex justify-between py-1 border-b border-zinc-800/80">
-                                                <span className="text-zinc-400">Queue Name:</span>
-                                                <span className="font-mono text-zinc-200">ai-generation</span>
+                                        <div className="meta-rows">
+                                            <div className="meta-row">
+                                                <span className="row-label">Queue Name</span>
+                                                <span className="row-value">ai-generation</span>
                                             </div>
-                                            <div className="flex justify-between py-1 border-b border-zinc-800/80">
-                                                <span className="text-zinc-400">Bull Job ID:</span>
-                                                <span className="font-mono text-zinc-200">
+                                            <div className="meta-row">
+                                                <span className="row-label">Bull Job ID</span>
+                                                <span className="row-value">
                                                     {selectedJob.bullJobId || selectedJob._id}
                                                 </span>
                                             </div>
                                             {selectedJob.bullJobState && (
-                                                <div className="flex justify-between py-1">
-                                                    <span className="text-zinc-400">Live BullMQ State:</span>
-                                                    <span className="font-mono text-indigo-300">
+                                                <div className="meta-row">
+                                                    <span className="row-label">Live BullMQ State</span>
+                                                    <span className="row-value highlight">
                                                         {selectedJob.bullJobState}
                                                     </span>
                                                 </div>
@@ -741,62 +811,60 @@ export const AdminJobsTab = () => {
                                         </div>
                                     </div>
 
-                                    {/* Error Diagnostics (if failed) */}
+                                    {/* Error Diagnostic (if present) */}
                                     {selectedJob.error && (
-                                        <div className="bg-rose-500/10 border border-rose-500/30 p-3.5 rounded-xl">
-                                            <div className="flex items-center gap-2 text-xs font-semibold text-rose-300 mb-2 uppercase tracking-wider">
+                                        <div className="error-diag-box">
+                                            <div className="error-header">
                                                 <AlertCircle className="w-4 h-4 text-rose-400" />
                                                 Error Diagnostic Summary
                                             </div>
-                                            <p className="text-xs font-mono text-rose-200 whitespace-pre-wrap break-all bg-black/40 p-2.5 rounded border border-rose-500/20">
+                                            <div className="error-content">
                                                 {selectedJob.error}
-                                            </p>
+                                            </div>
                                         </div>
                                     )}
 
-                                    {/* Sanitized Payload Preview */}
-                                    <div className="bg-zinc-800/40 p-3.5 rounded-xl border border-zinc-800">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
-                                                <FileCode className="w-3.5 h-3.5 text-zinc-400" />
+                                    {/* Sanitized Input Parameters */}
+                                    <div className="payload-box">
+                                        <div className="payload-header">
+                                            <div className="title-wrap">
+                                                <FileCode className="w-3.5 h-3.5 text-slate-400" />
                                                 Sanitized Input Parameters
-                                            </span>
-                                            <span className="text-[10px] text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded">
-                                                Credentials Purged
-                                            </span>
+                                            </div>
+                                            <span className="purged-badge">Credentials Purged</span>
                                         </div>
-                                        <pre className="text-xs font-mono text-zinc-300 bg-black/40 p-3 rounded-lg overflow-x-auto max-h-48 border border-zinc-800/80">
+                                        <pre>
                                             {JSON.stringify(selectedJob.input || {}, null, 2)}
                                         </pre>
                                     </div>
-                                </div>
+                                </>
                             )}
                         </div>
 
                         {/* Drawer Footer Actions */}
                         {selectedJob && (
-                            <div className="pt-4 border-t border-zinc-800 flex items-center justify-end gap-2 mt-6">
+                            <div className="drawer-footer">
                                 {(selectedJob.status === 'failed' || selectedJob.status === 'cancelled') && (
                                     <button
                                         onClick={() => handleOpenConfirm('retry', selectedJob)}
-                                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-sm font-medium rounded-lg border border-amber-500/30 transition"
+                                        className="drawer-action-btn retry-action"
                                     >
-                                        <RotateCcw className="w-4 h-4" />
-                                        Retry Job Safely
+                                        <RotateCcw className="w-3.5 h-3.5" />
+                                        <span>Retry Job Safely</span>
                                     </button>
                                 )}
                                 {(selectedJob.status === 'pending' || selectedJob.status === 'processing') && (
                                     <button
                                         onClick={() => handleOpenConfirm('cancel', selectedJob)}
-                                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 text-sm font-medium rounded-lg border border-rose-500/30 transition"
+                                        className="drawer-action-btn cancel-action"
                                     >
-                                        <Ban className="w-4 h-4" />
-                                        Cancel Execution
+                                        <Ban className="w-3.5 h-3.5" />
+                                        <span>Cancel Execution</span>
                                     </button>
                                 )}
                                 <button
                                     onClick={() => setSelectedJob(null)}
-                                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium rounded-lg border border-zinc-700 transition"
+                                    className="drawer-action-btn close-action"
                                 >
                                     Close
                                 </button>
@@ -806,60 +874,67 @@ export const AdminJobsTab = () => {
                 </div>
             )}
 
-            {/* Confirmation Action Modal */}
+            {/* 7. Action Confirmation Modal */}
             {confirmModal.isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
-                    <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl">
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className={`p-2 rounded-xl ${
-                                confirmModal.action === 'retry'
-                                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                                    : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                <div 
+                    className="jobs-confirm-modal"
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                        }
+                    }}
+                >
+                    <div className="modal-card">
+                        <div className="modal-header-row">
+                            <div className={`modal-icon-badge ${
+                                confirmModal.action === 'retry' ? 'variant-retry' : 'variant-cancel'
                             }`}>
-                                {confirmModal.action === 'retry' ? <RotateCcw className="w-6 h-6" /> : <Ban className="w-6 h-6" />}
+                                {confirmModal.action === 'retry' ? (
+                                    <RotateCcw className="w-5 h-5" />
+                                ) : (
+                                    <Ban className="w-5 h-5" />
+                                )}
                             </div>
-                            <div>
-                                <h3 className="text-base font-semibold text-white">
-                                    {confirmModal.action === 'retry' ? 'Confirm Job Retry' : 'Confirm Job Cancellation'}
+                            <div className="modal-title-text">
+                                <h3>
+                                    {confirmModal.action === 'retry' ? 'Confirm Safe Job Retry' : 'Confirm Job Cancellation'}
                                 </h3>
-                                <p className="text-xs text-zinc-400">
-                                    Target Task: <span className="font-mono text-zinc-200">{confirmModal.jobType}</span>
-                                </p>
+                                <div className="target-task">
+                                    Target Task: <span>{confirmModal.jobType}</span>
+                                </div>
                             </div>
                         </div>
 
-                        <p className="text-sm text-zinc-300 mb-4">
+                        <p className="modal-desc">
                             {confirmModal.action === 'retry'
-                                ? 'Are you sure you want to retry this failed task? The system enforces strict idempotency and will update existing records without creating duplicates.'
-                                : 'Are you sure you want to cancel this task? It will be removed from the BullMQ active queue and marked cancelled.'}
+                                ? 'Are you sure you want to retry this failed task? The system enforces strict deduplication guarantees and will update existing records without creating duplicates.'
+                                : 'Are you sure you want to cancel this task? It will be removed from the active BullMQ queue and marked as cancelled.'}
                         </p>
 
-                        <div className="mb-4">
-                            <label className="text-xs font-medium text-zinc-400 block mb-1.5">
+                        <div className="reason-input-group">
+                            <label htmlFor="job-audit-reason">
                                 Reason for Audit Log (Optional)
                             </label>
                             <input
+                                id="job-audit-reason"
                                 type="text"
                                 value={confirmModal.reason}
                                 onChange={(e) => setConfirmModal(prev => ({ ...prev, reason: e.target.value }))}
-                                placeholder="e.g. Rate limit recovered / Manual intervention"
-                                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition"
+                                placeholder="e.g. Upstream model rate-limit resolved / Manual admin intervention"
                             />
                         </div>
 
-                        <div className="flex items-center justify-end gap-3 pt-2">
+                        <div className="modal-footer">
                             <button
                                 onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
-                                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium rounded-lg border border-zinc-700 transition"
+                                className="btn-modal-cancel"
                             >
                                 Back
                             </button>
                             <button
                                 onClick={handleExecuteAction}
-                                className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
-                                    confirmModal.action === 'retry'
-                                        ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                                        : 'bg-rose-600 hover:bg-rose-500 text-white'
+                                className={`btn-modal-confirm ${
+                                    confirmModal.action === 'retry' ? 'variant-retry' : 'variant-cancel'
                                 }`}
                             >
                                 {confirmModal.action === 'retry' ? 'Confirm Retry' : 'Confirm Cancellation'}
@@ -873,4 +948,3 @@ export const AdminJobsTab = () => {
 };
 
 export default AdminJobsTab;
-

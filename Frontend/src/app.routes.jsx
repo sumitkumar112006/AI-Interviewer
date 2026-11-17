@@ -1,28 +1,42 @@
+import React, { lazy, Suspense } from "react";
 import { createBrowserRouter } from "react-router-dom";
 import Login from "./features/Auth/pages/Login";
 import Register from "./features/Auth/pages/Register";
 import AuthCallback from "./features/Auth/pages/AuthCallback";
 import Protected from "./features/Auth/components/Protected";
-import Home from "./features/Interview/pages/Home";
-import Interview from "./features/Interview/pages/Interview";
-import Profile from "./features/Profile/Pages/Profile";
-import Resume from "./features/Interview/pages/Resume";
-import CoverLetter from "./features/Interview/pages/CoverLetter";
-import ComingSoon from "./features/Interview/pages/ComingSoon";
-import AllReports from "./features/Interview/pages/AllReports";
 import Layout from "./features/Layout";
-import PrivacyPolicy from "./features/Footer/pages/PrivacyPolicy";
-import TermsOfService from "./features/Footer/pages/TermsOfService";
-import ContactUs from "./features/Footer/pages/ContactUs";
-import AboutUs from "./features/Footer/pages/AboutUs";
-import HelpSupport from "./features/HelpSupport/pages/HelpSupport";
-import AdminProtected from "./features/Admin/components/AdminProtected";
-import AdminDashboard from "./features/Admin/pages/AdminDashboard";
-import AdminLogin from "./features/Admin/pages/AdminLogin";
-import UserEvaluationPage from "./features/Admin/pages/UserEvaluationPage";
 import LandingPage from "./features/Landing/pages/LandingPage";
 import RootIndex from "./features/Landing/components/RootIndex";
 import AdaptiveRoute from "./features/Landing/components/AdaptiveRoute";
+import PageLoading from "./features/Shared/components/PageLoading";
+import AdminProtected from "./features/Admin/components/AdminProtected";
+
+// Lazy-loaded App Routes
+const Home = lazy(() => import("./features/Interview/pages/Home"));
+const Interview = lazy(() => import("./features/Interview/pages/Interview"));
+const Profile = lazy(() => import("./features/Profile/Pages/Profile"));
+const Resume = lazy(() => import("./features/Interview/pages/Resume"));
+const CoverLetter = lazy(() => import("./features/Interview/pages/CoverLetter"));
+const ComingSoon = lazy(() => import("./features/Interview/pages/ComingSoon"));
+const AllReports = lazy(() => import("./features/Interview/pages/AllReports"));
+
+// Lazy-loaded Footer & Informational Routes
+const PrivacyPolicy = lazy(() => import("./features/Footer/pages/PrivacyPolicy"));
+const TermsOfService = lazy(() => import("./features/Footer/pages/TermsOfService"));
+const ContactUs = lazy(() => import("./features/Footer/pages/ContactUs"));
+const AboutUs = lazy(() => import("./features/Footer/pages/AboutUs"));
+const HelpSupport = lazy(() => import("./features/HelpSupport/pages/HelpSupport"));
+
+// Lazy-loaded Admin Portal Routes
+const AdminDashboard = lazy(() => import("./features/Admin/pages/AdminDashboard"));
+const AdminLogin = lazy(() => import("./features/Admin/pages/AdminLogin"));
+const UserEvaluationPage = lazy(() => import("./features/Admin/pages/UserEvaluationPage"));
+
+const withSuspense = (Component) => (
+    <Suspense fallback={<PageLoading />}>
+        <Component />
+    </Suspense>
+);
 
 export const router = createBrowserRouter([
     // Core Landing & Auth Routes
@@ -32,7 +46,7 @@ export const router = createBrowserRouter([
     { path: "/register", element: <Register /> },
     { path: "/auth/callback", element: <AuthCallback /> },
     { path: "/logout", element: <Login /> },
-    { path: "/admin-login-secret", element: <AdminLogin /> },
+    { path: "/admin-login-secret", element: withSuspense(AdminLogin) },
 
     // Public / Adaptive Informational Routes
     { path: "/pricing", element: <RootIndex /> },
@@ -47,7 +61,9 @@ export const router = createBrowserRouter([
         path: "/admin-portal-dashboard-root",
         element: (
             <AdminProtected>
-                <AdminDashboard />
+                <Suspense fallback={<PageLoading title="Loading Admin Console..." subtitle="Synchronizing administrative privileges and workspace telemetry..." />}>
+                    <AdminDashboard />
+                </Suspense>
             </AdminProtected>
         )
     },
@@ -55,7 +71,9 @@ export const router = createBrowserRouter([
         path: "/admin-portal-dashboard-root/user-evaluation/:userId",
         element: (
             <AdminProtected>
-                <UserEvaluationPage />
+                <Suspense fallback={<PageLoading title="Loading User Evaluation..." />}>
+                    <UserEvaluationPage />
+                </Suspense>
             </AdminProtected>
         )
     },
@@ -65,13 +83,13 @@ export const router = createBrowserRouter([
         path: "/",
         element: <Protected><Layout /></Protected>,
         children: [
-            { path: "dashboard", element: <Home /> },
-            { path: "profile", element: <Profile /> },
-            { path: "interview/:interviewId", element: <Interview /> },
-            { path: "resume/:interviewId", element: <Resume /> },
-            { path: "cover-letter/:interviewId", element: <CoverLetter /> },
-            { path: "coming-soon", element: <ComingSoon /> },
-            { path: "reports", element: <AllReports /> }
+            { path: "dashboard", element: withSuspense(Home) },
+            { path: "profile", element: withSuspense(Profile) },
+            { path: "interview/:interviewId", element: withSuspense(Interview) },
+            { path: "resume/:interviewId", element: withSuspense(Resume) },
+            { path: "cover-letter/:interviewId", element: withSuspense(CoverLetter) },
+            { path: "coming-soon", element: withSuspense(ComingSoon) },
+            { path: "reports", element: withSuspense(AllReports) }
         ]
     }
 ]);
